@@ -128,6 +128,16 @@ Claude Code 很强大，但需要配置才能发挥最大价值。
 
 欢迎提 Issue 和 PR！
 
+## Star History
+
+<a href="https://star-history.com/#Aster110/mycc&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date" />
+ </picture>
+</a>
+
 ## License
 
 MIT
