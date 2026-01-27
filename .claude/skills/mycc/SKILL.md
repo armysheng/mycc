@@ -7,13 +7,17 @@ description: 启动 mycc 小程序后端服务（后台运行）。触发词："
 
 启动 mycc 小程序本地后端，连接网页版/小程序与本地 Claude Code。
 
-## 平台支持
+## 环境要求
 
-- ✅ macOS
-- ✅ Linux
-- ❌ Windows（暂不支持，可用 WSL 运行）
+| 要求 | 说明 |
+|------|------|
+| Claude Code | **必须是官方原版**，fork 版本可能不兼容 |
+| 网络 | **需要 VPN/代理**（cloudflared 需要访问外网） |
+| 系统 | ✅ macOS、✅ Linux、❌ Windows、⚠️ WSL（不稳定） |
 
-> **Windows 适配**：如有需要，AI 可以自行修改 `scripts/src/` 下的代码做适配，主要是 `lsof`、`kill` 等 Unix 命令需要替换。
+> ⚠️ **Windows/WSL 用户注意**：目前 Windows 原生和 WSL 环境都存在兼容性问题，建议使用 macOS 或 Linux。
+>
+> 💡 **关于第三方 Claude Code**：目前仅测试了官方原版，第三方 fork 版本的兼容性支持在规划中。
 
 ## 依赖
 

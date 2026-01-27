@@ -30,7 +30,7 @@ MyCC 解决这些问题。它是一个 **Claude Code 系统模板**，让 CC：
 
 ## 前置条件
 
-- 已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- 已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（**必须是官方原版**，fork 版本可能不兼容）
 - 有 Anthropic API Key 或 Claude Pro 订阅
 
 ## 30 秒上手
@@ -145,12 +145,17 @@ cd .claude/skills/mycc/scripts && npm install && cd -
 # 3. 扫码或访问显示的 URL 即可
 ```
 
-**平台支持**：
-- ✅ macOS
-- ✅ Linux
-- ❌ Windows（暂不支持，可用 WSL 运行）
+**环境要求**：
 
-> Windows 用户如有需要，可以让 AI 帮你做适配，代码在 `.claude/skills/mycc/scripts/`
+| 要求 | 说明 |
+|------|------|
+| Claude Code | **必须是官方原版**，fork 版本可能不兼容 |
+| 网络 | **需要 VPN/代理**（cloudflared 需要访问外网） |
+| 系统 | ✅ macOS、✅ Linux、❌ Windows、⚠️ WSL（不稳定） |
+
+> ⚠️ **Windows/WSL 用户注意**：目前 Windows 原生和 WSL 环境都存在兼容性问题，建议使用 macOS 或 Linux。如确需使用，可以让 AI 帮你排查，代码在 `.claude/skills/mycc/scripts/`
+>
+> 💡 **关于第三方 Claude Code**：目前仅测试了官方原版，第三方 fork 版本（如支持其他模型的版本）的兼容性支持在规划中，欢迎提 Issue 反馈需求。
 
 **依赖**：
 - [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)：`brew install cloudflare/cloudflare/cloudflared`
