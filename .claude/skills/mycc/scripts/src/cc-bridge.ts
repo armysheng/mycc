@@ -5,6 +5,7 @@
 
 import { query } from "@anthropic-ai/claude-code";
 import { execSync } from "child_process";
+import type { ChatOptions } from "./types.js";
 
 // 检测 Claude CLI 路径
 function detectClaudeCliPath(): string {
@@ -16,15 +17,6 @@ function detectClaudeCliPath(): string {
 }
 
 const CLAUDE_CLI_PATH = detectClaudeCliPath();
-
-export interface ChatOptions {
-  message: string;
-  sessionId?: string;
-  cwd?: string;
-  onMessage: (msg: unknown) => void;
-  onDone: (sessionId: string) => void;
-  onError: (error: string) => void;
-}
 
 /**
  * 执行 CC 对话

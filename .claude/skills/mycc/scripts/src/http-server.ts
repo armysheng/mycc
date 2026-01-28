@@ -4,33 +4,40 @@
  */
 
 import http from "http";
-import { executeChat } from "./cc-bridge.js";
-import { getConversationList, getConversation } from "./history.js";
+import { generateToken } from "./utils.js";
+import { adapter } from "./adapters/index.js";
+import type { PairState } from "./types.js";
 
 const PORT = process.env.PORT || 8080;
-
-interface PairState {
-  pairCode: string;
-  paired: boolean;
-  token: string | null;
-}
 
 export class HttpServer {
   private server: http.Server;
   private state: PairState;
   private cwd: string;
+  private onPaired?: (token: string) => void;
 
-  constructor(pairCode: string, cwd: string) {
+  constructor(pairCode: string, cwd: string, authToken?: string) {
     this.cwd = cwd;
+    // 如果传入了 authToken，说明之前已配对过
     this.state = {
       pairCode,
-      paired: false,
-      token: null,
+      paired: !!authToken,
+      token: authToken || null,
     };
 
     this.server = http.createServer((req, res) => {
       this.handleRequest(req, res);
     });
+  }
+
+  /** 设置配对成功回调（用于持久化 authToken） */
+  setOnPaired(callback: (token: string) => void) {
+    this.onPaired = callback;
+  }
+
+  /** 获取当前 authToken */
+  getAuthToken(): string | null {
+    return this.state.token;
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -55,9 +62,9 @@ export class HttpServer {
       } else if (url.pathname === "/chat" && req.method === "POST") {
         await this.handleChat(req, res);
       } else if (url.pathname === "/history/list" && req.method === "GET") {
-        this.handleHistoryList(req, res);
+        await this.handleHistoryList(req, res);
       } else if (url.pathname.startsWith("/history/") && req.method === "GET") {
-        this.handleHistoryDetail(req, res, url.pathname);
+        await this.handleHistoryDetail(req, res, url.pathname);
       } else {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Not Found" }));
@@ -93,11 +100,16 @@ export class HttpServer {
     }
 
     // 首次配对，生成 token
-    const token = this.generateToken();
+    const token = generateToken();
     this.state.paired = true;
     this.state.token = token;
 
     console.log("[HTTP] 配对成功!");
+
+    // 通知外部保存 authToken
+    if (this.onPaired) {
+      this.onPaired(token);
+    }
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, token }));
@@ -128,11 +140,9 @@ export class HttpServer {
 
     let currentSessionId = sessionId;
 
-    await executeChat({
-      message,
-      sessionId,
-      cwd: this.cwd,
-      onMessage: (data) => {
+    try {
+      // 使用 adapter 的 chat 方法（返回 AsyncIterable）
+      for await (const data of adapter.chat({ message, sessionId, cwd: this.cwd })) {
         // 提取 session_id
         if (data && typeof data === "object" && "type" in data) {
           if (data.type === "system" && "session_id" in data) {
@@ -140,21 +150,21 @@ export class HttpServer {
           }
         }
         res.write(`data: ${JSON.stringify(data)}\n\n`);
-      },
-      onDone: (sid) => {
-        res.write(`data: ${JSON.stringify({ type: "done", sessionId: sid })}\n\n`);
-        res.end();
-        console.log(`[CC] 完成`);
-      },
-      onError: (error) => {
-        res.write(`data: ${JSON.stringify({ type: "error", error })}\n\n`);
-        res.end();
-        console.error(`[CC] 错误: ${error}`);
-      },
-    });
+      }
+
+      // 完成
+      res.write(`data: ${JSON.stringify({ type: "done", sessionId: currentSessionId })}\n\n`);
+      res.end();
+      console.log(`[CC] 完成`);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      res.write(`data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`);
+      res.end();
+      console.error(`[CC] 错误: ${errMsg}`);
+    }
   }
 
-  private handleHistoryList(req: http.IncomingMessage, res: http.ServerResponse) {
+  private async handleHistoryList(req: http.IncomingMessage, res: http.ServerResponse) {
     // 验证 token
     const authHeader = req.headers.authorization;
     const token = authHeader?.replace("Bearer ", "");
@@ -171,17 +181,12 @@ export class HttpServer {
       const limitParam = url.searchParams.get("limit");
       const limit = limitParam ? parseInt(limitParam, 10) : 20;
 
-      let conversations = getConversationList(this.cwd);
-      const total = conversations.length;
+      // 使用 adapter 的 listHistory 方法
+      const result = await adapter.listHistory(this.cwd, limit);
 
-      // 如果 limit > 0，只返回前 limit 条
-      if (limit > 0) {
-        conversations = conversations.slice(0, limit);
-      }
-
-      console.log(`[History] 返回 ${conversations.length}/${total} 条历史记录 (cwd: ${this.cwd})`);
+      console.log(`[History] 返回 ${result.conversations.length}/${result.total} 条历史记录 (cwd: ${this.cwd})`);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ conversations, total, hasMore: conversations.length < total }));
+      res.end(JSON.stringify(result));
     } catch (error) {
       console.error("[History] List error:", error);
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -189,7 +194,7 @@ export class HttpServer {
     }
   }
 
-  private handleHistoryDetail(req: http.IncomingMessage, res: http.ServerResponse, pathname: string) {
+  private async handleHistoryDetail(req: http.IncomingMessage, res: http.ServerResponse, pathname: string) {
     // 验证 token
     const authHeader = req.headers.authorization;
     const token = authHeader?.replace("Bearer ", "");
@@ -210,7 +215,8 @@ export class HttpServer {
     }
 
     try {
-      const conversation = getConversation(this.cwd, sessionId);
+      // 使用 adapter 的 getHistory 方法
+      const conversation = await adapter.getHistory(this.cwd, sessionId);
       if (!conversation) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "对话不存在" }));
@@ -232,16 +238,6 @@ export class HttpServer {
       req.on("end", () => resolve(body));
       req.on("error", reject);
     });
-  }
-
-  private generateToken(): string {
-    // 大写字母+数字，6位，去掉易混淆的 I/O/0/1
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let token = "";
-    for (let i = 0; i < 6; i++) {
-      token += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return token;
   }
 
   start(): Promise<number> {

@@ -9,13 +9,14 @@
  */
 
 import { spawn, execSync } from "child_process";
-import { mkdirSync, writeFileSync, existsSync, readdirSync } from "fs";
+import { mkdirSync, writeFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { customAlphabet } from "nanoid";
 
-// 只用大写字母+数字，方便输入
-const generateCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
+// 从新模块导入
+import type { DeviceConfig, RegisterResult } from "./types.js";
+import { generateCode, generateDeviceId, retryWithBackoff, waitForReady } from "./utils.js";
+import { getConfigDir, loadConfig, deleteConfig, findProjectRoot } from "./config.js";
 import qrcode from "qrcode-terminal";
 import chalk from "chalk";
 import { HttpServer } from "./http-server.js";
@@ -41,39 +42,6 @@ function killExistingProcess(port: number): void {
 const WORKER_URL = process.env.WORKER_URL || "https://api.mycc.dev";
 const PACKAGE_NAME = "mycc-backend";
 
-/**
- * 自动查找项目根目录
- * 从当前目录向上查找，直到找到包含 .claude/ 或 claude.md (不区分大小写) 的目录
- */
-function findProjectRoot(startDir: string): string | null {
-  let current = startDir;
-  const root = "/";
-
-  while (current !== root) {
-    // 检查是否包含 .claude 目录
-    if (existsSync(join(current, ".claude"))) {
-      return current;
-    }
-
-    // 检查是否包含 claude.md（不区分大小写）
-    try {
-      const files = readdirSync(current);
-      const hasClaudeMd = files.some(f => f.toLowerCase() === "claude.md");
-      if (hasClaudeMd) {
-        return current;
-      }
-    } catch {
-      // 读取目录失败，跳过
-    }
-
-    // 向上一级
-    const parent = join(current, "..");
-    if (parent === current) break;
-    current = parent;
-  }
-
-  return null;
-}
 
 // 检测版本更新
 async function checkVersionUpdate(): Promise<void> {
@@ -166,11 +134,46 @@ async function startServer(args: string[]) {
   }
   console.log(`工作目录: ${cwd}\n`);
 
-  // 生成配对码
-  const pairCode = generateCode();
+  // 检查是否需要重置
+  const resetFlag = args.includes("--reset");
+  if (resetFlag) {
+    deleteConfig(cwd);
+  }
 
-  // 启动 HTTP 服务器
-  const server = new HttpServer(pairCode, cwd);
+  // 加载或创建设备配置
+  let config = loadConfig(cwd);
+  let isFirstRun = false;
+
+  if (config) {
+    console.log(chalk.green("✓ 已加载设备配置"));
+    console.log(chalk.gray(`  设备 ID: ${config.deviceId}`));
+    console.log(chalk.gray(`  配对码: ${config.pairCode}`));
+    if (config.routeToken) {
+      console.log(chalk.gray(`  连接码: ${config.routeToken}\n`));
+    }
+  } else {
+    // 首次运行，生成新配置
+    isFirstRun = true;
+    config = {
+      deviceId: generateDeviceId(),
+      pairCode: generateCode(),
+      createdAt: new Date().toISOString()
+    };
+    console.log(chalk.yellow("首次运行，生成新设备配置"));
+    console.log(chalk.gray(`  设备 ID: ${config.deviceId}`));
+    console.log(chalk.gray(`  配对码: ${config.pairCode}\n`));
+  }
+
+  const { deviceId, pairCode, authToken } = config;
+
+  // 启动 HTTP 服务器（传入已有的 authToken）
+  const server = new HttpServer(pairCode, cwd, authToken);
+
+  // 如果之前已配对，显示状态
+  if (authToken) {
+    console.log(chalk.green("✓ 已恢复配对状态\n"));
+  }
+
   await server.start();
 
   // 启动 cloudflared tunnel
@@ -184,9 +187,41 @@ async function startServer(args: string[]) {
 
   console.log(chalk.green(`✓ Tunnel 已启动: ${tunnelUrl}\n`));
 
-  // 向 Worker 注册，获取 token
+  // 等待 tunnel 完全就绪（主动探测，最多 30 秒）
+  console.log(chalk.gray("等待 tunnel 就绪..."));
+  const tunnelReady = await waitForReady(
+    async () => {
+      try {
+        const result = execSync(
+          `curl -s --max-time 5 "${tunnelUrl}/health"`,
+          { timeout: 8000 }
+        ).toString();
+        return result.includes("ok");
+      } catch {
+        return false;
+      }
+    },
+    {
+      maxWaitMs: 30000,
+      intervalMs: 2000,
+      onCheck: (attempt) => {
+        if (attempt > 1) {
+          console.log(chalk.gray(`  探测 ${attempt}...`));
+        }
+      }
+    }
+  );
+
+  if (tunnelReady) {
+    console.log(chalk.green("✓ Tunnel 就绪\n"));
+  } else {
+    console.log(chalk.yellow("⚠️  Tunnel 探测超时，继续尝试注册...\n"));
+  }
+
+  // 向 Worker 注册，获取 token（带 deviceId）
   console.log(chalk.yellow("向中转服务器注册...\n"));
-  const token = await registerToWorker(tunnelUrl, pairCode);
+  const registerResult = await registerToWorker(tunnelUrl, pairCode, deviceId);
+  const token = registerResult?.token ?? null;
 
   let mpUrl: string;
   if (!token) {
@@ -194,13 +229,29 @@ async function startServer(args: string[]) {
     console.log(chalk.gray("（直接访问 tunnel URL 仍可用于测试）\n"));
     mpUrl = tunnelUrl; // fallback
   } else {
-    console.log(chalk.green("✓ 注册成功\n"));
+    // 注册成功，更新并保存配置
+    if (registerResult?.isNewDevice) {
+      console.log(chalk.green("✓ 新设备注册成功\n"));
+    } else {
+      console.log(chalk.green("✓ 设备已识别，连接码保持不变\n"));
+    }
+
+    // 验证 Worker 是否真的更新了 tunnelUrl
+    console.log(chalk.gray("验证 Worker 映射..."));
+    const verified = await verifyWorkerMapping(token, tunnelUrl);
+    if (verified) {
+      console.log(chalk.green("✓ Worker 映射验证成功\n"));
+    } else {
+      console.error(chalk.red("❌ Worker 映射验证失败"));
+      console.error(chalk.yellow("   建议：请重新启动后端\n"));
+    }
+
     mpUrl = `${WORKER_URL}/${token}`;
   }
 
-  // 保存连接信息到文件（方便 AI 读取）
+  // 保存连接信息到文件（统一保存，包含持久化配置）
   // 优先级：MYCC_SKILL_DIR 环境变量 > cwd/.claude/skills/mycc > ~/.mycc/
-  const saveConnectionInfo = () => {
+  const saveConnectionInfo = (newAuthToken?: string) => {
     let myccDir: string;
 
     const envSkillDir = process.env.MYCC_SKILL_DIR;
@@ -208,24 +259,27 @@ async function startServer(args: string[]) {
     const homeDir = join(homedir(), ".mycc");
 
     if (envSkillDir && existsSync(envSkillDir)) {
-      // 环境变量指定且存在
       myccDir = envSkillDir;
     } else if (existsSync(join(cwd, ".claude", "skills", "mycc"))) {
-      // cwd 下有 skill 目录
       myccDir = cwdSkillDir;
     } else {
-      // fallback 到 ~/.mycc/
       myccDir = homeDir;
     }
 
     const infoPath = join(myccDir, "current.json");
     try {
       mkdirSync(myccDir, { recursive: true });
+      // 获取当前 authToken（优先用新传入的，否则用服务器当前的）
+      const currentAuthToken = newAuthToken || server.getAuthToken() || authToken;
       writeFileSync(
         infoPath,
         JSON.stringify({
-          routeToken: token,
+          // 持久化配置（重启后复用）
+          deviceId,
           pairCode,
+          routeToken: token,
+          authToken: currentAuthToken,  // 保存 authToken
+          // 运行时信息（每次启动更新）
           tunnelUrl,
           mpUrl,
           cwd,
@@ -238,7 +292,13 @@ async function startServer(args: string[]) {
     }
   };
 
-  // 保存到文件
+  // 设置配对成功回调，保存 authToken
+  server.setOnPaired((newToken) => {
+    console.log(chalk.gray("正在保存配对信息..."));
+    saveConnectionInfo(newToken);
+  });
+
+  // 保存到文件（包含持久化配置，下次启动会读取）
   saveConnectionInfo();
 
   // 打印连接信息的函数
@@ -257,7 +317,11 @@ async function startServer(args: string[]) {
   // 显示配对信息
   printConnectionInfo();
 
-  console.log(chalk.green("✓ 服务已就绪，等待配对...\n"));
+  if (authToken) {
+    console.log(chalk.green("✓ 服务已就绪\n"));
+  } else {
+    console.log(chalk.green("✓ 服务已就绪，扫码配对后即可使用\n"));
+  }
   console.log(chalk.gray("按回车键重新显示连接信息"));
   console.log(chalk.gray("按 Ctrl+C 退出\n"));
 
@@ -305,69 +369,126 @@ async function checkCloudflared(): Promise<boolean> {
   });
 }
 
-// 向 Worker 注册 tunnel URL，返回 token
+// 向 Worker 注册 tunnel URL，返回 { token, isNewDevice }
 // 用 curl 而不是 Node.js fetch，因为 undici 和代理配合不稳定
-// 带重试机制，最多尝试 3 次
 async function registerToWorker(
   tunnelUrl: string,
-  pairCode: string
-): Promise<string | null> {
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY = 2000; // 2秒
+  pairCode: string,
+  deviceId?: string
+): Promise<RegisterResult | null> {
+  let attemptCount = 0;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      console.log(chalk.gray(`注册尝试 ${attempt}/${MAX_RETRIES}...`));
+  const result = await retryWithBackoff(
+    async () => {
+      attemptCount++;
+      console.log(chalk.gray(`注册尝试 ${attemptCount}/5...`));
 
-      const data = JSON.stringify({ tunnelUrl, pairCode });
-      const result = execSync(
-        `curl -s --max-time 10 -X POST "${WORKER_URL}/register" -H "Content-Type: application/json" -d '${data}'`,
-        { timeout: 15000 }
+      // 构造请求数据，新版带 deviceId
+      const requestData: Record<string, string> = { tunnelUrl, pairCode };
+      if (deviceId) {
+        requestData.deviceId = deviceId;
+      }
+      const data = JSON.stringify(requestData);
+
+      const response = execSync(
+        `curl -s --max-time 20 --retry 2 --retry-delay 1 -X POST "${WORKER_URL}/register" -H "Content-Type: application/json" -d '${data}'`,
+        { timeout: 30000 }
       ).toString();
 
-      // 检查是否是有效的 JSON
-      if (!result || result.trim() === "") {
+      if (!response || response.trim() === "") {
         throw new Error("空响应");
       }
 
-      const parsed = JSON.parse(result) as { token?: string; error?: string };
+      const parsed = JSON.parse(response) as { token?: string; isNewDevice?: boolean; error?: string };
 
       if (parsed.token) {
-        console.log(chalk.green(`✓ 注册成功 (第 ${attempt} 次尝试)`));
-        return parsed.token;
-      } else {
-        throw new Error(parsed.error || "未知错误");
+        console.log(chalk.green(`✓ 注册成功 (第 ${attemptCount} 次尝试)`));
+        return {
+          token: parsed.token,
+          isNewDevice: parsed.isNewDevice ?? true
+        };
       }
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(chalk.yellow(`注册尝试 ${attempt} 失败: ${errMsg}`));
 
-      if (attempt < MAX_RETRIES) {
-        console.log(chalk.gray(`等待 ${RETRY_DELAY/1000} 秒后重试...`));
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      throw new Error(parsed.error || "未知错误");
+    },
+    {
+      maxRetries: 5,
+      delayMs: 3000,
+      onRetry: (attempt, error) => {
+        if (error) {
+          console.error(chalk.yellow(`注册尝试 ${attempt} 失败: ${error}`));
+        }
+        console.log(chalk.gray(`等待 3 秒后重试...`));
       }
     }
+  );
+
+  if (!result) {
+    // 所有重试都失败
+    console.error(chalk.red("\n========================================"));
+    console.error(chalk.red("错误: Worker 注册失败（已重试 5 次）"));
+    console.error(chalk.red("========================================"));
+    console.error(chalk.yellow("\n可能的原因:"));
+    console.error("  1. 网络连接问题");
+    console.error("  2. 代理服务器不稳定");
+    console.error("  3. Worker 服务暂时不可用");
+    console.error(chalk.yellow("\n解决方法:"));
+    console.error("  1. 检查网络连接");
+    console.error("  2. 稍后重启后端重试");
+    console.error("  3. 可以直接使用 tunnel URL 测试（不经过 Worker）\n");
   }
 
-  // 所有重试都失败
-  console.error(chalk.red("\n========================================"));
-  console.error(chalk.red("错误: Worker 注册失败（已重试 3 次）"));
-  console.error(chalk.red("========================================"));
-  console.error(chalk.yellow("\n可能的原因:"));
-  console.error("  1. 网络连接问题");
-  console.error("  2. 代理服务器不稳定");
-  console.error("  3. Worker 服务暂时不可用");
-  console.error(chalk.yellow("\n解决方法:"));
-  console.error("  1. 检查网络连接");
-  console.error("  2. 稍后重启后端重试");
-  console.error("  3. 可以直接使用 tunnel URL 测试（不经过 Worker）\n");
-
-  return null;
+  return result;
 }
 
-async function startTunnel(port: number): Promise<string | null> {
+// 验证 Worker 是否真的更新了 tunnelUrl
+// 调用 /info/{token} 接口，对比返回的 tunnelUrl 和本地的是否一致
+async function verifyWorkerMapping(token: string, expectedTunnelUrl: string): Promise<boolean> {
+  const result = await retryWithBackoff(
+    async () => {
+      const response = execSync(
+        `curl -s --max-time 10 "${WORKER_URL}/info/${token}"`,
+        { timeout: 15000 }
+      ).toString();
+
+      if (!response || response.trim() === "") {
+        return null; // 空响应，重试
+      }
+
+      const parsed = JSON.parse(response) as { tunnelUrl?: string; error?: string };
+
+      if (parsed.error) {
+        console.log(chalk.gray(`  Worker 返回错误: ${parsed.error}`));
+        return null;
+      }
+
+      if (parsed.tunnelUrl === expectedTunnelUrl) {
+        return true; // 验证成功
+      }
+
+      // tunnelUrl 不匹配，可能是 KV 同步延迟
+      console.log(chalk.yellow(`  Worker 返回的 tunnelUrl 不匹配:`));
+      console.log(chalk.gray(`    期望: ${expectedTunnelUrl}`));
+      console.log(chalk.gray(`    实际: ${parsed.tunnelUrl}`));
+      return null; // 继续重试
+    },
+    {
+      maxRetries: 3,
+      delayMs: 2000,
+      onRetry: (attempt, error) => {
+        if (error) {
+          console.log(chalk.gray(`  验证尝试 ${attempt} 失败: ${error}`));
+        }
+      }
+    }
+  );
+
+  return result === true;
+}
+
+// 单次尝试启动 tunnel（内部函数）
+function tryStartTunnel(port: number, timeout: number): Promise<{ url: string | null; proc: ReturnType<typeof spawn> | null }> {
   return new Promise((resolve) => {
-    // --config /dev/null: 防止加载默认 config.yml（会影响 Quick Tunnel 路由）
     const proc = spawn(CLOUDFLARED_PATH, ["tunnel", "--config", "/dev/null", "--url", `http://localhost:${port}`], {
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -377,11 +498,10 @@ async function startTunnel(port: number): Promise<string | null> {
 
     const handleOutput = (data: Buffer) => {
       const output = data.toString();
-      // cloudflared 输出 tunnel URL 到 stderr
       const match = output.match(urlPattern);
       if (match && !resolved) {
         resolved = true;
-        resolve(match[0]);
+        resolve({ url: match[0], proc });
       }
     };
 
@@ -392,18 +512,54 @@ async function startTunnel(port: number): Promise<string | null> {
       console.error("Tunnel error:", err);
       if (!resolved) {
         resolved = true;
-        resolve(null);
+        resolve({ url: null, proc: null });
       }
     });
 
-    // 10 秒超时
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        resolve(null);
+        // 超时，杀掉进程
+        try { proc.kill(); } catch {}
+        resolve({ url: null, proc: null });
       }
-    }, 10000);
+    }, timeout);
   });
+}
+
+// 带重试的 startTunnel
+async function startTunnel(port: number): Promise<string | null> {
+  let attemptCount = 0;
+
+  const result = await retryWithBackoff(
+    async () => {
+      attemptCount++;
+      console.log(chalk.gray(`启动 tunnel 尝试 ${attemptCount}/3...`));
+
+      const { url } = await tryStartTunnel(port, 15000);
+
+      if (url) {
+        console.log(chalk.green(`✓ Tunnel 启动成功 (第 ${attemptCount} 次尝试)`));
+        return url;
+      }
+
+      console.log(chalk.yellow(`Tunnel 启动超时`));
+      return null;
+    },
+    {
+      maxRetries: 3,
+      delayMs: 2000,
+      onRetry: () => {
+        console.log(chalk.gray(`等待 2 秒后重试...`));
+      }
+    }
+  );
+
+  if (!result) {
+    console.error(chalk.red("错误: Tunnel 启动失败（已重试 3 次）"));
+  }
+
+  return result;
 }
 
 function showHelp() {
@@ -417,6 +573,7 @@ ${chalk.yellow("用法:")}
 
 ${chalk.yellow("选项:")}
   --cwd <目录>          指定工作目录 (默认: 当前目录)
+  --reset               重置设备配置，重新生成连接码和配对码
 
 ${chalk.yellow("环境变量:")}
   PORT                  HTTP 服务端口 (默认: 8080)
@@ -424,6 +581,7 @@ ${chalk.yellow("环境变量:")}
 ${chalk.yellow("示例:")}
   cc-mp start
   cc-mp start --cwd /path/to/project
+  cc-mp start --reset   # 重置配置，需要重新配对
 `);
 }
 

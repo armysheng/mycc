@@ -6,37 +6,10 @@
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import type { RawHistoryLine, ConversationSummary, ConversationHistory } from "./types.js";
 
-// JSONL 行结构
-interface RawHistoryLine {
-  type: "user" | "assistant" | "system" | "result";
-  message?: {
-    role?: string;
-    content?: unknown;
-    id?: string;
-  };
-  sessionId: string;
-  timestamp: string;
-  uuid: string;
-  parentUuid?: string | null;
-  isSidechain?: boolean;
-  cwd?: string;
-}
-
-// 对话摘要
-export interface ConversationSummary {
-  sessionId: string;
-  startTime: string;
-  lastTime: string;
-  messageCount: number;
-  lastMessagePreview: string;
-}
-
-// 对话详情
-export interface ConversationHistory {
-  sessionId: string;
-  messages: RawHistoryLine[];
-}
+// 重新导出类型（保持兼容）
+export type { ConversationSummary, ConversationHistory };
 
 /**
  * 过滤系统标签

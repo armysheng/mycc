@@ -1,4 +1,82 @@
-// 消息类型定义
+/**
+ * 公共类型定义
+ */
+
+// ============ 设备与配置 ============
+
+/** 设备配置（持久化到 current.json） */
+export interface DeviceConfig {
+  deviceId: string;
+  pairCode: string;
+  routeToken?: string;
+  authToken?: string;  // 配对后的认证 token
+  createdAt: string;
+}
+
+/** Worker 注册结果 */
+export interface RegisterResult {
+  token: string;
+  isNewDevice: boolean;
+}
+
+/** 配对状态（运行时） */
+export interface PairState {
+  pairCode: string;
+  paired: boolean;
+  token: string | null;
+}
+
+// ============ 对话与历史 ============
+
+/** Chat 请求参数 */
+export interface ChatParams {
+  message: string;
+  sessionId?: string;
+  cwd: string;
+}
+
+/** Chat 回调选项 */
+export interface ChatCallbacks {
+  onMessage: (msg: unknown) => void;
+  onDone: (sessionId: string) => void;
+  onError: (error: string) => void;
+}
+
+/** Chat 完整选项（参数 + 回调） */
+export interface ChatOptions extends ChatParams, ChatCallbacks {}
+
+/** JSONL 行结构 */
+export interface RawHistoryLine {
+  type: "user" | "assistant" | "system" | "result";
+  message?: {
+    role?: string;
+    content?: unknown;
+    id?: string;
+  };
+  sessionId: string;
+  timestamp: string;
+  uuid: string;
+  parentUuid?: string | null;
+  isSidechain?: boolean;
+  cwd?: string;
+}
+
+/** 对话摘要 */
+export interface ConversationSummary {
+  sessionId: string;
+  startTime: string;
+  lastTime: string;
+  messageCount: number;
+  lastMessagePreview: string;
+}
+
+/** 对话详情 */
+export interface ConversationHistory {
+  sessionId: string;
+  messages: RawHistoryLine[];
+}
+
+// ============ WebSocket 消息（旧版，保留兼容） ============
 
 // 本地后端 → 中转服务器
 export interface RegisterMessage {
