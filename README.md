@@ -135,6 +135,8 @@ mycc/
 
 ### 后端启动
 
+> ⚠️ **中国用户注意**：启动后端需要电脑端**全程开启 VPN/代理**，否则 cloudflared 无法连接 Cloudflare 服务器。
+
 ```bash
 # 1. 安装依赖（首次）
 cd .claude/skills/mycc/scripts && npm install && cd -
@@ -150,7 +152,7 @@ cd .claude/skills/mycc/scripts && npm install && cd -
 | 要求 | 说明 |
 |------|------|
 | Claude Code | **必须是官方原版**，fork 版本可能不兼容 |
-| 网络 | **需要 VPN/代理**（cloudflared 需要访问外网） |
+| 网络 | **中国用户需全程开启 VPN/代理**（cloudflared + Worker 注册都需要） |
 | 系统 | ✅ macOS、✅ Linux、❌ Windows、⚠️ WSL（不稳定） |
 
 > ⚠️ **Windows/WSL 用户注意**：目前 Windows 原生和 WSL 环境都存在兼容性问题，建议使用 macOS 或 Linux。如确需使用，可以让 AI 帮你排查，代码在 `.claude/skills/mycc/scripts/`
@@ -190,9 +192,9 @@ Claude Code 很强大，但需要配置才能发挥最大价值。
 
 <a href="https://star-history.com/#Aster110/mycc&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&theme=dark&v=20260127" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&v=20260127" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&v=20260127" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&theme=dark&v=20260128" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&v=20260128" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Aster110/mycc&type=Date&v=20260128" />
  </picture>
 </a>
 
