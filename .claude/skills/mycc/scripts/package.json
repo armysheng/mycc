@@ -1,8 +1,8 @@
 {
-  "name": "cc-miniprogram",
+  "name": "mycc",
   "version": "0.1.0",
   "type": "module",
-  "description": "Claude Code 微信小程序本地后端",
+  "description": "MYCC ｜Claude Code 移动端（微信小程序，网页版）本地后端",
   "main": "dist/index.js",
   "bin": {
     "cc-mp": "dist/index.js"

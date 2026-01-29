@@ -1,6 +1,21 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.0] - 2026-01-29
+
+### Added
+- 🖼️ 支持图片消息（发送图片给 Claude）
+- 🪟 Windows 跨平台支持 + AI 安装指南
+- 📖 AI 可读 FAQ 文档（`docs/FAQ.md`）
+
+### Changed
+- ⚡ 优化历史记录加载，压缩 50% 流量
+- 🔧 移除 `~/.mycc/` fallback，配置只存项目目录
+
+### Fixed
+- 🐛 Windows 上 Claude CLI 路径检测问题
+- 🐛 ESM 模式下的 require 调用问题
+
+---
 
 ## [2026-01-28]
 

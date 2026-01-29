@@ -3,27 +3,23 @@
  */
 
 import { existsSync, readFileSync, unlinkSync, readdirSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import type { DeviceConfig } from "./types.js";
 import { getRoot } from "./platform.js";
 
 /**
  * 获取配置目录（统一逻辑）
- * 优先级：MYCC_SKILL_DIR > cwd/.claude/skills/mycc > ~/.mycc/
+ * 优先级：MYCC_SKILL_DIR > cwd/.claude/skills/mycc
+ * 注意：不使用用户主目录，配置只存在项目目录下
  */
 export function getConfigDir(cwd: string): string {
   const envSkillDir = process.env.MYCC_SKILL_DIR;
   const cwdSkillDir = join(cwd, ".claude", "skills", "mycc");
-  const homeDir = join(homedir(), ".mycc");
 
   if (envSkillDir && existsSync(envSkillDir)) {
     return envSkillDir;
-  } else if (existsSync(cwdSkillDir)) {
-    return cwdSkillDir;
-  } else {
-    return homeDir;
   }
+  return cwdSkillDir;
 }
 
 /**
