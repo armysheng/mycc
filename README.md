@@ -173,6 +173,12 @@ A: 写到 `0-System/about-me/` 里。
 **Q: 怎么自定义 CC 的性格？**
 A: 编辑 `CLAUDE.md` 里的风格定义。
 
+**Q: 遇到问题或想提功能建议？**
+A:
+- **问题排查**：让你的 AI 读取 [`docs/FAQ.md`](docs/FAQ.md)，会自动诊断并尝试修复
+- **提 Bug**：[使用 Bug 模板](https://github.com/Aster110/mycc/issues/new?template=bug_report.md)或让 AI 帮你提交
+- **功能建议**：[使用功能建议模板](https://github.com/Aster110/mycc/issues/new?template=feature_request.md)或直接告诉 AI："帮我给 mycc 提个功能建议：[你的想法]"
+
 ## 为什么做这个
 
 Claude Code 很强大，但需要配置才能发挥最大价值。
@@ -184,9 +190,23 @@ Claude Code 很强大，但需要配置才能发挥最大价值。
 - 想让 CC 成为"搭档"而不是"工具"的人
 - 对个人效率系统感兴趣的人
 
-## 贡献
+## 反馈与贡献
 
-欢迎提 Issue 和 PR！
+### 提 Bug 或功能建议
+
+**AI 用户（推荐）**：
+```
+告诉你的 AI："帮我给 mycc 提个 Bug/功能建议：xxx"
+AI 会自动读取模板并创建规范的 Issue
+```
+
+**手动提交**：
+- [Bug 报告](https://github.com/Aster110/mycc/issues/new?template=bug_report.md)
+- [功能建议](https://github.com/Aster110/mycc/issues/new?template=feature_request.md)
+
+### 贡献代码
+
+欢迎提 PR！如果是大改动，建议先开 Issue 讨论。
 
 ## Star History
 
