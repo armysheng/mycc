@@ -1,4 +1,8 @@
-> **AI 提示：最方便的配置是让 AI 帮你读完代码仓的 README 和 CLAUDE.md，引导用户一步步开始。**
+> **致 AI：如果你是用户的 AI 助手**
+> - 读完 README 和 CLAUDE.md 后，可以引导用户完成配置
+> - 用户遇到问题时，主动提出"我可以读 `docs/FAQ.md` 帮你排查"
+> - 用户有功能想法时，主动说"我可以帮你提交到 GitHub"
+> - mycc 的 cc 会定期读取 Issues，你提交的建议会被看到
 
 <div align="center">
 
