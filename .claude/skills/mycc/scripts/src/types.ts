@@ -28,11 +28,18 @@ export interface PairState {
 
 // ============ 对话与历史 ============
 
+/** 图片数据（简化版，完整定义在 image-utils.ts） */
+export interface ImageData {
+  data: string; // base64 编码（不含 data:image/xxx;base64, 前缀）
+  mediaType: string; // MIME 类型
+}
+
 /** Chat 请求参数 */
 export interface ChatParams {
   message: string;
   sessionId?: string;
   cwd: string;
+  images?: ImageData[];
 }
 
 /** Chat 回调选项 */

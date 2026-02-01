@@ -9,7 +9,7 @@
  */
 
 import { spawn, execSync } from "child_process";
-import { mkdirSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -28,6 +28,8 @@ import qrcode from "qrcode-terminal";
 import chalk from "chalk";
 import { HttpServer } from "./http-server.js";
 import { checkCCAvailable } from "./cc-bridge.js";
+import { startScheduler, stopScheduler, type Task } from "./scheduler.js";
+import { adapter } from "./adapters/index.js";
 
 const PORT = process.env.PORT || 8080;
 const WORKER_URL = process.env.WORKER_URL || "https://api.mycc.dev";
@@ -167,6 +169,62 @@ async function startServer(args: string[]) {
   }
 
   await server.start();
+
+  // 记录任务执行历史到 history.md
+  const recordHistory = (taskCwd: string, taskName: string, status: string) => {
+    const historyPath = join(taskCwd, ".claude", "skills", "scheduler", "history.md");
+    if (!existsSync(historyPath)) return;
+
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const record = `| ${timestamp} | ${taskName} | ${status} |\n`;
+
+    try {
+      appendFileSync(historyPath, record);
+    } catch {
+      // 静默失败，不影响任务执行
+    }
+  };
+
+  // 启动定时任务调度器
+  const executeTask = async (task: Task, taskCwd: string) => {
+    // 获取当前时间戳
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    // 构造带上下文的消息
+    const skillLine = task.skill && task.skill !== "-"
+      ? `1. 执行技能：${task.skill}（位置：.claude/skills/${task.skill.replace("/", "")}）`
+      : "1. 无需执行特定技能，直接完成任务";
+
+    const message = `[定时任务] ${task.name}
+
+时间：${timestamp}
+任务：${task.desc}
+
+---
+执行要求：
+${skillLine}
+2. 完成后用 /tell-me 发飞书通知（位置：.claude/skills/tell-me）
+3. 通知标题格式：【定时任务】${task.name}
+4. 卡片底部 note 填写时间戳：${timestamp}
+5. 任务定义位置：.claude/skills/scheduler/tasks.md`;
+
+    // 记录开始执行
+    recordHistory(taskCwd, task.name, "执行中...");
+
+    try {
+      for await (const _event of adapter.chat({ message, cwd: taskCwd })) {
+        // 忽略输出，只需要执行
+      }
+      console.log(chalk.green(`[Scheduler] 任务完成: ${task.name}`));
+      recordHistory(taskCwd, task.name, "✅ 成功");
+    } catch (error) {
+      console.error(chalk.red(`[Scheduler] 任务失败: ${task.name}`), error);
+      recordHistory(taskCwd, task.name, "❌ 失败");
+    }
+  };
+  startScheduler(cwd, executeTask);
 
   // 启动 cloudflared tunnel
   console.log(chalk.yellow("启动 tunnel...\n"));
@@ -326,6 +384,7 @@ async function startServer(args: string[]) {
       // Ctrl+C
       if (key[0] === 3) {
         console.log(chalk.yellow("\n正在退出..."));
+        stopScheduler();
         server.stop();
         process.exit(0);
       }
@@ -339,11 +398,13 @@ async function startServer(args: string[]) {
   // 处理退出
   process.on("SIGINT", () => {
     console.log(chalk.yellow("\n正在退出..."));
+    stopScheduler();
     server.stop();
     process.exit(0);
   });
 
   process.on("SIGTERM", () => {
+    stopScheduler();
     server.stop();
     process.exit(0);
   });
