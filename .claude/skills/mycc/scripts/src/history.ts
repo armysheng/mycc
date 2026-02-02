@@ -3,7 +3,7 @@
  * 读取 ~/.claude/projects/{encodedProjectName}/ 下的 JSONL 文件
  */
 
-import { readFileSync, readdirSync, existsSync, writeFileSync, renameSync } from "fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, renameSync, appendFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import type { RawHistoryLine, ConversationSummary, ConversationHistory } from "./types.js";
@@ -291,19 +291,20 @@ export function renameSession(
   }
 
   try {
-    // 1. 获取索引文件路径
+    // 1. 获取项目目录路径
     const encodedPath = encodeProjectPath(projectPath);
-    const indexPath = join(
-      homedir(),
-      ".claude",
-      "projects",
-      encodedPath,
-      "sessions-index.json"
-    );
+    const projectDir = join(homedir(), ".claude", "projects", encodedPath);
+    const indexPath = join(projectDir, "sessions-index.json");
+    const jsonlPath = join(projectDir, `${sessionId}.jsonl`);
 
     // 2. 检查文件是否存在
     if (!existsSync(indexPath)) {
       console.error("[Rename] sessions-index.json not found:", indexPath);
+      return false;
+    }
+
+    if (!existsSync(jsonlPath)) {
+      console.error("[Rename] Session file not found:", jsonlPath);
       return false;
     }
 
@@ -323,7 +324,15 @@ export function renameSession(
     entry.customTitle = trimmed;
     entry.modified = new Date().toISOString();
 
-    // 6. 原子性写回（临时文件 + rename）
+    // 6. 写入 custom-title 到 jsonl 文件（Claude Code 重建索引时会读取）
+    const customTitleEntry = JSON.stringify({
+      type: "custom-title",
+      customTitle: trimmed,
+      sessionId: sessionId
+    });
+    appendFileSync(jsonlPath, customTitleEntry + "\n", "utf-8");
+
+    // 7. 原子性写回索引文件（临时文件 + rename）
     const tempPath = `${indexPath}.tmp`;
     writeFileSync(tempPath, JSON.stringify(index, null, 2), "utf-8");
     renameSync(tempPath, indexPath);
