@@ -7,8 +7,10 @@
  */
 
 import type { ChildProcess } from "child_process";
-import { spawn } from "child_process";
-import { detectCloudflaredPath, NULL_DEVICE, killPortProcess } from "./platform.js";
+import { spawn, execSync } from "child_process";
+import { detectCloudflaredPath, NULL_DEVICE } from "./platform.js";
+
+const isWindows = process.platform === "win32";
 
 // ============ 接口定义 ============
 
@@ -51,9 +53,10 @@ export class CloudflareProvider implements TunnelProvider {
   private localPort: number = 0;
 
   /**
-   * @param startTimeout 启动超时时间（毫秒），默认 15 秒
+   * @param startTimeout 启动超时时间（毫秒），默认 60 秒
+   * cloudflared 连接 Cloudflare Edge 可能需要较长时间，特别是网络不稳定时
    */
-  constructor(startTimeout: number = 15000) {
+  constructor(startTimeout: number = 60000) {
     this.startTimeout = startTimeout;
   }
 
@@ -118,11 +121,19 @@ export class CloudflareProvider implements TunnelProvider {
       this.proc = null;
     }
 
-    // 使用跨平台的端口清理（替代 pkill，支持 Windows）
-    if (this.localPort) {
-      killPortProcess(this.localPort).catch(() => {
-        // 静默处理失败，不影响主流程
-      });
+    // 杀掉所有 cloudflared 子进程（shell spawn 可能留下孤儿）
+    // 注意：killPortProcess 杀的是 HTTP Server，不是 cloudflared！
+    // cloudflared 不占用 localPort，它只是转发到 localhost:localPort
+    try {
+      if (isWindows) {
+        // Windows: 按进程名杀
+        execSync('taskkill /F /IM cloudflared.exe 2>nul', { stdio: 'ignore' });
+      } else {
+        // Unix: 按命令行模式匹配杀
+        execSync("pkill -9 -f 'cloudflared tunnel' 2>/dev/null || true", { stdio: 'ignore' });
+      }
+    } catch {
+      // 静默处理失败
     }
 
     this.tunnelUrl = null;

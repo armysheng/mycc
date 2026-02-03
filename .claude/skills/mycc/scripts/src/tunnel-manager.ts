@@ -18,6 +18,9 @@ const HEARTBEAT_INTERVAL = 60_000; // 心跳间隔 60 秒
 const HEARTBEAT_FAIL_THRESHOLD = 3; // 连续失败 3 次触发重启
 const MAX_RESTART_ATTEMPTS = 5; // 最大重启次数
 const RESTART_DELAY = 2000; // 重启前等待时间（毫秒）
+const DNS_PROPAGATION_DELAY = 30_000; // DNS 传播等待时间（30 秒）
+const WAIT_FOR_READY_TIMEOUT = 60_000; // waitForReady 超时（60 秒）
+const WAIT_FOR_READY_INTERVAL = 5_000; // waitForReady 检查间隔（5 秒）
 
 // ============ 类型定义 ============
 
@@ -262,25 +265,30 @@ export class TunnelManager {
       const result = await this.provider.start(this.localPort);
       this.tunnelUrl = result.url;
       this.proc = result.proc || null;
+      console.log(chalk.cyan(`[TunnelManager] 新隧道 URL: ${result.url}`));
 
-      // 5. 等待隧道就绪
+      // 5. 等待 DNS 传播（避免 Node.js DNS 负缓存问题）
+      console.log(chalk.gray(`[TunnelManager] 等待 DNS 传播 (${DNS_PROPAGATION_DELAY / 1000}s)...`));
+      await this.sleep(DNS_PROPAGATION_DELAY);
+
+      // 6. 验证隧道可用
       const ready = await this.waitForReady();
       if (!ready) {
-        throw new Error("Tunnel 就绪超时");
+        throw new Error("隧道验证超时");
       }
 
-      // 6. 重新设置进程监控
+      // 7. 重新设置进程监控
       this.setupProcMonitor();
 
-      // 7. 重新启动心跳检测
+      // 8. 重新启动心跳检测
       this.startHeartbeat();
 
-      // 8. 调用回调（重新注册 Worker、更新 current.json 等）
+      // 9. 调用回调（重新注册 Worker、更新 current.json 等）
       if (this.onRestartSuccess && this.tunnelUrl) {
         await this.onRestartSuccess(this.tunnelUrl);
       }
 
-      // 9. 重置重试计数（成功了）
+      // 10. 重置重试计数（成功了）
       this.restartAttempts = 0;
 
       console.log(chalk.green(`[TunnelManager] ✓ 重连成功: ${this.tunnelUrl}`));
@@ -289,11 +297,11 @@ export class TunnelManager {
     } catch (error) {
       console.error(chalk.red(`[TunnelManager] 重连失败:`, error));
 
-      // 延迟后再次尝试
+      // 延迟后再次尝试（30 秒，避免触发 Cloudflare 限流）
       this.isRestarting = false;
       setTimeout(() => {
         this.restart("retry_after_fail");
-      }, 5000);
+      }, 30000);
 
       return false;
     }
@@ -301,19 +309,20 @@ export class TunnelManager {
 
   /**
    * 等待隧道就绪
+   * DNS 传播后调用，验证隧道实际可用
    */
-  private async waitForReady(
-    maxWaitMs: number = 30000,
-    intervalMs: number = 2000
-  ): Promise<boolean> {
+  private async waitForReady(): Promise<boolean> {
     const startTime = Date.now();
 
-    while (Date.now() - startTime < maxWaitMs) {
+    while (Date.now() - startTime < WAIT_FOR_READY_TIMEOUT) {
       const ok = await this.checkHealth();
       if (ok) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(chalk.green(`[TunnelManager] 隧道验证成功 (${elapsed}s)`));
         return true;
       }
-      await this.sleep(intervalMs);
+      console.log(chalk.gray(`[TunnelManager] 等待隧道就绪...`));
+      await this.sleep(WAIT_FOR_READY_INTERVAL);
     }
 
     return false;
