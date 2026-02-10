@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AllMessage, TimestampedSDKMessage } from "../types";
-import type { ConversationHistory } from "../../../shared/types";
-import { getConversationUrl } from "../config/api";
+import type { AllMessage, TimestampedSDKMessage, ConversationHistory } from "../types";
+import { getConversationUrl, getAuthHeaders } from "../config/api";
 import { useMessageConverter } from "./useMessageConverter";
+import { useAuth } from "../contexts/AuthContext";
 
 interface HistoryLoaderState {
   messages: AllMessage[];
@@ -41,6 +41,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
   });
 
   const { convertConversationHistory } = useMessageConverter();
+  const { token } = useAuth();
 
   const loadHistory = useCallback(
     async (encodedProjectName: string, sessionId: string) => {
@@ -61,6 +62,9 @@ export function useHistoryLoader(): HistoryLoaderResult {
 
         const response = await fetch(
           getConversationUrl(encodedProjectName, sessionId),
+          {
+            headers: getAuthHeaders(token),
+          },
         );
 
         if (!response.ok) {
@@ -112,7 +116,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
         }));
       }
     },
-    [convertConversationHistory],
+    [convertConversationHistory, token],
   );
 
   const clearHistory = useCallback(() => {

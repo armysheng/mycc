@@ -19,10 +19,11 @@ import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
-import { getChatUrl, getProjectsUrl } from "../config/api";
+import { getChatUrl, getProjectsUrl, getAuthHeaders } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
+import { useAuth } from "../contexts/AuthContext";
 
 export function ChatPage() {
   const location = useLocation();
@@ -30,6 +31,7 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { token } = useAuth();
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -169,7 +171,7 @@ export function ChatPage() {
       try {
         const response = await fetch(getChatUrl(), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(token),
           body: JSON.stringify({
             message: content,
             requestId,
@@ -246,6 +248,7 @@ export function ChatPage() {
       currentAssistantMessage,
       workingDirectory,
       permissionMode,
+      token,
       generateRequestId,
       clearInput,
       startRequest,
@@ -388,7 +391,9 @@ export function ChatPage() {
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const response = await fetch(getProjectsUrl());
+        const response = await fetch(getProjectsUrl(), {
+          headers: getAuthHeaders(token),
+        });
         if (response.ok) {
           const data = await response.json();
           setProjects(data.projects || []);
@@ -398,7 +403,7 @@ export function ChatPage() {
       }
     };
     loadProjects();
-  }, []);
+  }, [token]);
 
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });

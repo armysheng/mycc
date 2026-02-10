@@ -212,13 +212,47 @@ export type PlanApprovalResult =
   | { success: true; sessionId: string }
   | { success: false; error: PlanApprovalError };
 
-// Re-export shared types
-export type {
-  StreamResponse,
-  ChatRequest,
-  ProjectsResponse,
-  ProjectInfo,
-} from "../../shared/types";
+// Conversation history types
+export interface ConversationSummary {
+  sessionId: string;
+  startTime: string;
+  lastTime: string;
+  messageCount: number;
+  lastMessagePreview: string;
+  customTitle?: string | null;
+  firstPrompt?: string;
+  modified?: string;
+  isActive?: boolean;
+}
+
+export interface ConversationHistory {
+  sessionId: string;
+  messages: TimestampedSDKMessage[];
+}
+
+// API types
+export type StreamResponse =
+  | { type: "claude_json"; data: unknown }
+  | { type: "error"; error: string }
+  | { type: "aborted" };
+
+export interface ChatRequest {
+  message: string;
+  requestId: string;
+  sessionId?: string;
+  allowedTools?: string[];
+  workingDirectory?: string;
+  permissionMode?: PermissionMode;
+}
+
+export interface ProjectsResponse {
+  projects: ProjectInfo[];
+}
+
+export interface ProjectInfo {
+  path: string;
+  encodedName: string;
+}
 
 // Re-export SDK types
 export type {
