@@ -18,7 +18,7 @@ import { buildMessageContent, type MessageContent } from "../image-utils.js";
 const { executable: CLAUDE_EXECUTABLE, cliPath: CLAUDE_CLI_PATH } = detectClaudeCliPath();
 
 /** v2 SDKSessionOptions 必须提供 model，这是默认值 */
-const DEFAULT_MODEL = "claude-sonnet";
+const DEFAULT_MODEL = "sonnet";
 
 /** Session 超时时间：30 分钟无活动自动关闭 */
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -36,12 +36,16 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * 构造 v2 SDKSessionOptions
  */
 function buildSessionOptions(model?: string) {
+  // 清除 CLAUDECODE 环境变量，避免子进程被误判为嵌套会话 (#16)
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.CLAUDECODE;
+
   const options: Parameters<typeof unstable_v2_createSession>[0] = {
     model: model || DEFAULT_MODEL,
     pathToClaudeCodeExecutable: CLAUDE_CLI_PATH,
     permissionMode: "bypassPermissions",
     env: {
-      ...process.env,
+      ...cleanEnv,
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
     },
   };
