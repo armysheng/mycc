@@ -15,7 +15,7 @@ import { validateImages, type ImageData } from "./image-utils.js";
 import { renameSession } from "./history.js";
 import { listSkills } from "./skills.js";
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 18080;
 
 export interface TlsConfig {
   certPath: string;
@@ -419,7 +419,7 @@ export class HttpServer {
         reject(err);
       });
 
-      const port = Number(process.env.PORT || 8080);
+      const port = Number(process.env.PORT || 18080);
       this.server.listen(port, () => {
         console.log(`[${this.isTls ? "HTTPS" : "HTTP"}] 服务启动在端口 ${port}`);
         resolve(port);
