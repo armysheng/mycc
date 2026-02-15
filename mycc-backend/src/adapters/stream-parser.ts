@@ -52,6 +52,15 @@ export function extractUsage(event: SSEEvent): {
       outputTokens: usage.output_tokens || 0,
     };
   }
+
+  // Claude CLI/SDK often reports aggregated usage in result events.
+  if (event.type === 'result' && 'usage' in event) {
+    const usage = event.usage as any;
+    return {
+      inputTokens: usage.input_tokens || 0,
+      outputTokens: usage.output_tokens || 0,
+    };
+  }
   return null;
 }
 

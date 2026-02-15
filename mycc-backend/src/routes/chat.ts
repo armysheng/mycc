@@ -3,7 +3,14 @@ import { z } from 'zod';
 import path from 'path';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { concurrencyLimiter } from '../concurrency-limiter.js';
-import { checkQuota, logUsage, upsertConversation, updateConversationStats } from '../db/client.js';
+import {
+  checkQuota,
+  logUsage,
+  renameConversation,
+  upsertConversation,
+  updateConversationStats,
+  userOwnsConversation,
+} from '../db/client.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { validateLinuxUsername, validatePathPrefix } from '../utils/validation.js';
@@ -31,6 +38,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const body = chatSchema.parse(request.body);
       const userId = request.user.userId;
       const linuxUser = request.user.linuxUser;
+
+      if (body.sessionId) {
+        const ownsSession = await userOwnsConversation(userId, body.sessionId);
+        if (!ownsSession) {
+          return reply.status(403).send({
+            success: false,
+            error: '无权访问该会话',
+          });
+        }
+      }
 
       // 检查额度
       const quota = await checkQuota(userId);
@@ -105,6 +122,17 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
           // 发送事件
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+
+        // 确保会话元数据存在（首次消息会创建，会话续聊会刷新 updated_at）
+        if (currentSessionId) {
+          const upserted = await upsertConversation({
+            userId,
+            sessionId: currentSessionId,
+          });
+          if (!upserted) {
+            throw new Error('会话归属校验失败');
+          }
         }
 
         // 记录使用量
@@ -195,7 +223,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         data: {
           conversations,
           total: conversations.length,
-          hasMore: conversations.length === parseInt(limit),
+          hasMore: conversations.length === limitNum,
         },
       });
     } catch (err) {
@@ -225,11 +253,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
         });
       }
 
-      await upsertConversation({
-        userId: request.user.userId,
+      const updated = await renameConversation(
+        request.user.userId,
         sessionId,
-        title: newTitle,
-      });
+        newTitle
+      );
+
+      if (!updated) {
+        return reply.status(404).send({
+          success: false,
+          error: '会话不存在或无权限',
+        });
+      }
 
       return reply.send({
         success: true,
@@ -240,6 +275,17 @@ export async function chatRoutes(fastify: FastifyInstance) {
         error: err instanceof Error ? err.message : '重命名失败',
       });
     }
+  });
+
+  // POST /api/abort/:requestId - 前端兼容接口（当前远程执行暂不支持真实中断）
+  fastify.post('/api/abort/:requestId', {
+    preHandler: jwtAuthMiddleware,
+  }, async (_request, reply) => {
+    return reply.send({
+      success: true,
+      type: 'aborted',
+      message: 'Abort 接口已接收（当前版本为兼容实现）',
+    });
   });
 }
 

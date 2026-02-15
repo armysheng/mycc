@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
 import { ChatPage } from "./components/ChatPage";
 import { SettingsProvider } from "./contexts/SettingsContext";
+import { AuthProvider } from "./contexts/AuthContext";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -35,13 +36,15 @@ describe("App Routing", () => {
   it("renders chat page when navigating to projects path", async () => {
     await act(async () => {
       render(
-        <SettingsProvider>
-          <MemoryRouter initialEntries={["/projects/test-path"]}>
-            <Routes>
-              <Route path="/projects/*" element={<ChatPage />} />
-            </Routes>
-          </MemoryRouter>
-        </SettingsProvider>,
+        <AuthProvider>
+          <SettingsProvider>
+            <MemoryRouter initialEntries={["/projects/test-path"]}>
+              <Routes>
+                <Route path="/projects/*" element={<ChatPage />} />
+              </Routes>
+            </MemoryRouter>
+          </SettingsProvider>
+        </AuthProvider>,
       );
     });
 

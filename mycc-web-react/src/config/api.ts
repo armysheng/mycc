@@ -2,10 +2,8 @@
 export const API_CONFIG = {
   ENDPOINTS: {
     CHAT: "/api/chat",
+    CHAT_SESSIONS: "/api/chat/sessions",
     ABORT: "/api/abort",
-    PROJECTS: "/api/projects",
-    HISTORIES: "/api/projects",
-    CONVERSATIONS: "/api/projects",
   },
 } as const;
 
@@ -24,23 +22,14 @@ export const getChatUrl = () => {
   return API_CONFIG.ENDPOINTS.CHAT;
 };
 
-// Helper function to get projects URL
-export const getProjectsUrl = () => {
-  return API_CONFIG.ENDPOINTS.PROJECTS;
+// Helper function to get sessions URL
+export const getChatSessionsUrl = () => {
+  return API_CONFIG.ENDPOINTS.CHAT_SESSIONS;
 };
 
-// Helper function to get histories URL
-export const getHistoriesUrl = (projectPath: string) => {
-  const encodedPath = encodeURIComponent(projectPath);
-  return `${API_CONFIG.ENDPOINTS.HISTORIES}/${encodedPath}/histories`;
-};
-
-// Helper function to get conversation URL
-export const getConversationUrl = (
-  encodedProjectName: string,
-  sessionId: string,
-) => {
-  return `${API_CONFIG.ENDPOINTS.CONVERSATIONS}/${encodedProjectName}/histories/${sessionId}`;
+// Helper function to get rename session URL
+export const getChatSessionRenameUrl = (sessionId: string) => {
+  return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/rename`;
 };
 
 // Helper function to get auth headers

@@ -4,7 +4,6 @@ import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
-  ProjectInfo,
   PermissionMode,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
@@ -19,7 +18,7 @@ import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
-import { getChatUrl, getProjectsUrl, getAuthHeaders } from "../config/api";
+import { getChatUrl, getAuthHeaders } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
@@ -29,7 +28,6 @@ export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { token } = useAuth();
 
@@ -57,41 +55,13 @@ export function ChatPage() {
   // Permission mode state management
   const { permissionMode, setPermissionMode } = usePermissionMode();
 
-  // Get encoded name for current working directory
-  const getEncodedName = useCallback(() => {
-    if (!projects.length) {
-      return null;
-    }
-
-    // If no workingDirectory specified or it's the root path, use the first project
-    if (!workingDirectory || workingDirectory === '/') {
-      return projects[0]?.encodedName || null;
-    }
-
-    const project = projects.find((p) => p.path === workingDirectory);
-
-    // Normalize paths for comparison (handle Windows path issues)
-    const normalizedWorking = normalizeWindowsPath(workingDirectory);
-    const normalizedProject = projects.find(
-      (p) => normalizeWindowsPath(p.path) === normalizedWorking,
-    );
-
-    // Use normalized result if exact match fails, or fallback to first project
-    const finalProject = project || normalizedProject || projects[0];
-
-    return finalProject?.encodedName || null;
-  }, [workingDirectory, projects]);
-
   // Load conversation history if sessionId is provided
   const {
     messages: historyMessages,
     loading: historyLoading,
     error: historyError,
     sessionId: loadedSessionId,
-  } = useAutoHistoryLoader(
-    getEncodedName() || undefined,
-    sessionId || undefined,
-  );
+  } = useAutoHistoryLoader(sessionId || undefined);
 
   // Initialize chat state with loaded history
   const {
@@ -392,24 +362,6 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
-  // Load projects to get encodedName mapping
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const response = await fetch(getProjectsUrl(), {
-          headers: getAuthHeaders(token),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data.projects || []);
-        }
-      } catch (error) {
-        console.error("Failed to load projects:", error);
-      }
-    };
-    loadProjects();
-  }, [token]);
-
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });
   }, [navigate]);
@@ -524,11 +476,7 @@ export function ChatPage() {
 
         {/* Main Content */}
         {isHistoryView ? (
-          <HistoryView
-            workingDirectory={workingDirectory || ""}
-            encodedName={getEncodedName()}
-            onBack={handleBackToChat}
-          />
+          <HistoryView onBack={handleBackToChat} />
         ) : historyLoading ? (
           /* Loading conversation history */
           <div className="flex-1 flex items-center justify-center">

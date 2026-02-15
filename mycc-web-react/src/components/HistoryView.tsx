@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../types";
-import { getHistoriesUrl, getAuthHeaders } from "../config/api";
+import { getChatSessionsUrl, getAuthHeaders } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface HistoryViewProps {
-  workingDirectory: string;
-  encodedName: string | null;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
-export function HistoryView({ encodedName }: HistoryViewProps) {
+export function HistoryView(_props: HistoryViewProps) {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,24 +17,28 @@ export function HistoryView({ encodedName }: HistoryViewProps) {
 
   useEffect(() => {
     const loadConversations = async () => {
-      if (!encodedName) {
-        // Keep loading state when encodedName is not available yet
-        return;
-      }
-
       try {
         setLoading(true);
-        const response = await fetch(getHistoriesUrl(encodedName), {
+        const response = await fetch(`${getChatSessionsUrl()}?limit=100&offset=0`, {
           headers: getAuthHeaders(token),
         });
 
         if (!response.ok) {
           throw new Error(
-            `Failed to load conversations: ${response.statusText}`,
+            `Failed to load conversations: ${response.status} ${response.statusText}`,
           );
         }
         const data = await response.json();
-        setConversations(data.conversations || []);
+        const rows = data?.data?.conversations || [];
+        const mapped: ConversationSummary[] = rows.map((item: any) => ({
+          sessionId: item.sessionId,
+          startTime: item.createdAt,
+          lastTime: item.updatedAt,
+          messageCount: item.messageCount ?? 0,
+          lastMessagePreview: item.title || "Untitled conversation",
+          customTitle: item.title || null,
+        }));
+        setConversations(mapped);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load conversations",
@@ -47,7 +49,7 @@ export function HistoryView({ encodedName }: HistoryViewProps) {
     };
 
     loadConversations();
-  }, [encodedName, token]);
+  }, [token]);
 
   const handleConversationSelect = (sessionId: string) => {
     const searchParams = new URLSearchParams();
@@ -55,13 +57,13 @@ export function HistoryView({ encodedName }: HistoryViewProps) {
     navigate({ search: searchParams.toString() });
   };
 
-  if (loading || !encodedName) {
+  if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600 dark:text-slate-400">
-            {!encodedName ? "Loading project..." : "Loading conversations..."}
+            Loading conversations...
           </p>
         </div>
       </div>

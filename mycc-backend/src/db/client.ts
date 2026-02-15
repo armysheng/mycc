@@ -68,6 +68,15 @@ export interface Conversation {
   updated_at: Date;
 }
 
+export interface ConversationSummary {
+  sessionId: string;
+  title: string | null;
+  messageCount: number;
+  totalTokens: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // 创建用户
 export async function createUser(params: {
   phone?: string;
@@ -200,14 +209,16 @@ export async function upsertConversation(params: {
   userId: number;
   sessionId: string;
   title?: string;
-}): Promise<void> {
-  await pool.query(
+}): Promise<boolean> {
+  const result = await pool.query(
     `INSERT INTO conversations (user_id, session_id, title, message_count, total_tokens)
      VALUES ($1, $2, $3, 0, 0)
      ON CONFLICT (session_id)
-     DO UPDATE SET title = COALESCE($3, conversations.title), updated_at = NOW()`,
+     DO UPDATE SET title = COALESCE($3, conversations.title), updated_at = NOW()
+     WHERE conversations.user_id = EXCLUDED.user_id`,
     [params.userId, params.sessionId, params.title]
   );
+  return (result.rowCount || 0) > 0;
 }
 
 // 更新会话统计
@@ -227,15 +238,48 @@ export async function getUserConversations(
   userId: number,
   limit: number = 20,
   offset: number = 0
-): Promise<Conversation[]> {
+): Promise<ConversationSummary[]> {
   const result = await pool.query<Conversation>(
-    `SELECT * FROM conversations
+    `SELECT session_id, title, message_count, total_tokens, created_at, updated_at
+     FROM conversations
      WHERE user_id = $1
      ORDER BY updated_at DESC
      LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    sessionId: row.session_id,
+    title: row.title || null,
+    messageCount: row.message_count,
+    totalTokens: row.total_tokens,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function userOwnsConversation(userId: number, sessionId: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1
+     FROM conversations
+     WHERE user_id = $1 AND session_id = $2
+     LIMIT 1`,
+    [userId, sessionId]
+  );
+  return result.rowCount === 1;
+}
+
+export async function renameConversation(
+  userId: number,
+  sessionId: string,
+  newTitle: string
+): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE conversations
+     SET title = $1, updated_at = NOW()
+     WHERE user_id = $2 AND session_id = $3`,
+    [newTitle, userId, sessionId]
+  );
+  return (result.rowCount || 0) > 0;
 }
 
 // 获取使用统计
