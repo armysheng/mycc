@@ -28,6 +28,8 @@ export interface FeishuChannelConfig {
   encryptKey?: string;
   /** Verification Token（用于验证事件推送） */
   verificationToken?: string;
+  /** 是否显示工具调用：true（显示）或 false（不显示），默认 true */
+  showToolUse?: boolean;
 }
 
 /**
@@ -70,19 +72,26 @@ export class FeishuChannel implements MessageChannel {
       connectionMode: (process.env.FEISHU_CONNECTION_MODE as "websocket" | "poll") || "poll",
       encryptKey: process.env.FEISHU_ENCRYPT_KEY,
       verificationToken: process.env.FEISHU_VERIFICATION_TOKEN,
+      showToolUse: process.env.FEISHU_SHOW_TOOL_USE === "false" ? false : true, // 默认 true
     };
   }
 
   /**
    * 消息过滤器 - 支持 v1 和 v2 SDK 的事件类型
-   * v1: text, content_block_delta, system
+   * v1: text, content_block_delta, system, tool_use
    * v2: assistant (包含消息内容), system
    */
   filter(event: SSEEvent): boolean {
     const textOnlyTypes = ["text", "content_block_delta", "system", "assistant"];
+    const allTypes = ["text", "content_block_delta", "system", "assistant", "tool_use"];
     const eventType = event.type as string;
 
-    return textOnlyTypes.includes(eventType);
+    // 根据配置决定是否显示工具调用
+    if (this.config.showToolUse) {
+      return allTypes.includes(eventType);
+    } else {
+      return textOnlyTypes.includes(eventType);
+    }
   }
 
   /**
@@ -111,11 +120,27 @@ export class FeishuChannel implements MessageChannel {
       return;
     }
 
+    // 处理 tool_use 事件（工具调用）
+    if (event.type === "tool_use") {
+      if (!this.config.showToolUse) {
+        return;
+      }
+      const toolEvent = event as Record<string, unknown>;
+      const toolContent = this.formatToolUse(toolEvent);
+      if (toolContent) {
+        const sessionId = this.extractSessionId(event);
+        await this.sendMessageToFeishu(toolContent, sessionId);
+      }
+      return;
+    }
+
     // 处理 v2 SDK 的 assistant 事件（包含消息内容）
     if (event.type === "assistant") {
       const assistantEvent = event as Record<string, unknown>;
       // 提取消息内容
       let content = "";
+      let toolCalls: string[] = [];
+
       if ("message" in assistantEvent && typeof assistantEvent.message === "object") {
         const message = assistantEvent.message as Record<string, unknown>;
         if ("content" in message && Array.isArray(message.content)) {
@@ -123,19 +148,32 @@ export class FeishuChannel implements MessageChannel {
           for (const block of message.content) {
             if (typeof block === "object" && block !== null) {
               if ("type" in block && block.type === "text" && "text" in block) {
-                // 只发送纯文本内容，过滤掉工具调用
+                // 纯文本内容
                 content += String(block.text);
+              } else if ("type" in block && block.type === "tool_use" && this.config.showToolUse) {
+                // 工具调用，格式化显示
+                const toolCall = this.formatToolUseBlock(block as Record<string, unknown>);
+                if (toolCall) {
+                  toolCalls.push(toolCall);
+                }
               }
-              // 工具调用 (tool_use) 被过滤掉，不发送到飞书
             }
           }
         }
       }
 
+      const sessionId = this.extractSessionId(event);
+
+      // 先发送文本内容
       if (content) {
-        const sessionId = this.extractSessionId(event);
         await this.sendMessageToFeishu(content, sessionId);
       }
+
+      // 再发送工具调用（每条单独发送）
+      for (const toolCall of toolCalls) {
+        await this.sendMessageToFeishu(toolCall, sessionId);
+      }
+
       return;
     }
 
@@ -350,6 +388,57 @@ export class FeishuChannel implements MessageChannel {
       return String(event.session_id);
     }
     return undefined;
+  }
+
+  /**
+   * 格式化 tool_use 事件为可读文本
+   */
+  private formatToolUse(event: Record<string, unknown>): string {
+    try {
+      const name = event.name as string || "unknown";
+      const input = event.input as Record<string, unknown> || {};
+
+      let output = `🔧 使用工具: **${name}**\n`;
+
+      // 格式化输入参数
+      if (Object.keys(input).length > 0) {
+        output += "```\n";
+        output += JSON.stringify(input, null, 2);
+        output += "\n```\n";
+      }
+
+      return output;
+    } catch (err) {
+      console.error("[FeishuChannel] 格式化工具调用失败:", err);
+      return "🔧 使用工具（详情解析失败）";
+    }
+  }
+
+  /**
+   * 格式化 assistant 事件中的 tool_use block
+   */
+  private formatToolUseBlock(block: Record<string, unknown>): string | null {
+    try {
+      const name = block.name as string || "unknown";
+      const input = block.input as Record<string, unknown> || {};
+
+      let output = `🔧 **${name}**`;
+
+      // 如果有输入参数，简要显示
+      if (Object.keys(input).length > 0) {
+        const inputStr = JSON.stringify(input);
+        if (inputStr.length > 100) {
+          output += ` ${inputStr.substring(0, 100)}...`;
+        } else {
+          output += ` ${inputStr}`;
+        }
+      }
+
+      return output;
+    } catch (err) {
+      console.error("[FeishuChannel] 格式化工具调用失败:", err);
+      return "🔧 工具调用（详情解析失败）";
+    }
   }
 
   /**
