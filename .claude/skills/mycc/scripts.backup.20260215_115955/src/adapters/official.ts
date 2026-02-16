@@ -18,7 +18,7 @@ import { buildMessageContent, type MessageContent } from "../image-utils.js";
 const { executable: CLAUDE_EXECUTABLE, cliPath: CLAUDE_CLI_PATH } = detectClaudeCliPath();
 
 /** v2 SDKSessionOptions 必须提供 model，这是默认值 */
-const DEFAULT_MODEL = "sonnet";
+const DEFAULT_MODEL = "claude-sonnet";
 
 /** Session 超时时间：30 分钟无活动自动关闭 */
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -36,16 +36,12 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * 构造 v2 SDKSessionOptions
  */
 function buildSessionOptions(model?: string) {
-  // 清除 CLAUDECODE 环境变量，避免子进程被误判为嵌套会话 (#16)
-  const cleanEnv = { ...process.env };
-  delete cleanEnv.CLAUDECODE;
-
   const options: Parameters<typeof unstable_v2_createSession>[0] = {
     model: model || DEFAULT_MODEL,
     pathToClaudeCodeExecutable: CLAUDE_CLI_PATH,
     permissionMode: "bypassPermissions",
     env: {
-      ...cleanEnv,
+      ...process.env,
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
     },
   };
@@ -199,15 +195,6 @@ export class OfficialAdapter implements CCAdapter {
     const session = this.getOrCreateSession({ sessionId, model, cwd });
     const isNewSession = !sessionId;
 
-    // 如果有图片，先发送一个 system 事件通知通道
-    if (images && images.length > 0) {
-      yield {
-        type: "system",
-        session_id: sessionId || "",
-        images: images,
-      } as SSEEvent;
-    }
-
     // 构造消息内容（纯文本或图文混合）
     const content = buildMessageContent(message, images);
 
@@ -215,18 +202,20 @@ export class OfficialAdapter implements CCAdapter {
     if (typeof content === "string") {
       await session.send(content);
     } else {
-      // 图文混合消息：必须用 SDKUserMessage 格式
-      // 新会话时 session_id 用空字符串，CLI 会自动分配
-      const userMessage: SDKUserMessage = {
-        type: "user",
-        session_id: sessionId || "",
-        message: {
-          role: "user",
-          content: content as any,
-        },
-        parent_tool_use_id: null,
-      };
-      await session.send(userMessage);
+      if (isNewSession) {
+        await session.send(message);
+      } else {
+        const userMessage: SDKUserMessage = {
+          type: "user",
+          session_id: sessionId!,
+          message: {
+            role: "user",
+            content: content as any,
+          },
+          parent_tool_use_id: null,
+        };
+        await session.send(userMessage);
+      }
     }
 
     // === 多轮循环核心 ===

@@ -1,0 +1,6 @@
+{
+  "disabledPlugins": [
+    "typescript-lsp",
+    "pyright-lsp"
+  ]
+}
