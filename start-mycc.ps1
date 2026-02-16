@@ -88,14 +88,32 @@ Write-Host "[3/5] Starting backend..." -ForegroundColor Yellow
 # Clear old log
 if (Test-Path $LOG_FILE) { Remove-Item $LOG_FILE -Force }
 
-# Start in background using PowerShell job
-$scriptBlock = {
-    param($tsx, $scriptDir, $logFile)
-    Set-Location $scriptDir
-    & $tsx "src/index.ts" "start" >> $logFile 2>&1
-}
+# Create hidden startup script
+$vbsFile = "$PROJECT_DIR\.claude\skills\mycc\start_hidden_temp.vbs"
+$batFile = "$PROJECT_DIR\.claude\skills\mycc\start_backend_temp.bat"
 
-Start-Job -ScriptBlock $scriptBlock -ArgumentList $TSX_BIN, $SCRIPT_DIR, $LOG_FILE -Name "mycc-backend" | Out-Null
+# Create batch file with .env loading
+$batContent = @"
+@echo off
+cd /d "$SCRIPT_DIR"
+set "NODE_ENV=production"
+for /f "tokens=*" %%a in ('type "$ENV_FILE" 2^>nul') do (
+    set %%a
+)
+$TSX_BIN src/index.ts start >> "$LOG_FILE" 2>&1
+"@
+Set-Content -Path $batFile -Value $batContent -Encoding ASCII
+
+# Create VBScript to run batch file hidden
+$vbsContent = @"
+Set objShell = CreateObject("WScript.Shell")
+objShell.Run "cmd /c ""$batFile""", 0, False
+Set objShell = Nothing
+"@
+Set-Content -Path $vbsFile -Value $vbsContent -Encoding ASCII
+
+# Start hidden process
+Start-Process -FilePath "wscript.exe" -ArgumentList $vbsFile -WindowStyle Hidden
 
 # Wait for process to start
 Start-Sleep -Seconds 3
