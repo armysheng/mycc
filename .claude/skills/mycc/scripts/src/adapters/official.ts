@@ -199,6 +199,15 @@ export class OfficialAdapter implements CCAdapter {
     const session = this.getOrCreateSession({ sessionId, model, cwd });
     const isNewSession = !sessionId;
 
+    // 如果有图片，先发送一个 system 事件通知通道
+    if (images && images.length > 0) {
+      yield {
+        type: "system",
+        session_id: sessionId || "",
+        images: images,
+      } as SSEEvent;
+    }
+
     // 构造消息内容（纯文本或图文混合）
     const content = buildMessageContent(message, images);
 

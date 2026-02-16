@@ -59,15 +59,15 @@ if ($pidFromFile) {
 
 # 2. Fallback to port check
 if (-not $stopped) {
-    Write-Host "[2/2] Checking port 8080..." -ForegroundColor Yellow
-    $portProcess = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+    Write-Host "[2/2] Checking port 18080..." -ForegroundColor Yellow
+    $portProcess = Get-NetTCPConnection -LocalPort 18080 -ErrorAction SilentlyContinue |
                    Where-Object State -eq "Listen" |
                    Select-Object -ExpandProperty OwningProcess -ErrorAction SilentlyContinue
 
     if ($portProcess) {
-        $stopped = Stop-BackendProcess -pid $portProcess -source "port 8080"
+        $stopped = Stop-BackendProcess -pid $portProcess -source "port 18080"
     } else {
-        Write-Host "  Port 8080 is free, service not running" -ForegroundColor Green
+        Write-Host "  Port 18080 is free, service not running" -ForegroundColor Green
         $stopped = $true
     }
 }

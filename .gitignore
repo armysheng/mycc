@@ -37,3 +37,6 @@ dist/
 # 测试文件和任务文档（开发辅助）
 .claude/skills/mycc/scripts/tests/
 .claude/skills/mycc/scripts/tasks/
+
+# 飞书本地扩展（本地开发，不提交到远程）
+.claude/skills/mycc/feishu-local/

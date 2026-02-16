@@ -49,8 +49,8 @@ if (-not $cloudflaredCmd) {
 Write-Host ""
 
 # Check and stop existing process
-Write-Host "[2/4] Checking port 8080..." -ForegroundColor Yellow
-$existingProcess = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+Write-Host "[2/4] Checking port 18080..." -ForegroundColor Yellow
+$existingProcess = Get-NetTCPConnection -LocalPort 18080 -ErrorAction SilentlyContinue |
                     Where-Object State -eq "Listen" |
                     Select-Object -ExpandProperty OwningProcess -ErrorAction SilentlyContinue
 
@@ -59,7 +59,7 @@ if ($existingProcess) {
     Stop-Process -Id $existingProcess -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
-Write-Host "  Port 8080 available" -ForegroundColor Green
+Write-Host "  Port 18080 available" -ForegroundColor Green
 Write-Host ""
 
 # Start backend
@@ -80,15 +80,15 @@ Start-Job -ScriptBlock $scriptBlock -ArgumentList $TSX_BIN, $SCRIPT_DIR, $LOG_FI
 # Wait for process to start
 Start-Sleep -Seconds 3
 
-# Check if port 8080 is now listening
-$portProcess = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+# Check if port 18080 is now listening
+$portProcess = Get-NetTCPConnection -LocalPort 18080 -ErrorAction SilentlyContinue |
                Where-Object State -eq "Listen" |
                Select-Object -ExpandProperty OwningProcess -ErrorAction SilentlyContinue
 
 if ($portProcess) {
     Write-Host "  Backend started (PID: $portProcess)" -ForegroundColor Green
 } else {
-    Write-Host "  WARNING: Port 8080 not listening yet" -ForegroundColor Yellow
+    Write-Host "  WARNING: Port 18080 not listening yet" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -168,7 +168,7 @@ Write-Host "  Stop service:" -ForegroundColor Gray
 Write-Host "    .\stop-mycc.ps1" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Or kill by port:" -ForegroundColor Gray
-Write-Host "    netstat -ano | findstr :8080" -ForegroundColor DarkGray
+Write-Host "    netstat -ano | findstr :18080" -ForegroundColor DarkGray
 Write-Host "    taskkill /PID <pid> /F" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan

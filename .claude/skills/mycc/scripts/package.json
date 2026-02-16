@@ -25,6 +25,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.0",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "chalk": "^4.1.2",
     "nanoid": "^5.0.0",
     "qrcode-terminal": "^0.12.0",

@@ -14,6 +14,7 @@ import type { PairState } from "./types.js";
 import { validateImages, type ImageData } from "./image-utils.js";
 import { renameSession } from "./history.js";
 import { listSkills } from "./skills.js";
+import { ChannelManager, WebChannel, FeishuChannel } from "./channels/index.js";
 
 const PORT = process.env.PORT || 18080;
 
@@ -36,6 +37,7 @@ export class HttpServer {
   private cwd: string;
   private onPaired?: (token: string) => void;
   private isTls: boolean;
+  private channelManager: ChannelManager;
 
   constructor(pairCode: string, cwd: string, authToken?: string, tls?: TlsConfig) {
     this.cwd = cwd;
@@ -45,6 +47,20 @@ export class HttpServer {
       paired: !!authToken,
       token: authToken || null,
     };
+
+    // 初始化通道管理器
+    this.channelManager = new ChannelManager();
+
+    // 注册飞书通道（如果配置了环境变量）
+    if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) {
+      const feishuChannel = new FeishuChannel();
+      // 设置飞书消息回调
+      feishuChannel.onMessage(async (message: string) => {
+        await this.processFeishuMessage(message);
+      });
+      this.channelManager.register(feishuChannel);
+      console.log("[Channels] 飞书通道已启用");
+    }
 
     const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
       this.handleRequest(req, res);
@@ -230,6 +246,13 @@ export class HttpServer {
       "Connection": "keep-alive",
     });
 
+    // 创建 Web 通道
+    const webChannel = new WebChannel({ res });
+    // 注册 Web 通道（使用唯一 ID，因为每个请求都有独立的响应）
+    const webChannelId = `web-${Date.now()}-${Math.random()}`;
+    Object.defineProperty(webChannel, 'id', { value: webChannelId, writable: false });
+    this.channelManager.register(webChannel);
+
     let currentSessionId = sessionId;
 
     try {
@@ -239,20 +262,85 @@ export class HttpServer {
         if (data && typeof data === "object" && "type" in data) {
           if (data.type === "system" && "session_id" in data) {
             currentSessionId = data.session_id as string;
+            webChannel.setSessionId(currentSessionId);
           }
         }
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+        // 广播到所有通道（Web + 飞书）
+        await this.channelManager.broadcast(data);
       }
 
-      // 完成
-      res.write(`data: ${JSON.stringify({ type: "done", sessionId: currentSessionId })}\n\n`);
+      // 完成 - 广播完成事件
+      await this.channelManager.broadcast({ type: "done", sessionId: currentSessionId });
+
+      // 注销 Web 通道
+      this.channelManager.unregister(webChannelId);
+
+      // 结束 SSE 响应
       res.end();
       console.log(`[CC] 完成`);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      res.write(`data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`);
+
+      // 广播错误事件
+      await this.channelManager.broadcast({ type: "error", error: errMsg });
+
+      // 确保注销 Web 通道
+      this.channelManager.unregister(webChannelId);
+
       res.end();
       console.error(`[CC] 错误: ${errMsg}`);
+    }
+  }
+
+  /**
+   * 处理飞书收到的消息
+   * 由飞书通道的 WebSocket 回调调用
+   */
+  private async processFeishuMessage(message: string): Promise<void> {
+    console.log(`[CC] 收到飞书消息: ${message.substring(0, 50)}...`);
+
+    try {
+      // 使用 adapter 处理消息
+      const replyParts: string[] = [];
+
+      for await (const data of adapter.chat({
+        message,
+        cwd: this.cwd,
+      })) {
+        // 收集回复内容
+        if (data && typeof data === "object") {
+          if (data.type === "text" && data.text) {
+            replyParts.push(String(data.text));
+          } else if (data.type === "assistant") {
+            // 处理 assistant 类型事件（v2 SDK）
+            const assistantEvent = data as any;
+            if (assistantEvent.message?.content) {
+              for (const block of assistantEvent.message.content) {
+                if (block.type === "text" && block.text) {
+                  replyParts.push(String(block.text));
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 合并回复并发送到飞书
+      if (replyParts.length > 0) {
+        const reply = replyParts.join("").trim();
+        console.log(`[CC] 飞书回复: ${reply.substring(0, 50)}...`);
+        // 通过通道管理器广播到飞书（会被飞书通道接收并发送）
+        await this.channelManager.broadcast({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: reply }],
+          },
+        } as any);
+      }
+    } catch (err) {
+      console.error(`[CC] 处理飞书消息错误:`, err);
     }
   }
 
@@ -412,7 +500,7 @@ export class HttpServer {
     });
   }
 
-  start(): Promise<number> {
+  async start(): Promise<number> {
     return new Promise((resolve, reject) => {
       // 监听错误事件
       this.server.once('error', (err) => {
@@ -420,14 +508,20 @@ export class HttpServer {
       });
 
       const port = Number(process.env.PORT || 18080);
-      this.server.listen(port, () => {
+      this.server.listen(port, async () => {
         console.log(`[${this.isTls ? "HTTPS" : "HTTP"}] 服务启动在端口 ${port}`);
+
+        // 启动所有通道（包括飞书长连接）
+        await this.channelManager.startAll();
+
         resolve(port);
       });
     });
   }
 
   stop() {
+    // 停止所有通道
+    this.channelManager.stopAll();
     this.server.close();
   }
 }
