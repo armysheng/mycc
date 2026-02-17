@@ -285,7 +285,7 @@ export class FeishuChannel implements MessageChannel {
             }
 
             // await 解析结果（图片下载是异步的）
-            const parsed = await this.parseFeishuMessage(event);
+            const parsed = await this.parseFeishuMessage(event, messageId);
             if (parsed && this.messageCallback) {
               const { text, images } = parsed;
               if (text || images) {
@@ -344,7 +344,7 @@ export class FeishuChannel implements MessageChannel {
   /**
    * 解析飞书消息（异步，支持图片下载）
    */
-  private parseFeishuMessage(event: any): Promise<{ text: string; images?: Array<{ data: string; mediaType: string }> } | null> {
+  private parseFeishuMessage(event: any, messageId?: string): Promise<{ text: string; images?: Array<{ data: string; mediaType: string }> } | null> {
     try {
       // 事件结构: event.sender + event.message（不是 event.event.message）
       if (!event?.message) return Promise.resolve(null);
@@ -371,7 +371,7 @@ export class FeishuChannel implements MessageChannel {
           const imageKey = parsed.image_key;
           if (imageKey) {
             // 需要通过飞书 API 获取图片数据
-            return this.downloadImageFromFeishu(imageKey).then(data => ({
+            return this.downloadImageFromFeishu(imageKey, messageId).then(data => ({
               text: "",
               images: data ? [{ data, mediaType: "image/png" }] : undefined
             }));
@@ -552,9 +552,16 @@ export class FeishuChannel implements MessageChannel {
   }
 
   /**
-   * 从飞书下载图片（通过 image_key 获取 base64 数据）
+   * 从飞书下载图片（通过 message_id 获取 base64 数据）
+   *
+   * 对于用户发送的图片：
+   * 使用 messageResource API，直接将 image_key 作为 file_key 使用
+   *
+   * 参考 openclaw 实现：
+   * "For message media, always use messageResource API
+   *  The image.get API is only for images uploaded via im/v1/images, not for message attachments"
    */
-  private async downloadImageFromFeishu(imageKey: string): Promise<string | null> {
+  private async downloadImageFromFeishu(imageKey: string, messageId?: string): Promise<string | null> {
     try {
       // 获取访问令牌（如果需要）
       if (!this.accessToken || Date.now() > this.tokenExpireTime) {
@@ -564,23 +571,53 @@ export class FeishuChannel implements MessageChannel {
         }
       }
 
-      // 下载图片
-      const response = await fetch(`https://open.feishu.cn/open-apis/im/v1/images/${imageKey}`, {
+      // 如果有 messageId，使用 messageResource API 下载
+      // 对于用户发送的图片，image_key 可以直接作为 file_key 使用
+      if (messageId) {
+        console.log(`[FeishuChannel] [DEBUG] Using messageResource API with image_key as file_key`);
+
+        const resourceResponse = await fetch(
+          `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}?type=image`,
+          {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${this.accessToken}`,
+            },
+          }
+        );
+
+        if (resourceResponse.ok) {
+          const buffer = await resourceResponse.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString("base64");
+          console.log(`[FeishuChannel] ✓ Downloaded image: ${base64.length} bytes (base64)`);
+          return base64;
+        } else {
+          const errorText = await resourceResponse.text();
+          console.error(`[FeishuChannel] ✗ Resource download failed: ${resourceResponse.status}`, errorText.substring(0, 200));
+          return null;
+        }
+      }
+
+      // 没有 messageId 的情况：尝试直接下载
+      // 注意：这只对机器人自己上传的图片有效（通过 im/v1/images 上传）
+      console.log(`[FeishuChannel] [DEBUG] No messageId, trying direct image download (only works for bot-uploaded images)`);
+      const directResponse = await fetch(`https://open.feishu.cn/open-apis/im/v1/images/${imageKey}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${this.accessToken}`,
         },
       });
 
-      if (!response.ok) {
-        console.error(`[FeishuChannel] ✗ Download failed: ${response.status}`);
+      if (directResponse.ok) {
+        const buffer = await directResponse.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        console.log(`[FeishuChannel] ✓ Downloaded image via direct API: ${base64.length} bytes (base64)`);
+        return base64;
+      } else {
+        const errorText = await directResponse.text();
+        console.error(`[FeishuChannel] ✗ Direct image download failed: ${directResponse.status}`, errorText.substring(0, 200));
         return null;
       }
-
-      // 获取图片数据并转换为 base64
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-      return base64;
     } catch (error) {
       console.error("[FeishuChannel] ✗ Download error:", error);
       return null;
@@ -609,8 +646,6 @@ export class FeishuChannel implements MessageChannel {
         if (imageSent) {
           // 图片发送成功后，移除记录
           this.pendingImages.delete(sessionId);
-          // 等待一下，避免消息顺序混乱
-          await sleep(500);
         }
       }
 
@@ -647,6 +682,8 @@ export class FeishuChannel implements MessageChannel {
       const result = await response.json();
       if (result.code === 0) {
         console.log(`[FeishuChannel] ✓ Sent: ${text.substring(0, 30)}${text.length > 30 ? "..." : ""}`);
+        // 等待 1 秒，避免消息合并
+        await sleep(1000);
         return true;
       } else {
         console.error("[FeishuChannel] ✗ Send failed:", result.msg);
