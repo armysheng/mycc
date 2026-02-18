@@ -44,6 +44,7 @@ function buildSessionOptions(model?: string) {
     model: model || DEFAULT_MODEL,
     pathToClaudeCodeExecutable: CLAUDE_CLI_PATH,
     permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
     env: {
       ...cleanEnv,
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
