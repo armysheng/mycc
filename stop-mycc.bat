@@ -7,13 +7,13 @@ echo       停止 MyCC 后端服务
 echo ============================================
 echo.
 
-echo 查找占用端口 8080 的进程...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8080.*LISTENING"') do (
+echo 查找占用端口 18080 的进程...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":18080.*LISTENING"') do (
     set "PID=%%a"
     goto found
 )
 
-echo   端口 8080 未被占用，服务未运行
+echo   端口 18080 未被占用，服务未运行
 echo.
 pause
 exit /b 0

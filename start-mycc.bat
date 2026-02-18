@@ -19,18 +19,35 @@ REM 进入脚本目录
 cd /d "%SCRIPT_DIR%"
 
 REM 检查端口占用
-echo [1/3] 检查端口 8080...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8080.*LISTENING"') do (
+echo [1/3] 检查端口 18080...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":18080.*LISTENING"') do (
     echo   端口已被占用 (PID: %%a)，正在关闭...
     taskkill /PID %%a /F >nul 2>&1
     timeout /t 2 >nul
 )
-echo   端口 8080 可用
+echo   端口 18080 可用
 echo.
 
 REM 启动后端服务
 echo [2/3] 启动 MyCC 后端服务...
-start /B "" cmd /c "set CLOUDFLARED_PATH=%CLOUDFLARED_PATH% && npx tsx src/index.ts start > \"%PROJECT_DIR%\.claude\skills\mycc\backend.log\" 2>&1"
+echo   加载飞书配置...
+
+REM 读取 .env 文件并设置环境变量
+if exist "%PROJECT_DIR%\.env" (
+    for /f "usebackq tokens=1,2 delims==" %%a in ("%PROJECT_DIR%\.env") do (
+        REM 跳过注释和空行
+        echo %%a | findstr /r "^#" >nul
+        if errorlevel 1 (
+            REM 跳过空行
+            if not "%%a"=="" (
+                set "%%a=%%b"
+            )
+        )
+    )
+    echo   飞书配置已加载
+)
+
+start /B "" cmd /c "set CLOUDFLARED_PATH=%CLOUDFLARED_PATH% && set FEISHU_APP_ID=%FEISHU_APP_ID% && set FEISHU_APP_SECRET=%FEISHU_APP_SECRET% && set FEISHU_RECEIVE_USER_ID=%FEISHU_RECEIVE_USER_ID% && set FEISHU_RECEIVE_ID_TYPE=%FEISHU_RECEIVE_ID_TYPE% && set FEISHU_CONNECTION_MODE=%FEISHU_CONNECTION_MODE% && set FEISHU_SHOW_TOOL_USE=%FEISHU_SHOW_TOOL_USE% && npx tsx src/index.ts start > \"%PROJECT_DIR%\.claude\skills\mycc\backend.log\" 2>&1"
 
 REM 等待服务启动
 echo   等待服务启动...
