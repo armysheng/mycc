@@ -400,7 +400,7 @@ export class FeishuChannel implements MessageChannel {
     // 停止 WebSocket
     if (this.wsClient) {
       try {
-        this.wsClient.stop();
+        this.wsClient.close();
         console.log("[FeishuChannel] WebSocket 已停止");
       } catch {
         // 静默处理
@@ -649,21 +649,20 @@ export class FeishuChannel implements MessageChannel {
         }
       }
 
-      // 发送文本消息（使用飞书富文本格式，支持 Markdown）
+      // 发送文本消息（post + Markdown，表格转文本列表）
       const receiveIdType = this.config.receiveIdType || "open_id";
 
-      // 构建飞书富文本格式（post 类型），支持 Markdown
-      const postContent = {
-        zh_cn: {
-          content: [
-            [
-              {
-                tag: "md",
-                text: text,
-              },
-            ],
-          ],
-        },
+      // 转换 Markdown 表格为更易读的文本格式
+      const formattedText = this.convertMarkdownTables(text);
+
+      const responseBody = {
+        receive_id: userId,
+        msg_type: "post",
+        content: JSON.stringify({
+          zh_cn: {
+            content: [[{ tag: "md", text: formattedText }]]
+          }
+        })
       };
 
       const response = await fetch(`https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`, {
@@ -672,11 +671,7 @@ export class FeishuChannel implements MessageChannel {
           "Authorization": `Bearer ${this.accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          receive_id: userId,
-          msg_type: "post",
-          content: JSON.stringify(postContent),
-        }),
+        body: JSON.stringify(responseBody),
       });
 
       const result = await response.json();
@@ -837,6 +832,167 @@ export class FeishuChannel implements MessageChannel {
       this.currentReactionId = null;
       console.log("[FeishuChannel] ✓ 已移除正在输入表态");
     }
+  }
+
+  /**
+   * 解析 Markdown 表格为飞书交互卡片格式
+   * @returns 包含 beforeTable、afterTable 和 cardElements 的对象，如果没有表格则返回 null
+   */
+  private parseMarkdownTable(text: string): { beforeTable: string; afterTable: string; cardElements: any[] } | null {
+    // 检测表格：查找包含 | 的连续行，至少 2 行（表头 + 分隔线）
+    const lines = text.split("\n");
+    let tableStart = -1;
+    let tableEnd = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      // 表格行特征：以 | 开头或包含 |
+      if (line.startsWith("|") || (line.includes("|") && line.includes("|"))) {
+        if (tableStart === -1) {
+          tableStart = i;
+        }
+        // 检查下一行是否是分隔线（包含 |---| 或类似的）
+        if (i + 1 < lines.length && lines[i + 1].trim().match(/^\|?[\s\-:]+\|[\s\-:]+\|?/)) {
+          tableEnd = i + 1;
+          // 继续查找表格的后续行
+          for (let j = i + 2; j < lines.length; j++) {
+            const nextLine = lines[j].trim();
+            if (nextLine.startsWith("|") || nextLine.includes("|")) {
+              tableEnd = j;
+            } else {
+              break;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    if (tableStart === -1 || tableEnd === -1) {
+      return null;
+    }
+
+    // 提取表格前的内容
+    const beforeTable = lines.slice(0, tableStart).join("\n").trim();
+
+    // 提取表格后的内容
+    const afterTable = lines.slice(tableEnd + 1).join("\n").trim();
+
+    // 解析表格数据
+    const tableLines = lines.slice(tableStart, tableEnd + 1);
+    const headers = this.parseTableRow(tableLines[0]);
+    const rows = tableLines.slice(2).map(line => this.parseTableRow(line));
+
+    // 构建飞书交互卡片元素
+    const cardElements: any[] = [];
+
+    // 表头行
+    const headerCells: any[] = headers.map(cell => ({
+      tag: "div",
+      text: {
+        tag: "plain_text",
+        content: cell
+      },
+      style: "bold"
+    }));
+
+    cardElements.push({
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content: "**" + headers.join("** | **") + "**"
+      }
+    });
+
+    // 添加分隔线
+    cardElements.push({
+      tag: "hr"
+    });
+
+    // 数据行
+    for (const row of rows) {
+      const rowCells = row.map(cell => ({
+        tag: "div",
+        text: {
+          tag: "plain_text",
+          content: cell
+        }
+      }));
+
+      cardElements.push({
+        tag: "div",
+        text: {
+          tag: "lark_md",
+          content: row.join(" | ")
+        }
+      });
+    }
+
+    return { beforeTable, afterTable, cardElements };
+  }
+
+  /**
+   * 解析表格行
+   */
+  private parseTableRow(line: string): string[] {
+    // 移除首尾的 |
+    let trimmed = line.trim();
+    if (trimmed.startsWith("|")) {
+      trimmed = trimmed.slice(1);
+    }
+    if (trimmed.endsWith("|")) {
+      trimmed = trimmed.slice(0, -1);
+    }
+
+    // 按 | 分割并清理空白
+    return trimmed.split("|").map(cell => cell.trim());
+  }
+
+  /**
+   * 将 Markdown 表格转换为文本列表格式（飞书兼容）
+   */
+  private convertMarkdownTables(text: string): string {
+    const lines = text.split("\n");
+    const result: string[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i].trim();
+
+      // 检测表格开始
+      if (line.startsWith("|") && i + 1 < lines.length && lines[i + 1].trim().match(/^\|?[\s\-:]+\|/)) {
+        // 解析表头
+        const headers = this.parseTableRow(line);
+
+        // 跳过分隔线
+        i += 2;
+
+        // 解析数据行
+        const rows: string[][] = [];
+        while (i < lines.length && (lines[i].trim().startsWith("|") || lines[i].trim().includes("|"))) {
+          rows.push(this.parseTableRow(lines[i]));
+          i++;
+        }
+
+        // 转换为列表格式
+        result.push("📋 **" + (headers[0] || "表格") + "**");
+        for (const row of rows) {
+          if (row.length > 0) {
+            const rowText = row.map((cell, idx) => {
+              const header = headers[idx] || "";
+              return `${header}: ${cell}`.trim();
+            }).filter(s => s).join(" | ");
+            result.push(`• ${rowText}`);
+          }
+        }
+        result.push(""); // 空行分隔
+      } else {
+        result.push(lines[i]);
+        i++;
+      }
+    }
+
+    return result.join("\n");
   }
 }
 

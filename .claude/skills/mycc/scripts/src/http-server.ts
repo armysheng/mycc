@@ -335,7 +335,7 @@ export class HttpServer {
           this.currentSessionId = latestSession.sessionId;
 
           const title = latestSession.customTitle || latestSession.firstPrompt?.substring(0, 30) || "历史会话";
-          const timeAgo = this.formatTimeAgo(latestSession.lastTime || latestSession.modified);
+          const timeAgo = this.formatTimeAgo(latestSession.lastTime || latestSession.modified || Date.now());
 
           console.log(`[CC] 自动选择会话: ${this.currentSessionId} (${title})`);
 
@@ -550,7 +550,7 @@ export class HttpServer {
           title = conv.lastMessagePreview.substring(0, 30);
         }
 
-        const timeAgo = this.formatTimeAgo(conv.lastTime || conv.modified);
+        const timeAgo = this.formatTimeAgo(conv.lastTime || conv.modified || Date.now());
         output += `${index + 1}. ${title}${isCurrent}\n`;
         output += `   🕒 ${timeAgo}\n\n`;
       });
@@ -597,7 +597,7 @@ export class HttpServer {
       // 切换会话
       this.currentSessionId = targetSession.sessionId;
       const title = targetSession.customTitle || targetSession.firstPrompt?.substring(0, 30) || "未命名";
-      const timeAgo = this.formatTimeAgo(targetSession.lastTime || targetSession.modified);
+      const timeAgo = this.formatTimeAgo(targetSession.lastTime || targetSession.modified || Date.now());
 
       await this.sendToFeishu(
         `✅ 已切换到会话：${title}\n\n` +
