@@ -49,18 +49,41 @@ export class ChannelManager {
 
   /**
    * 启动所有已注册的通道
+   * 任意通道启动失败不影响其他通道
    */
   async startAll(): Promise<void> {
-    const promises: Promise<void>[] = [];
+    const results: Array<{ channelId: string; success: boolean; error?: string }> = [];
 
     for (const channel of this.channels.values()) {
       if ("start" in channel && typeof channel.start === "function") {
-        promises.push((channel as StartableChannel).start?.() ?? Promise.resolve());
+        try {
+          await (channel as StartableChannel).start?.();
+          results.push({ channelId: channel.id, success: true });
+        } catch (error: any) {
+          results.push({
+            channelId: channel.id,
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // 不抛出异常，继续启动其他通道
+        }
       }
     }
 
-    await Promise.all(promises);
-    console.log(`[ChannelManager] Started ${this.channels.size} channel(s)`);
+    // 打印启动结果
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    console.log(`[ChannelManager] 已启动 ${successCount}/${this.channels.size} 个通道`);
+
+    if (failCount > 0) {
+      console.warn(`[ChannelManager] 以下通道启动失败：`);
+      for (const result of results) {
+        if (!result.success) {
+          console.warn(`  - ${result.channelId}: ${result.error}`);
+        }
+      }
+    }
   }
 
   /**

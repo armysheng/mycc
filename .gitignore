@@ -1,4 +1,22 @@
+# ====================================
+# 通用规则
+# ====================================
+node_modules/
+dist/
+build/
+*.log
+*.tmp
+*.temp
+.env
+.env.local
+.env.*.local
+*.pid
+*.seed
+*.pid.lock
+
+# ====================================
 # 38e628b 新增的不必要文件（仅保留核心功能）
+# ====================================
 .claude/exploration-context.json
 .claude/hooks/python3.sh
 .claude/hooks/session-start-wrapper.sh
@@ -6,10 +24,45 @@
 .claude/welcome-shown.txt
 
 # Skills - 备份目录
-.claude/skills/mycc.backup*/
-.claude/skills/scripts.backup*/
+**/scripts.backup*/
+**/mycc.backup**
 
+# ====================================
+# MyCC 运行时文件（不应提交）
+# ====================================
+.claude/skills/mycc/current.json
+.claude/skills/mycc/*.log
+.claude/skills/mycc/scripts/*.log
+.claude/skills/mycc/scripts/dist/
+.claude/skills/mycc/scripts/node_modules/
+.claude/skills/mycc/scripts/debug-table.mjs
+.claude/skills/mycc/scripts/test-table.mjs
+.claude/skills/mycc/scripts/tests/
+.claude/skills/mycc/start_backend_temp.bat
+.claude/skills/mycc/start_hidden_temp.vbs
+
+# ====================================
+# 系统配置和状态文件（本地使用）
+# ====================================
+.claude/settings.local.json
+0-System/about-me/
+0-System/context.md
+0-System/status.md
+1-Inbox/*.md
+.claude/skills/scheduler/history.md
+.claude/skills/backend_run.log
+.claude/skills/*/backend*.log
+
+# ====================================
+# 其他临时文件
+# ====================================
+nul
+test-tables.json
+test_table.txt
+
+# ====================================
 # Skills - 其他（非核心）
+# ====================================
 .claude/skills/agent-browser/
 .claude/skills/ieee-search/
 .claude/skills/obsidian-api/

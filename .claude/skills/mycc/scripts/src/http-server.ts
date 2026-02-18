@@ -63,7 +63,9 @@ export class HttpServer {
         await this.processFeishuMessage(message, images);
       });
       this.channelManager.register(this.feishuChannel);
-      console.log("[Channels] 飞书通道已启用");
+      console.log("[Channels] 飞书通道已注册（启动时将激活）");
+    } else {
+      console.log("[Channels] 飞书通道未配置（设置 FEISHU_APP_ID 和 FEISHU_APP_SECRET 环境变量以启用）");
     }
 
     const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
