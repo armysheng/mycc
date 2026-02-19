@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MagnifyingGlassIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
+import {
+  MagnifyingGlassIcon,
+  MoonIcon,
+  SunIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
 import { getChatSessionsUrl, getAuthHeaders } from "../../config/api";
@@ -12,6 +17,9 @@ interface SidebarProps {
   onOpenSettings: () => void;
   currentPathLabel?: string;
   activeSessionId?: string | null;
+  overlayMode?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 interface ConversationRow {
@@ -50,6 +58,9 @@ export function Sidebar({
   onOpenSettings,
   currentPathLabel,
   activeSessionId,
+  overlayMode = false,
+  isOpen = true,
+  onClose,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { token, user } = useAuth();
@@ -109,8 +120,9 @@ export function Sidebar({
       const params = new URLSearchParams();
       params.set("sessionId", sessionId);
       navigate({ search: params.toString() });
+      onClose?.();
     },
-    [navigate],
+    [navigate, onClose],
   );
 
   const displayName =
@@ -122,26 +134,49 @@ export function Sidebar({
     "未登录用户";
   const avatarChar = displayName.charAt(0).toUpperCase();
 
+  const handleNewChat = useCallback(() => {
+    onNewChat();
+    onClose?.();
+  }, [onNewChat, onClose]);
+
+  const sidebarClassName = overlayMode
+    ? `panel-surface border-r flex flex-col fixed inset-y-0 left-0 z-40 shadow-xl transition-transform duration-200 ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`
+    : "panel-surface border-r flex flex-col shrink-0";
+
   return (
     <aside
-      className="panel-surface border-r flex flex-col shrink-0"
+      className={sidebarClassName}
       style={{ width: "var(--sidebar-width)" }}
     >
       <div className="p-4 border-b panel-surface">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-sky-500 text-white flex items-center justify-center font-semibold">
-            cc
-          </div>
-          <div>
-            <div className="text-sm font-semibold">MyCC</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              多用户助手
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sky-500 text-white flex items-center justify-center font-semibold">
+              cc
+            </div>
+            <div>
+              <div className="text-sm font-semibold">MyCC</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                多用户助手
+              </div>
             </div>
           </div>
+          {overlayMode && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="关闭侧边栏"
+            >
+              <XMarkIcon className="h-4 w-4 text-slate-500" />
+            </button>
+          )}
         </div>
         <button
           type="button"
-          onClick={onNewChat}
+          onClick={handleNewChat}
           className="w-full rounded-lg px-3 py-2 text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors"
         >
           新对话

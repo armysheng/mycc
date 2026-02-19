@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeftIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -32,6 +32,10 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isSidebarOverlayOpen, setIsSidebarOverlayOpen] = useState(false);
+  const [isRightPanelOverlayOpen, setIsRightPanelOverlayOpen] = useState(false);
+  const [isSidebarOverlayMode, setIsSidebarOverlayMode] = useState(false);
+  const [isRightPanelOverlayMode, setIsRightPanelOverlayMode] = useState(false);
   const { token } = useAuth();
 
   // Extract and normalize working directory from URL
@@ -359,10 +363,6 @@ export function ChatPage() {
       }
     : undefined;
 
-  const handleSettingsClick = useCallback(() => {
-    setIsSettingsOpen(true);
-  }, []);
-
   const handleSettingsClose = useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
@@ -386,12 +386,72 @@ export function ChatPage() {
   }, [navigate]);
 
   const handleRightPanelToggle = useCallback(() => {
+    if (isRightPanelOverlayMode) {
+      setIsRightPanelOverlayOpen((prev) => {
+        const next = !prev;
+        if (next) {
+          setIsSidebarOverlayOpen(false);
+        }
+        return next;
+      });
+      return;
+    }
     setIsRightPanelCollapsed((prev) => !prev);
+  }, [isRightPanelOverlayMode]);
+
+  const handleSidebarToggle = useCallback(() => {
+    if (!isSidebarOverlayMode) return;
+    setIsSidebarOverlayOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsRightPanelOverlayOpen(false);
+      }
+      return next;
+    });
+  }, [isSidebarOverlayMode]);
+
+  const closeOverlays = useCallback(() => {
+    setIsSidebarOverlayOpen(false);
+    setIsRightPanelOverlayOpen(false);
   }, []);
+
+  const handleSettingsClick = useCallback(() => {
+    closeOverlays();
+    setIsSettingsOpen(true);
+  }, [closeOverlays]);
+
+  useEffect(() => {
+    const syncLayoutModes = () => {
+      const width = window.innerWidth;
+      setIsSidebarOverlayMode(width <= 768);
+      setIsRightPanelOverlayMode(width <= 1024);
+    };
+
+    syncLayoutModes();
+    window.addEventListener("resize", syncLayoutModes);
+    return () => window.removeEventListener("resize", syncLayoutModes);
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarOverlayMode) {
+      setIsSidebarOverlayOpen(false);
+    }
+  }, [isSidebarOverlayMode]);
+
+  useEffect(() => {
+    if (!isRightPanelOverlayMode) {
+      setIsRightPanelOverlayOpen(false);
+    }
+  }, [isRightPanelOverlayMode]);
 
   // Handle global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && (isSidebarOverlayOpen || isRightPanelOverlayOpen)) {
+        e.preventDefault();
+        closeOverlays();
+        return;
+      }
       if (e.key === KEYBOARD_SHORTCUTS.ABORT && isLoading && currentRequestId) {
         e.preventDefault();
         handleAbort();
@@ -400,7 +460,16 @@ export function ChatPage() {
 
     document.addEventListener("keydown", handleGlobalKeyDown);
     return () => document.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [isLoading, currentRequestId, handleAbort]);
+  }, [
+    isLoading,
+    currentRequestId,
+    handleAbort,
+    closeOverlays,
+    isSidebarOverlayOpen,
+    isRightPanelOverlayOpen,
+  ]);
+
+  const isAnyOverlayOpen = isSidebarOverlayOpen || isRightPanelOverlayOpen;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -409,12 +478,32 @@ export function ChatPage() {
         onOpenSettings={handleSettingsClick}
         currentPathLabel={workingDirectory}
         activeSessionId={sessionId}
+        overlayMode={isSidebarOverlayMode}
+        isOpen={!isSidebarOverlayMode || isSidebarOverlayOpen}
+        onClose={closeOverlays}
       />
+
+      {isAnyOverlayOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/35 backdrop-blur-[1px]"
+          onClick={closeOverlays}
+          aria-hidden="true"
+        />
+      )}
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
           <div className="flex items-center gap-4 min-w-0">
+            {isSidebarOverlayMode && (
+              <button
+                onClick={handleSidebarToggle}
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                aria-label="打开会话侧边栏"
+              >
+                <Bars3Icon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+              </button>
+            )}
             {isLoadedConversation && (
               <button
                 onClick={handleBackToChat}
@@ -472,21 +561,32 @@ export function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {!isRightPanelCollapsed && (
+            {isRightPanelOverlayMode ? (
               <button
                 onClick={handleRightPanelToggle}
                 className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
-                收起工具箱
+                {isRightPanelOverlayOpen ? "关闭工具箱" : "打开工具箱"}
               </button>
-            )}
-            {isRightPanelCollapsed && (
-              <button
-                onClick={handleRightPanelToggle}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                打开工具箱
-              </button>
+            ) : (
+              <>
+                {!isRightPanelCollapsed && (
+                  <button
+                    onClick={handleRightPanelToggle}
+                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    收起工具箱
+                  </button>
+                )}
+                {isRightPanelCollapsed && (
+                  <button
+                    onClick={handleRightPanelToggle}
+                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    打开工具箱
+                  </button>
+                )}
+              </>
             )}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
@@ -559,6 +659,9 @@ export function ChatPage() {
       <RightPanel
         collapsed={isRightPanelCollapsed}
         onToggle={handleRightPanelToggle}
+        overlayMode={isRightPanelOverlayMode}
+        isOpen={!isRightPanelOverlayMode || isRightPanelOverlayOpen}
+        onClose={closeOverlays}
       />
     </div>
   );
