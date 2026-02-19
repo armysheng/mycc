@@ -23,7 +23,7 @@ export class VPSUserManager {
     const workspaceDir = `/home/${linuxUser}/workspace`;
 
     // 1. 确保模板目录存在
-    const checkCmd = `sudo test -d ${escapeShellArg(templateDir)}`;
+    const checkCmd = `sudo test -d ${templateDir}`;
     const checkResult = await sshPool.exec(connection, checkCmd);
     if (checkResult.exitCode !== 0) {
       throw new Error(`模板目录不存在: ${templateDir}`);

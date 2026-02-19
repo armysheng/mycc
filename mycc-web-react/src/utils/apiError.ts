@@ -84,9 +84,7 @@ export function getNetworkErrorMessage(
     if (error.message === "Failed to fetch") {
       return "网络连接失败，请检查前后端服务和 CORS 配置。（原始错误: Failed to fetch）";
     }
-    return error.message
-      ? `${error.message}（原始错误: ${error.message}）`
-      : fallback;
+    return error.message || fallback;
   }
   return fallback;
 }
