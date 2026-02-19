@@ -88,7 +88,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       let currentSessionId = body.sessionId;
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
-      let model = 'claude-sonnet-4-5';
+      let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
       try {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
@@ -297,12 +297,13 @@ function calculateCost(model: string, inputTokens: number, outputTokens: number)
   // 价格单位: USD per million tokens
   const pricing: Record<string, { input: number; output: number }> = {
     'claude-opus-4': { input: 15, output: 75 },
+    'claude-sonnet-4-6': { input: 3, output: 15 },
     'claude-sonnet-4-5': { input: 3, output: 15 },
     'claude-haiku-4-5': { input: 0.8, output: 4 },
   };
 
   // 匹配模型（支持部分匹配）
-  let modelPricing = pricing['claude-sonnet-4-5']; // 默认
+  let modelPricing = pricing['claude-sonnet-4-6']; // 默认
   for (const [key, value] of Object.entries(pricing)) {
     if (model.includes(key)) {
       modelPricing = value;

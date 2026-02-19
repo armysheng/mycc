@@ -7,7 +7,7 @@ import { getSSHPool } from '../ssh/pool.js';
 import { vpsUserManager } from '../vps/user-manager.js';
 import type { SSHConnection } from '../ssh/types.js';
 import { parseStreamLine } from './stream-parser.js';
-import { sanitizeLinuxUsername, escapeShellArg, validatePathPrefix } from '../utils/validation.js';
+import { sanitizeLinuxUsername, validatePathPrefix } from '../utils/validation.js';
 
 export interface ChatParams {
   message: string;
@@ -61,6 +61,10 @@ export class RemoteClaudeAdapter {
 
       const authToken = process.env.VPS_ANTHROPIC_AUTH_TOKEN || '';
       const baseUrl = process.env.VPS_ANTHROPIC_BASE_URL || '';
+      const configuredModel =
+        process.env.VPS_CLAUDE_MODEL ||
+        process.env.CLAUDE_MODEL ||
+        'claude-sonnet-4-6';
 
       if (!authToken || !baseUrl) {
         throw new Error('VPS Claude 认证配置缺失：VPS_ANTHROPIC_AUTH_TOKEN 或 VPS_ANTHROPIC_BASE_URL');
@@ -74,9 +78,11 @@ export class RemoteClaudeAdapter {
       // 关键2：环境变量放在 claude 命令前面（不能放在 cd 前面，否则只作用于 cd）
       // 关键3：用 bash -c 包裹，确保 cd 和 claude 在同一个子 shell 中执行
       const safeMessage = message.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
-      const resumePart = sessionId ? ` --resume '${sessionId}'` : '';
+      const safeModel = sanitizeCliArg(configuredModel, 'model');
+      const resumePart = sessionId ? ` --resume "${sanitizeCliArg(sessionId, 'sessionId')}"` : '';
+      const modelPart = ` --model "${safeModel}"`;
 
-      const command = `sudo -n -u ${linuxUser} bash -c 'cd ${cwd} && ANTHROPIC_AUTH_TOKEN=${authToken} ANTHROPIC_BASE_URL=${baseUrl} claude --print --output-format stream-json --verbose --dangerously-skip-permissions${resumePart} "${safeMessage}"'`;
+      const command = `sudo -n -u ${linuxUser} bash -c 'cd ${cwd} && ANTHROPIC_AUTH_TOKEN=${authToken} ANTHROPIC_BASE_URL=${baseUrl} claude --print --output-format stream-json --verbose --dangerously-skip-permissions${modelPart}${resumePart} "${safeMessage}"'`;
 
       console.log(`[RemoteClaudeAdapter] 执行命令: ${command.substring(0, 150)}...`);
 
@@ -217,4 +223,11 @@ export class RemoteClaudeAdapter {
       }
     }
   }
+}
+
+function sanitizeCliArg(value: string, argName: string): string {
+  if (!/^[a-zA-Z0-9._:-]+$/.test(value)) {
+    throw new Error(`Invalid ${argName}: ${value}`);
+  }
+  return value;
 }
