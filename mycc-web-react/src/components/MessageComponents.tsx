@@ -117,24 +117,49 @@ export function SystemMessageComponent({
   const getLabel = () => {
     if (message.type === "system") return "System";
     if (message.type === "result") return "Result";
-    if (message.type === "error") return "Error";
+    if (message.type === "error") return "系统错误";
     return "Message";
   };
 
   const details = getDetails();
+  const isError = message.type === "error";
+  const isResult = message.type === "result";
+
+  const colorScheme = isError
+    ? {
+        header: "text-red-800 dark:text-red-300",
+        content: "text-red-700 dark:text-red-300",
+        border: "border-red-200 dark:border-red-700",
+        bg: "bg-red-50/80 dark:bg-red-900/20 border border-red-200 dark:border-red-800",
+      }
+    : isResult
+      ? {
+          header: "text-emerald-800 dark:text-emerald-300",
+          content: "text-emerald-700 dark:text-emerald-300",
+          border: "border-emerald-200 dark:border-emerald-700",
+          bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        }
+      : {
+          header: "text-blue-800 dark:text-blue-300",
+          content: "text-blue-700 dark:text-blue-300",
+          border: "border-blue-200 dark:border-blue-700",
+          bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
+        };
 
   return (
     <CollapsibleDetails
       label={getLabel()}
       details={details}
       badge={"subtype" in message ? message.subtype : undefined}
-      icon={<span className="bg-blue-400 dark:bg-blue-500">⚙</span>}
-      colorScheme={{
-        header: "text-blue-800 dark:text-blue-300",
-        content: "text-blue-700 dark:text-blue-300",
-        border: "border-blue-200 dark:border-blue-700",
-        bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
-      }}
+      icon={
+        isError ? (
+          <span className="bg-red-500 dark:bg-red-600">!</span>
+        ) : (
+          <span className="bg-blue-400 dark:bg-blue-500">⚙</span>
+        )
+      }
+      colorScheme={colorScheme}
+      defaultExpanded={isError}
     />
   );
 }
@@ -175,7 +200,7 @@ export function ToolResultMessageComponent({
 
   let previewContent: string | undefined;
   let previewSummary: string | undefined;
-  let maxPreviewLines = 5;
+  let maxPreviewLines = 3;
   let displayContent = message.content;
   let defaultExpanded = false;
 
@@ -200,7 +225,7 @@ export function ToolResultMessageComponent({
       toolUseResult.stdout || "",
       toolUseResult.stderr || "",
       isError,
-      5,
+      3,
     );
     if (bashPreview.hasMore) {
       previewContent = bashPreview.preview;
@@ -210,7 +235,7 @@ export function ToolResultMessageComponent({
   // Handle specific tool results that benefit from content preview
   // Note: Read tool should NOT show preview, only line counts in summary
   else if (message.toolName === "Grep" && message.content.trim().length > 0) {
-    const contentPreview = createContentPreview(message.content, 5);
+    const contentPreview = createContentPreview(message.content, 3);
     if (contentPreview.hasMore) {
       previewContent = contentPreview.preview;
     }
