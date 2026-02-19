@@ -209,29 +209,34 @@ git commit -m "feat: add user workspace template files"
 ```typescript
 /**
  * 将模板文件复制到用户 workspace 并替换变量
+ *
+ * 注意：路径拼接使用已经过 sanitizeLinuxUsername 验证的原始 linuxUser，
+ * 不使用 escapeShellArg(linuxUser)，因为后者会加引号导致路径异常。
+ * escapeShellArg 只在构造完整 shell 命令参数时使用。
  */
 private async initWorkspace(connection: any, linuxUser: string, nickname: string): Promise<void> {
   const sshPool = getSSHPool();
-  const escapedUser = escapeShellArg(linuxUser);
+  // linuxUser 已通过 sanitizeLinuxUsername 验证，只含 [a-z0-9_]，可安全拼路径
   const templateDir = '/opt/mycc/templates/user-workspace';
   const workspaceDir = `/home/${linuxUser}/workspace`;
 
   // 复制模板文件
-  const copyCmd = `sudo cp -r ${templateDir}/. ${escapeShellArg(workspaceDir)}/`;
+  const copyCmd = `sudo cp -r ${templateDir}/. ${workspaceDir}/`;
   const copyResult = await sshPool.exec(connection, copyCmd);
   if (copyResult.exitCode !== 0) {
     throw new Error(`复制模板失败: ${copyResult.stderr}`);
   }
 
-  // 替换变量 {{USERNAME}}
-  const sedCmd = `sudo find ${escapeShellArg(workspaceDir)} -type f \\( -name '*.md' -o -name '*.json' \\) -exec sed -i 's/{{USERNAME}}/${escapeShellArg(nickname)}/g' {} +`;
+  // 替换变量 {{USERNAME}}（nickname 需要转义以防注入）
+  const safeNickname = nickname.replace(/[/&\\]/g, '\\$&');
+  const sedCmd = `sudo find ${workspaceDir} -type f \\( -name '*.md' -o -name '*.json' \\) -exec sed -i 's/{{USERNAME}}/${safeNickname}/g' {} +`;
   const sedResult = await sshPool.exec(connection, sedCmd);
   if (sedResult.exitCode !== 0) {
     console.warn(`⚠️ 变量替换部分失败: ${sedResult.stderr}`);
   }
 
   // 设置文件归属
-  const chownCmd = `sudo chown -R ${escapedUser}:mycc /home/${escapedUser}`;
+  const chownCmd = `sudo chown -R ${linuxUser}:mycc /home/${linuxUser}`;
   await sshPool.exec(connection, chownCmd);
 }
 ```
@@ -327,8 +332,8 @@ echo "=== 部署模板到 ${VPS_HOST} ==="
 # 创建远程目录
 ssh "$VPS_HOST" "sudo mkdir -p $REMOTE_DIR"
 
-# 同步文件
-rsync -avz --delete "$TEMPLATE_DIR/" "$VPS_HOST:$REMOTE_DIR/"
+# 同步文件（需要 sudo 权限写入 /opt）
+rsync -avz --delete --rsync-path="sudo rsync" "$TEMPLATE_DIR/" "$VPS_HOST:$REMOTE_DIR/"
 
 # 设置权限
 ssh "$VPS_HOST" "sudo chmod -R 755 $REMOTE_DIR"
@@ -475,7 +480,7 @@ POST /api/skills/install  - 安装 skill（从 skill 市场或预置列表）
 DELETE /api/skills/:name  - 卸载 skill
 ```
 
-Skill 数据来源：读取用户 workspace 下 `.claude/skills/` 目录的文件结构。每个 skill 目录包含一个描述文件（如 `skill.md` 或 `package.json`）。
+Skill 数据来源：读取全局项目级 `.claude/skills/` 目录（所有用户共享），不是每用户独立。每个 skill 目录包含 `SKILL.md`（大写）作为描述文件。
 
 **Step 2: 在路由注册中添加 skill 路由**
 
@@ -514,7 +519,7 @@ git commit -m "feat: add skill management API endpoints"
 **Step 4: Commit**
 
 ```bash
-git add mycc-web-react/src/components/SkillPanel.tsx mycc-web-react/src/hooks/useSkills.ts mycc-web-react/src/pages/ChatPage.tsx
+git add mycc-web-react/src/components/SkillPanel.tsx mycc-web-react/src/hooks/useSkills.ts mycc-web-react/src/components/ChatPage.tsx
 git commit -m "feat: add skill management panel UI"
 ```
 
@@ -563,7 +568,7 @@ git commit -m "feat: add quick action bar for common skills"
 **Step 3: Commit**
 
 ```bash
-git add mycc-web-react/src/components/SessionList.tsx mycc-web-react/src/pages/ChatPage.tsx
+git add mycc-web-react/src/components/SessionList.tsx mycc-web-react/src/components/ChatPage.tsx
 git commit -m "feat: add session management sidebar"
 ```
 

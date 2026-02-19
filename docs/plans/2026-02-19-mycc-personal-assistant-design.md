@@ -216,9 +216,11 @@ async createUser(linuxUser: string, nickname: string): Promise<void> {
 
 ### P1：Skill 面板
 
-- **Skill 列表**：展示当前已安装的 skill，包含名称、简介、状态
-- **Skill 详情**：点击查看完整介绍、触发词、使用示例
-- **安装/卸载**：一键操作，后端处理文件管理
+**数据源：全局技能库**。所有用户共享项目级 `.claude/skills/` 目录，不为每用户单独维护 skill 副本。Skill API 读取全局目录，前端展示和管理。
+
+- **Skill 列表**：展示全局已安装的 skill，包含名称、简介、状态
+- **Skill 详情**：点击查看完整介绍（`SKILL.md`）、触发词、使用示例
+- **安装/卸载**：一键操作，后端处理文件管理（操作全局目录）
 - **Skill 市场**（可选，后续）：浏览可用 skill
 
 ### P2：其他个人助理功能
