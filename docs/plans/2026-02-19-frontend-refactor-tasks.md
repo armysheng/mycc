@@ -40,6 +40,12 @@
 - 自动化卡片：名称 + cron 可读描述 + 状态指示灯（绿/灰/红） + 开关
 - "新建自动化任务"按钮
 - 后端 API 由 cc 提供（`/api/skills`、`/api/automations`），前端先用 mock 数据
+- **先补最小 API 契约（阻塞项）**：
+  - `/api/skills`：`GET`，返回 `[{ id, name, icon, trigger, description, installed, status }]`
+  - `/api/automations`：`GET`，返回 `[{ id, name, scheduleText, status, enabled }]`
+  - 状态枚举固定：`skills.status` 使用 `installed | available | disabled`；`automations.status` 使用 `healthy | paused | error`
+  - 错误返回固定：`{ success: false, error: string, code?: string }`
+  - 若暂未实现分页，明确 `limit/offset` 预留字段，避免后续接口破坏性变更
 
 ## Phase 3: 侧边栏对话管理
 
@@ -86,10 +92,15 @@
 - `@media (max-width: 1024px)`：右侧面板变 overlay
 - 手机端 header 显示菜单按钮（汉堡图标）
 - 触摸友好的按钮尺寸
+- **overlay 状态机（阻塞项）**：
+  - 移动端同一时刻只允许一个 overlay（Sidebar 或 RightPanel）处于打开状态
+  - 打开 Sidebar 时强制关闭 RightPanel；打开 RightPanel 时强制关闭 Sidebar
+  - 点击遮罩和按 `Esc` 都关闭当前 overlay
+  - 遮罩层级统一，避免双遮罩叠加
 
 ## 注意事项
 
-- 每个 Phase 单独一个 PR，基于 `feature/multi-user-frontend` 分支
+- 每个 Phase 单独一个 PR，基于 `main` 开新分支（避免与历史特性分支耦合）
 - 设计参考：`docs/plans/chat-page-design.html`（可本地 HTTP 服务打开预览）
 - Phase 2 的后端 API 会由 cc 先实现，前端可先用 mock 数据开发
-- Tailwind CSS 可选，也可用 CSS Modules，保持和现有代码风格一致
+- 样式技术栈统一：优先沿用现有 Tailwind + `theme.css` CSS 变量，不引入新的 CSS Modules 体系
