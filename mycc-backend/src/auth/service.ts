@@ -65,7 +65,7 @@ export async function register(params: {
   );
 
   // 异步创建 VPS 用户（不阻塞注册流程）
-  vpsUserManager.createUser(user.linux_user).catch(err => {
+  vpsUserManager.createUser(user.linux_user, user.nickname || '用户').catch(err => {
     console.error(`❌ 异步创建 VPS 用户失败 (${user.linux_user}):`, err);
   });
 
@@ -162,4 +162,3 @@ export async function getCurrentUser(userId: number) {
     } : null,
   };
 }
-
