@@ -19,6 +19,8 @@ import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
+import { Sidebar } from "./layout/Sidebar";
+import { RightPanel } from "./layout/RightPanel";
 import { getChatUrl, getAuthHeaders } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -31,6 +33,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const { token } = useAuth();
 
   // Extract and normalize working directory from URL
@@ -394,6 +397,14 @@ export function ChatPage() {
     }
   }, [navigate, workingDirectory]);
 
+  const handleNewChat = useCallback(() => {
+    navigate({ search: "" });
+  }, [navigate]);
+
+  const handleRightPanelToggle = useCallback(() => {
+    setIsRightPanelCollapsed((prev) => !prev);
+  }, []);
+
   // Handle global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -408,15 +419,20 @@ export function ChatPage() {
   }, [isLoading, currentRequestId, handleAbort]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto p-3 sm:p-6 h-screen flex flex-col">
+    <div className="app-shell h-screen flex overflow-hidden">
+      <Sidebar
+        onNewChat={handleNewChat}
+        currentPathLabel={workingDirectory}
+      />
+
+      <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 min-w-0">
             {isHistoryView && (
               <button
                 onClick={handleBackToChat}
-                className="p-2 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
                 aria-label="Back to chat"
               >
                 <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
@@ -425,18 +441,18 @@ export function ChatPage() {
             {isLoadedConversation && (
               <button
                 onClick={handleBackToHistory}
-                className="p-2 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
                 aria-label="Back to history"
               >
                 <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </button>
             )}
-            <div>
+            <div className="min-w-0">
               <nav aria-label="Breadcrumb">
                 <div className="flex items-center">
                   <button
                     onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1"
+                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
                     aria-label="Back to project selection"
                   >
                     Claude Code Web UI
@@ -481,6 +497,22 @@ export function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {!isRightPanelCollapsed && (
+              <button
+                onClick={handleRightPanelToggle}
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                收起工具箱
+              </button>
+            )}
+            {isRightPanelCollapsed && (
+              <button
+                onClick={handleRightPanelToggle}
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                打开工具箱
+              </button>
+            )}
             {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
@@ -490,7 +522,6 @@ export function ChatPage() {
         {isHistoryView ? (
           <HistoryView onBack={handleBackToChat} />
         ) : historyLoading ? (
-          /* Loading conversation history */
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
@@ -500,7 +531,6 @@ export function ChatPage() {
             </div>
           </div>
         ) : historyError ? (
-          /* Error loading conversation history */
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center max-w-md">
               <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
@@ -534,10 +564,7 @@ export function ChatPage() {
           </div>
         ) : (
           <>
-            {/* Chat Messages */}
             <ChatMessages messages={messages} isLoading={isLoading} />
-
-            {/* Input */}
             <ChatInput
               input={input}
               isLoading={isLoading}
@@ -554,9 +581,13 @@ export function ChatPage() {
           </>
         )}
 
-        {/* Settings Modal */}
         <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
       </div>
+
+      <RightPanel
+        collapsed={isRightPanelCollapsed}
+        onToggle={handleRightPanelToggle}
+      />
     </div>
   );
 }
