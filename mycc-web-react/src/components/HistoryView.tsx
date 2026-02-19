@@ -5,11 +5,15 @@ import { getChatSessionsUrl, getAuthHeaders } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 
-interface HistoryViewProps {
-  onBack?: () => void;
+interface ConversationRow {
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
+  title?: string;
 }
 
-export function HistoryView(_props: HistoryViewProps) {
+export function HistoryView() {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,8 +33,8 @@ export function HistoryView(_props: HistoryViewProps) {
           throw new Error(parsed.message);
         }
         const data = await response.json();
-        const rows = data?.data?.conversations || [];
-        const mapped: ConversationSummary[] = rows.map((item: any) => ({
+        const rows: ConversationRow[] = data?.data?.conversations || [];
+        const mapped: ConversationSummary[] = rows.map((item) => ({
           sessionId: item.sessionId,
           startTime: item.createdAt,
           lastTime: item.updatedAt,

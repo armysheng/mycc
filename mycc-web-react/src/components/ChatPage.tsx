@@ -15,10 +15,8 @@ import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
-import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
-import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import { RightPanel } from "./layout/RightPanel";
 import { getChatUrl, getAuthHeaders } from "../config/api";
@@ -48,11 +46,9 @@ export function ChatPage() {
     return normalizeWindowsPath(decodedPath);
   })();
 
-  // Get current view and sessionId from query parameters
-  const currentView = searchParams.get("view");
+  // Get sessionId from query parameters
   const sessionId = searchParams.get("sessionId");
-  const isHistoryView = currentView === "history";
-  const isLoadedConversation = !!sessionId && !isHistoryView;
+  const isLoadedConversation = !!sessionId;
 
   const { processStreamLine } = useClaudeStreaming();
   const { abortRequest, createAbortHandler } = useAbortController();
@@ -363,12 +359,6 @@ export function ChatPage() {
       }
     : undefined;
 
-  const handleHistoryClick = useCallback(() => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("view", "history");
-    navigate({ search: searchParams.toString() });
-  }, [navigate]);
-
   const handleSettingsClick = useCallback(() => {
     setIsSettingsOpen(true);
   }, []);
@@ -379,12 +369,6 @@ export function ChatPage() {
 
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });
-  }, [navigate]);
-
-  const handleBackToHistory = useCallback(() => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("view", "history");
-    navigate({ search: searchParams.toString() });
   }, [navigate]);
 
   const handleBackToProjects = useCallback(() => {
@@ -422,27 +406,20 @@ export function ChatPage() {
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
         onNewChat={handleNewChat}
+        onOpenSettings={handleSettingsClick}
         currentPathLabel={workingDirectory}
+        activeSessionId={sessionId}
       />
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
           <div className="flex items-center gap-4 min-w-0">
-            {isHistoryView && (
+            {isLoadedConversation && (
               <button
                 onClick={handleBackToChat}
                 className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
                 aria-label="Back to chat"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
-            {isLoadedConversation && (
-              <button
-                onClick={handleBackToHistory}
-                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
-                aria-label="Back to history"
               >
                 <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </button>
@@ -457,7 +434,7 @@ export function ChatPage() {
                   >
                     Claude Code Web UI
                   </button>
-                  {(isHistoryView || sessionId) && (
+                  {sessionId && (
                     <>
                       <span
                         className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
@@ -470,9 +447,7 @@ export function ChatPage() {
                         className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
                         aria-current="page"
                       >
-                        {isHistoryView
-                          ? "Conversation History"
-                          : "Conversation"}
+                        Conversation
                       </h1>
                     </>
                   )}
@@ -513,15 +488,12 @@ export function ChatPage() {
                 打开工具箱
               </button>
             )}
-            {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
         </div>
 
         {/* Main Content */}
-        {isHistoryView ? (
-          <HistoryView onBack={handleBackToChat} />
-        ) : historyLoading ? (
+        {historyLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
