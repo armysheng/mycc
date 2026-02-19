@@ -24,13 +24,16 @@ export function getToolDisplayText(
   input?: Record<string, unknown>,
 ): string {
   // 特殊处理：带文件名的工具
-  if ((toolName === "Read" || toolName === "Edit" || toolName === "Write") && input?.file_path) {
-    const fileName = (input.file_path as string).split("/").pop();
+  if (
+    (toolName === "Read" || toolName === "Edit" || toolName === "Write") &&
+    typeof input?.file_path === "string"
+  ) {
+    const fileName = input.file_path.split("/").pop();
     const verb = toolName === "Read" ? "读取" : toolName === "Edit" ? "编辑" : "写入";
     return `正在${verb} ${fileName}...`;
   }
-  if (toolName === "Bash" && input?.command) {
-    const cmd = (input.command as string).split(" ")[0];
+  if (toolName === "Bash" && typeof input?.command === "string") {
+    const cmd = input.command.split(" ")[0];
     return `正在执行 ${cmd}...`;
   }
   if (toolName === "Grep" && input?.pattern) {
