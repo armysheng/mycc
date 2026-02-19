@@ -20,6 +20,7 @@ import {
   isEditToolUseResult,
   isBashToolUseResult,
 } from "../utils/contentUtils";
+import { getToolDisplayText } from "../utils/toolDisplayMapper";
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -143,18 +144,23 @@ interface ToolMessageComponentProps {
 }
 
 export function ToolMessageComponent({ message }: ToolMessageComponentProps) {
+  const displayText = getToolDisplayText(
+    message.toolName || "Tool",
+    message.input,
+  );
+
   return (
-    <MessageContainer
-      alignment="left"
-      colorScheme="bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100"
-    >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-        <div className="w-4 h-4 bg-emerald-500 dark:bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs">
-          🔧
-        </div>
-        {message.content}
-      </div>
-    </MessageContainer>
+    <CollapsibleDetails
+      label={displayText}
+      details={message.content}
+      icon={<span className="bg-emerald-400 dark:bg-emerald-500">⚡</span>}
+      colorScheme={{
+        header: "text-slate-500 dark:text-slate-400",
+        content: "text-emerald-700 dark:text-emerald-300",
+        border: "border-slate-200 dark:border-slate-700",
+        bg: "bg-slate-50/60 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700",
+      }}
+    />
   );
 }
 
@@ -283,7 +289,7 @@ export function ThinkingMessageComponent({
 }: ThinkingMessageComponentProps) {
   return (
     <CollapsibleDetails
-      label="Claude's Reasoning"
+      label="cc 正在思考..."
       details={message.content}
       badge="thinking"
       icon={<span className="bg-purple-400 dark:bg-purple-500">💭</span>}
@@ -293,7 +299,7 @@ export function ThinkingMessageComponent({
         border: "border-purple-200 dark:border-purple-700",
         bg: "bg-purple-50/60 dark:bg-purple-900/15 border border-purple-200 dark:border-purple-800",
       }}
-      defaultExpanded={true}
+      defaultExpanded={false}
     />
   );
 }
