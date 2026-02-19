@@ -1,0 +1,32 @@
+:root {
+  --sidebar-width: 272px;
+  --right-panel-width: 320px;
+
+  --app-bg: #f8fafc;
+  --surface-bg: #ffffff;
+  --surface-border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --accent: #0ea5e9;
+  --accent-soft: #e0f2fe;
+}
+
+.dark {
+  --app-bg: #020617;
+  --surface-bg: #0f172a;
+  --surface-border: #1e293b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --accent: #38bdf8;
+  --accent-soft: #0c4a6e;
+}
+
+.app-shell {
+  background: var(--app-bg);
+  color: var(--text-primary);
+}
+
+.panel-surface {
+  background: var(--surface-bg);
+  border-color: var(--surface-border);
+}
