@@ -43,34 +43,45 @@ interface ChatMessageComponentProps {
 
 export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   const isUser = message.role === "user";
-  const colorScheme = isUser
-    ? "bg-blue-600 text-white"
-    : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100";
+  if (isUser) {
+    return (
+      <div className="mb-4 flex justify-end">
+        <div className="max-w-[85%] sm:max-w-[72%] rounded-2xl rounded-br-md px-4 py-3 bg-sky-600 text-white shadow-sm">
+          <div className="mb-1.5 flex items-center justify-between gap-4">
+            <span className="text-xs font-semibold text-sky-100">你</span>
+            <TimestampComponent
+              timestamp={message.timestamp}
+              className="text-xs text-sky-100/80"
+            />
+          </div>
+          <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+            {message.content}
+          </pre>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <MessageContainer
-      alignment={isUser ? "right" : "left"}
-      colorScheme={colorScheme}
-    >
-      <div className="mb-2 flex items-center justify-between gap-4">
-        <div
-          className={`text-xs font-semibold opacity-90 ${
-            isUser ? "text-blue-100" : "text-slate-600 dark:text-slate-400"
-          }`}
-        >
-          {isUser ? "User" : "Claude"}
-        </div>
-        <TimestampComponent
-          timestamp={message.timestamp}
-          className={`text-xs opacity-70 ${
-            isUser ? "text-blue-200" : "text-slate-500 dark:text-slate-500"
-          }`}
-        />
+    <div className="mb-4 flex justify-start">
+      <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900 flex items-center justify-center text-[11px] font-semibold">
+        CC
       </div>
-      <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
-        {message.content}
-      </pre>
-    </MessageContainer>
+      <div className="max-w-[85%] sm:max-w-[72%] rounded-2xl rounded-bl-md px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 shadow-sm">
+        <div className="mb-1.5 flex items-center justify-between gap-4">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Claude
+          </span>
+          <TimestampComponent
+            timestamp={message.timestamp}
+            className="text-xs text-slate-500 dark:text-slate-400"
+          />
+        </div>
+        <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+          {message.content}
+        </pre>
+      </div>
+    </div>
   );
 }
 
@@ -160,6 +171,7 @@ export function SystemMessageComponent({
       }
       colorScheme={colorScheme}
       defaultExpanded={isError}
+      detailsBorderStyle={isError ? "dashed" : "solid"}
     />
   );
 }
@@ -178,13 +190,16 @@ export function ToolMessageComponent({ message }: ToolMessageComponentProps) {
     <CollapsibleDetails
       label={displayText}
       details={message.content}
+      badge="调用中"
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">⚡</span>}
       colorScheme={{
-        header: "text-slate-500 dark:text-slate-400",
+        header: "text-emerald-800 dark:text-emerald-300",
         content: "text-emerald-700 dark:text-emerald-300",
-        border: "border-slate-200 dark:border-slate-700",
-        bg: "bg-slate-50/60 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700",
+        border: "border-emerald-200 dark:border-emerald-700",
+        bg: "bg-emerald-50/90 dark:bg-emerald-900/20",
       }}
+      showPreview={false}
+      variant="pill"
     />
   );
 }
@@ -249,21 +264,22 @@ export function ToolResultMessageComponent({
 
   return (
     <CollapsibleDetails
-      label={message.toolName}
+      label={`结果: ${message.toolName}`}
       details={displayContent}
-      badge={message.toolName === "Edit" ? undefined : message.summary}
+      badge={message.summary}
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">✓</span>}
       colorScheme={{
         header: "text-emerald-800 dark:text-emerald-300",
         content: "text-emerald-700 dark:text-emerald-300",
         border: "border-emerald-200 dark:border-emerald-700",
-        bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        bg: "bg-emerald-50/90 dark:bg-emerald-900/20",
       }}
       previewContent={previewContent}
       previewSummary={previewSummary}
       maxPreviewLines={maxPreviewLines}
       showPreview={shouldShowPreview}
       defaultExpanded={defaultExpanded}
+      variant="pill"
     />
   );
 }
@@ -314,7 +330,7 @@ export function ThinkingMessageComponent({
 }: ThinkingMessageComponentProps) {
   return (
     <CollapsibleDetails
-      label="cc 正在思考..."
+      label="思考过程"
       details={message.content}
       badge="thinking"
       icon={<span className="bg-purple-400 dark:bg-purple-500">💭</span>}
@@ -322,9 +338,10 @@ export function ThinkingMessageComponent({
         header: "text-purple-700 dark:text-purple-300",
         content: "text-purple-600 dark:text-purple-400 italic",
         border: "border-purple-200 dark:border-purple-700",
-        bg: "bg-purple-50/60 dark:bg-purple-900/15 border border-purple-200 dark:border-purple-800",
+        bg: "bg-purple-50/70 dark:bg-purple-900/15 border border-purple-200 border-dashed dark:border-purple-800",
       }}
       defaultExpanded={false}
+      detailsBorderStyle="dashed"
     />
   );
 }
