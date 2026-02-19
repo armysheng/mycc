@@ -61,6 +61,9 @@ require_cmd() {
 require_cmd curl
 require_cmd node
 
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
 echo "[INFO] 1/5 检查服务健康状态"
 WEB_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$WEB_URL") || WEB_CODE="000"
 API_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/health") || API_CODE="000"
@@ -105,11 +108,12 @@ fi
 echo "[PASS] 登录成功"
 
 echo "[INFO] 3/5 鉴权接口 /api/auth/me"
-ME_CODE=$(curl -s -o /tmp/mycc_reg_me.json -w '%{http_code}' "$API_URL/api/auth/me" \
+ME_RESP_FILE="$TMP_DIR/me.json"
+ME_CODE=$(curl -s -o "$ME_RESP_FILE" -w '%{http_code}' "$API_URL/api/auth/me" \
   -H "Authorization: Bearer $TOKEN")
 if [[ "$ME_CODE" != "200" ]]; then
   echo "[FAIL] /api/auth/me 返回 $ME_CODE"
-  cat /tmp/mycc_reg_me.json
+  cat "$ME_RESP_FILE"
   exit 4
 fi
 echo "[PASS] /api/auth/me 返回 200"
