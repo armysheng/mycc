@@ -153,7 +153,10 @@ export class SSHPool {
         port: this.config.port,
         username: this.config.username,
         privateKey: this.privateKey,
-        readyTimeout: 10000,
+        readyTimeout: this.config.readyTimeoutMs ?? 30000,
+        forceIPv4: this.config.forceIPv4 ?? true,
+        keepaliveInterval: this.config.keepaliveIntervalMs ?? 10000,
+        keepaliveCountMax: this.config.keepaliveCountMax ?? 3,
       });
     });
   }
