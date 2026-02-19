@@ -60,6 +60,7 @@ description: 做什么 + 什么时候触发（这是最重要的字段）
 | `dashboard` | 能力看板可视化 | `/dashboard` |
 | `skill-creator` | 帮助创建新的 Skill | `/skill-creator` |
 | `mycc` | 移动端访问后端，在手机上使用 CC | `/mycc` |
+| `mycc-regression` | mycc 回归/冒烟验证（接口 + UI） | `回归验证` / `冒烟测试` |
 
 ### mycc - 移动端访问
 

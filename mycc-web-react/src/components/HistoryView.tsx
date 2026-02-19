@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../types";
 import { getChatSessionsUrl, getAuthHeaders } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
+import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 
 interface HistoryViewProps {
   onBack?: () => void;
@@ -24,9 +25,8 @@ export function HistoryView(_props: HistoryViewProps) {
         });
 
         if (!response.ok) {
-          throw new Error(
-            `Failed to load conversations: ${response.status} ${response.statusText}`,
-          );
+          const parsed = await parseApiErrorResponse(response);
+          throw new Error(parsed.message);
         }
         const data = await response.json();
         const rows = data?.data?.conversations || [];
@@ -40,9 +40,7 @@ export function HistoryView(_props: HistoryViewProps) {
         }));
         setConversations(mapped);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load conversations",
-        );
+        setError(getNetworkErrorMessage(err, "加载历史会话失败"));
       } finally {
         setLoading(false);
       }

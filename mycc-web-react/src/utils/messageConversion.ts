@@ -79,6 +79,8 @@ export function createToolMessage(
   return {
     type: "tool",
     content: `${toolName}${argsDisplay}`,
+    toolName,
+    input: contentItem.input,
     timestamp: timestamp ?? Date.now(),
   };
 }
