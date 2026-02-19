@@ -19,6 +19,7 @@ import {
   TodoMessageComponent,
   LoadingComponent,
 } from "../MessageComponents";
+import { useSettings } from "../../hooks/useSettings";
 // import { UI_CONSTANTS } from "../../utils/constants"; // Unused for now
 
 interface ChatMessagesProps {
@@ -29,6 +30,7 @@ interface ChatMessagesProps {
 export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { showToolCalls, autoExpandThinking, fontSize } = useSettings();
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -67,7 +69,13 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     } else if (isPlanMessage(message)) {
       return <PlanMessageComponent key={key} message={message} />;
     } else if (isThinkingMessage(message)) {
-      return <ThinkingMessageComponent key={key} message={message} />;
+      return (
+        <ThinkingMessageComponent
+          key={key}
+          message={message}
+          autoExpand={autoExpandThinking}
+        />
+      );
     } else if (isTodoMessage(message)) {
       return <TodoMessageComponent key={key} message={message} />;
     } else if (isChatMessage(message)) {
@@ -76,18 +84,31 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     return null;
   };
 
+  const visibleMessages = showToolCalls
+    ? messages
+    : messages.filter(
+        (message) => !isToolMessage(message) && !isToolResultMessage(message),
+      );
+
+  const fontSizeClass =
+    fontSize === "sm"
+      ? "text-sm"
+      : fontSize === "lg"
+        ? "text-base"
+        : "text-[15px]";
+
   return (
     <div
       ref={messagesContainerRef}
-      className="flex-1 overflow-y-auto bg-white/70 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 p-3 sm:p-6 mb-3 sm:mb-6 rounded-2xl shadow-sm backdrop-blur-sm flex flex-col"
+      className={`flex-1 overflow-y-auto bg-white/70 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 p-3 sm:p-6 mb-3 sm:mb-6 rounded-2xl shadow-sm backdrop-blur-sm flex flex-col ${fontSizeClass}`}
     >
-      {messages.length === 0 ? (
+      {visibleMessages.length === 0 ? (
         <EmptyState />
       ) : (
         <>
           {/* Spacer div to push messages to the bottom */}
           <div className="flex-1" aria-hidden="true"></div>
-          {messages.map(renderMessage)}
+          {visibleMessages.map(renderMessage)}
           {isLoading && <LoadingComponent />}
           <div ref={messagesEndRef} />
         </>

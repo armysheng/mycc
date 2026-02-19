@@ -323,10 +323,12 @@ export function PlanMessageComponent({ message }: PlanMessageComponentProps) {
 
 interface ThinkingMessageComponentProps {
   message: ThinkingMessage;
+  autoExpand?: boolean;
 }
 
 export function ThinkingMessageComponent({
   message,
+  autoExpand = false,
 }: ThinkingMessageComponentProps) {
   return (
     <CollapsibleDetails
@@ -340,7 +342,7 @@ export function ThinkingMessageComponent({
         border: "border-purple-200 dark:border-purple-700",
         bg: "bg-purple-50/70 dark:bg-purple-900/15 border border-purple-200 border-dashed dark:border-purple-800",
       }}
-      defaultExpanded={false}
+      defaultExpanded={autoExpand}
       detailsBorderStyle="dashed"
     />
   );

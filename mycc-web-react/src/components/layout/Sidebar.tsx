@@ -53,7 +53,7 @@ export function Sidebar({
 }: SidebarProps) {
   const navigate = useNavigate();
   const { token, user } = useAuth();
-  const { theme, toggleTheme } = useSettings();
+  const { theme, toggleTheme, profileNickname } = useSettings();
   const [searchValue, setSearchValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +113,13 @@ export function Sidebar({
     [navigate],
   );
 
-  const displayName = user?.nickname || user?.email || user?.phone || user?.linux_user || "未登录用户";
+  const displayName =
+    profileNickname ||
+    user?.nickname ||
+    user?.email ||
+    user?.phone ||
+    user?.linux_user ||
+    "未登录用户";
   const avatarChar = displayName.charAt(0).toUpperCase();
 
   return (
