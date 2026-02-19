@@ -29,7 +29,7 @@ export function CollapsibleDetails({
   icon,
   badge,
   defaultExpanded = false,
-  maxPreviewLines = 5,
+  maxPreviewLines = 3,
   showPreview = true,
   previewContent,
   previewSummary,

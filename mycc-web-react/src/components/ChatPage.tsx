@@ -4,6 +4,7 @@ import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
+  ErrorMessage,
   PermissionMode,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
@@ -21,6 +22,7 @@ import { HistoryView } from "./HistoryView";
 import { getChatUrl, getAuthHeaders } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
+import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -157,6 +159,11 @@ export function ChatPage() {
           } as ChatRequest),
         });
 
+        if (!response.ok) {
+          const parsed = await parseApiErrorResponse(response);
+          throw new Error(parsed.message);
+        }
+
         if (!response.body) throw new Error("No response body");
 
         const reader = response.body.getReader();
@@ -204,12 +211,17 @@ export function ChatPage() {
         }
       } catch (error) {
         console.error("Failed to send message:", error);
-        addMessage({
-          type: "chat",
-          role: "assistant",
-          content: "Error: Failed to get response",
+        const errorMessage = getNetworkErrorMessage(
+          error,
+          "请求失败，请稍后重试。",
+        );
+        const streamErrorMessage: ErrorMessage = {
+          type: "error",
+          subtype: "stream_error",
+          message: errorMessage,
           timestamp: Date.now(),
-        });
+        };
+        addMessage(streamErrorMessage);
       } finally {
         resetRequestState();
       }

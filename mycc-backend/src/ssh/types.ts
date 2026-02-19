@@ -10,6 +10,10 @@ export interface SSHConfig {
   username: string;
   privateKeyPath: string;
   maxConnections: number;
+  readyTimeoutMs?: number;
+  forceIPv4?: boolean;
+  keepaliveIntervalMs?: number;
+  keepaliveCountMax?: number;
 }
 
 export interface SSHConnection {
