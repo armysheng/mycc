@@ -4,6 +4,8 @@ export const API_CONFIG = {
     CHAT: "/api/chat",
     CHAT_SESSIONS: "/api/chat/sessions",
     ABORT: "/api/abort",
+    SKILLS: "/api/skills",
+    AUTOMATIONS: "/api/automations",
   },
 } as const;
 
@@ -32,13 +34,23 @@ export const getChatSessionRenameUrl = (sessionId: string) => {
   return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/rename`;
 };
 
+// Helper function to get skills URL
+export const getSkillsUrl = () => {
+  return API_CONFIG.ENDPOINTS.SKILLS;
+};
+
+// Helper function to get automations URL
+export const getAutomationsUrl = () => {
+  return API_CONFIG.ENDPOINTS.AUTOMATIONS;
+};
+
 // Helper function to get auth headers
 export const getAuthHeaders = (token: string | null) => {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 };
