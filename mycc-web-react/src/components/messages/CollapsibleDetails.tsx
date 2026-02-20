@@ -20,6 +20,8 @@ interface CollapsibleDetailsProps {
   showPreview?: boolean;
   previewContent?: string;
   previewSummary?: string;
+  variant?: "card" | "pill";
+  detailsBorderStyle?: "solid" | "dashed";
 }
 
 export function CollapsibleDetails({
@@ -33,6 +35,8 @@ export function CollapsibleDetails({
   showPreview = true,
   previewContent,
   previewSummary,
+  variant = "card",
+  detailsBorderStyle = "solid",
 }: CollapsibleDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const hasDetails = details.trim().length > 0;
@@ -63,13 +67,18 @@ export function CollapsibleDetails({
 
   const shouldShowPreview =
     showPreview && !isExpanded && hasDetails && contentPreview.hasMore;
+  const isPill = variant === "pill";
+  const detailsBorderClass =
+    detailsBorderStyle === "dashed" ? "border-dashed" : "border-solid";
 
   return (
-    <div
-      className={`mb-3 p-3 rounded-lg ${colorScheme.bg} border ${colorScheme.border}`}
-    >
+    <div className={isPill ? "mb-2" : `mb-3 p-3 rounded-lg ${colorScheme.bg} border ${colorScheme.border}`}>
       <div
-        className={`${colorScheme.header} text-xs font-medium mb-1 flex items-center gap-2 ${isCollapsible ? "cursor-pointer hover:opacity-80" : ""}`}
+        className={`${colorScheme.header} text-xs font-medium flex items-center gap-2 ${isCollapsible ? "cursor-pointer hover:opacity-80" : ""} ${
+          isPill
+            ? `inline-flex rounded-full border px-3 py-1.5 ${colorScheme.bg} ${colorScheme.border}`
+            : "mb-1"
+        }`}
         role={isCollapsible ? "button" : undefined}
         tabIndex={isCollapsible ? 0 : undefined}
         aria-expanded={isCollapsible ? isExpanded : undefined}
@@ -120,11 +129,23 @@ export function CollapsibleDetails({
         </div>
       )}
       {hasDetails && isExpanded && (
-        <pre
-          className={`whitespace-pre-wrap ${colorScheme.content} text-xs font-mono leading-relaxed mt-2 pl-6 border-l-2 ${colorScheme.border}`}
+        <div
+          className={
+            isPill
+              ? `mt-2 rounded-lg border ${colorScheme.border} ${colorScheme.bg} px-3 py-2`
+              : ""
+          }
         >
-          {details}
-        </pre>
+          <pre
+            className={`whitespace-pre-wrap ${colorScheme.content} text-xs font-mono leading-relaxed ${
+              isPill
+                ? ""
+                : `mt-2 pl-6 border-l-2 ${detailsBorderClass} ${colorScheme.border}`
+            }`}
+          >
+            {details}
+          </pre>
+        </div>
       )}
     </div>
   );

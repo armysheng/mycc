@@ -5,6 +5,7 @@ import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { concurrencyLimiter } from '../concurrency-limiter.js';
 import {
   checkQuota,
+  findUserById,
   logUsage,
   renameConversation,
   upsertConversation,
@@ -14,6 +15,8 @@ import {
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { validateLinuxUsername, validatePathPrefix } from '../utils/validation.js';
+import { getSSHPool } from '../ssh/pool.js';
+import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 
 // 发送消息请求验证
 const chatSchema = z.object({
@@ -24,6 +27,23 @@ const chatSchema = z.object({
     mediaType: z.string(),
   })).optional(),
 });
+
+type HistoryMessageType = 'user' | 'assistant' | 'system' | 'result';
+type HistoryMessage = {
+  type: HistoryMessageType;
+  timestamp: string;
+  [key: string]: unknown;
+};
+
+function isHistoryMessage(value: unknown): value is HistoryMessage {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.type === 'string' &&
+    ['user', 'assistant', 'system', 'result'].includes(entry.type) &&
+    typeof entry.timestamp === 'string'
+  );
+}
 
 export async function chatRoutes(fastify: FastifyInstance) {
   // POST /api/chat - 发送消息（SSE 流式响应）
@@ -273,6 +293,94 @@ export async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: err instanceof Error ? err.message : '重命名失败',
+      });
+    }
+  });
+
+  // GET /api/chat/sessions/:sessionId/messages - 获取会话历史消息
+  fastify.get('/api/chat/sessions/:sessionId/messages', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { sessionId } = request.params as { sessionId: string };
+      const { limit = '200' } = request.query as { limit?: string };
+
+      const limitNum = parseInt(limit, 10);
+      if (isNaN(limitNum) || limitNum <= 0 || limitNum > 1000) {
+        return reply.status(400).send({
+          success: false,
+          error: 'limit 必须是 1-1000 的整数',
+        });
+      }
+
+      const ownsSession = await userOwnsConversation(request.user.userId, sessionId);
+      if (!ownsSession) {
+        return reply.status(403).send({
+          success: false,
+          error: '无权访问该会话',
+        });
+      }
+
+      const user = await findUserById(request.user.userId);
+      if (!user) {
+        return reply.status(404).send({
+          success: false,
+          error: '用户不存在',
+        });
+      }
+
+      const sshPool = getSSHPool();
+      const connection = await sshPool.acquire();
+
+      try {
+        const safeLinuxUser = sanitizeLinuxUsername(user.linux_user);
+        const projectUserSegment = safeLinuxUser.replace(/_/g, '-');
+        const projectDir = `/home/${safeLinuxUser}/.claude/projects/-home-${projectUserSegment}-workspace`;
+        const historyPath = `${projectDir}/${sessionId}.jsonl`;
+        const escapedLimit = Math.max(1, limitNum);
+        const escapedUser = escapeShellArg(safeLinuxUser);
+
+        const readCmd =
+          `sudo -n -u ${escapedUser} bash -lc ` +
+          `${escapeShellArg(`if [ -f ${historyPath} ]; then tail -n ${escapedLimit} ${historyPath}; fi`)}`;
+        const result = await sshPool.exec(connection, readCmd);
+
+        if (result.exitCode !== 0) {
+          throw new Error(result.stderr || '读取会话历史失败');
+        }
+
+        const messages: HistoryMessage[] = result.stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            try {
+              return JSON.parse(line) as unknown;
+            } catch {
+              return null;
+            }
+          })
+          .filter(isHistoryMessage);
+
+        return reply.send({
+          success: true,
+          data: {
+            sessionId,
+            messages,
+            total: messages.length,
+          },
+        });
+      } finally {
+        sshPool.release(connection);
+      }
+    } catch (err) {
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '获取会话历史失败',
       });
     }
   });
