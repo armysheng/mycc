@@ -1,7 +1,7 @@
 #!/bin/bash
 # API 测试脚本
 
-BASE_URL="http://localhost:8082"
+BASE_URL="${BASE_URL:-http://localhost:8080}"
 TOKEN=""
 
 echo "=== MyCC Backend API 测试 ==="
