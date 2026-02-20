@@ -1,9 +1,14 @@
 export type Theme = "light" | "dark";
 export type EnterBehavior = "send" | "newline";
+export type FontSize = "sm" | "md" | "lg";
 
 export interface AppSettings {
   theme: Theme;
   enterBehavior: EnterBehavior;
+  showToolCalls: boolean;
+  autoExpandThinking: boolean;
+  fontSize: FontSize;
+  profileNickname: string;
   version: number;
 }
 
@@ -16,8 +21,16 @@ export interface SettingsContextType {
   settings: AppSettings;
   theme: Theme;
   enterBehavior: EnterBehavior;
+  showToolCalls: boolean;
+  autoExpandThinking: boolean;
+  fontSize: FontSize;
+  profileNickname: string;
   toggleTheme: () => void;
   toggleEnterBehavior: () => void;
+  toggleShowToolCalls: () => void;
+  toggleAutoExpandThinking: () => void;
+  setFontSize: (size: FontSize) => void;
+  setProfileNickname: (nickname: string) => void;
   updateSettings: (updates: Partial<AppSettings>) => void;
 }
 
@@ -25,8 +38,12 @@ export interface SettingsContextType {
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "light",
   enterBehavior: "send",
-  version: 1,
+  showToolCalls: true,
+  autoExpandThinking: false,
+  fontSize: "md",
+  profileNickname: "",
+  version: 2,
 };
 
 // Current settings version for migration
-export const CURRENT_SETTINGS_VERSION = 1;
+export const CURRENT_SETTINGS_VERSION = 2;

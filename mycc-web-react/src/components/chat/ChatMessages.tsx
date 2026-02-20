@@ -19,6 +19,7 @@ import {
   TodoMessageComponent,
   LoadingComponent,
 } from "../MessageComponents";
+import { useSettings } from "../../hooks/useSettings";
 // import { UI_CONSTANTS } from "../../utils/constants"; // Unused for now
 
 interface ChatMessagesProps {
@@ -29,6 +30,7 @@ interface ChatMessagesProps {
 export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { showToolCalls, autoExpandThinking, fontSize } = useSettings();
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -67,7 +69,13 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     } else if (isPlanMessage(message)) {
       return <PlanMessageComponent key={key} message={message} />;
     } else if (isThinkingMessage(message)) {
-      return <ThinkingMessageComponent key={key} message={message} />;
+      return (
+        <ThinkingMessageComponent
+          key={key}
+          message={message}
+          autoExpand={autoExpandThinking}
+        />
+      );
     } else if (isTodoMessage(message)) {
       return <TodoMessageComponent key={key} message={message} />;
     } else if (isChatMessage(message)) {
@@ -76,18 +84,35 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     return null;
   };
 
+  const visibleMessages = showToolCalls
+    ? messages
+    : messages.filter(
+        (message) => !isToolMessage(message) && !isToolResultMessage(message),
+      );
+
+  const fontSizeClass =
+    fontSize === "sm"
+      ? "text-sm"
+      : fontSize === "lg"
+        ? "text-base"
+        : "text-[15px]";
+
   return (
     <div
       ref={messagesContainerRef}
-      className="flex-1 overflow-y-auto bg-white/70 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 p-3 sm:p-6 mb-3 sm:mb-6 rounded-2xl shadow-sm backdrop-blur-sm flex flex-col"
+      className={`flex-1 overflow-y-auto border p-3 sm:p-5 mb-3 sm:mb-5 rounded-[16px] shadow-[var(--shadow-sm)] flex flex-col ${fontSizeClass}`}
+      style={{
+        background: "var(--bg-surface)",
+        borderColor: "var(--surface-border)",
+      }}
     >
-      {messages.length === 0 ? (
+      {visibleMessages.length === 0 ? (
         <EmptyState />
       ) : (
         <>
           {/* Spacer div to push messages to the bottom */}
           <div className="flex-1" aria-hidden="true"></div>
-          {messages.map(renderMessage)}
+          {visibleMessages.map(renderMessage)}
           {isLoading && <LoadingComponent />}
           <div ref={messagesEndRef} />
         </>
@@ -98,16 +123,16 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
 
 function EmptyState() {
   return (
-    <div className="flex-1 flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
+    <div className="flex-1 flex items-center justify-center text-center text-[var(--text-secondary)]">
       <div>
-        <div className="text-6xl mb-6 opacity-60">
+        <div className="text-5xl mb-5 opacity-60">
           <span role="img" aria-label="chat icon">
             💬
           </span>
         </div>
-        <p className="text-lg font-medium">Start a conversation with Claude</p>
+        <p className="text-base font-medium">开始与 Claude 对话</p>
         <p className="text-sm mt-2 opacity-80">
-          Type your message below to begin
+          在下方输入内容即可开始
         </p>
       </div>
     </div>

@@ -54,6 +54,8 @@ export type SystemMessage = (
 export type ToolMessage = {
   type: "tool";
   content: string;
+  toolName?: string;
+  input?: Record<string, unknown>;
   timestamp: number;
 };
 

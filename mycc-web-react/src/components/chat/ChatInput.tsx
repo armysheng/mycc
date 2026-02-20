@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { StopIcon } from "@heroicons/react/24/solid";
+import { StopIcon, PaperAirplaneIcon } from "@heroicons/react/24/solid";
 import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
@@ -44,13 +44,18 @@ interface ChatInputProps {
   onInputChange: (value: string) => void;
   onSubmit: () => void;
   onAbort: () => void;
-  // Permission mode props
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   showPermissions?: boolean;
   permissionData?: PermissionData;
   planPermissionData?: PlanPermissionData;
 }
+
+const permissionModeName: Record<PermissionMode, string> = {
+  default: "标准执行",
+  plan: "规划优先",
+  acceptEdits: "自动接受编辑",
+};
 
 export function ChatInput({
   input,
@@ -69,22 +74,19 @@ export function ChatInput({
   const [isComposing, setIsComposing] = useState(false);
   const { enterBehavior } = useEnterBehavior();
 
-  // Focus input when not loading and not in permission mode
   useEffect(() => {
     if (!isLoading && !showPermissions && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isLoading, showPermissions]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = inputRef.current;
     if (textarea) {
       textarea.style.height = "auto";
       const computedStyle = getComputedStyle(textarea);
       const maxHeight =
-        parseInt(computedStyle.maxHeight, 10) ||
-        UI_CONSTANTS.TEXTAREA_MAX_HEIGHT;
+        parseInt(computedStyle.maxHeight, 10) || UI_CONSTANTS.TEXTAREA_MAX_HEIGHT;
       const scrollHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${scrollHeight}px`;
     }
@@ -95,13 +97,18 @@ export function ChatInput({
     onSubmit();
   };
 
+  const getNextPermissionMode = (current: PermissionMode): PermissionMode => {
+    const modes: PermissionMode[] = ["default", "plan", "acceptEdits"];
+    const currentIndex = modes.indexOf(current);
+    return modes[(currentIndex + 1) % modes.length];
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Permission mode toggle: Ctrl+Shift+M (all platforms)
     if (
       e.key === KEYBOARD_SHORTCUTS.PERMISSION_MODE_TOGGLE &&
       e.shiftKey &&
       e.ctrlKey &&
-      !e.metaKey && // Avoid conflicts with browser shortcuts on macOS
+      !e.metaKey &&
       !isComposing
     ) {
       e.preventDefault();
@@ -111,75 +118,25 @@ export function ChatInput({
 
     if (e.key === KEYBOARD_SHORTCUTS.SUBMIT && !isComposing) {
       if (enterBehavior === "newline") {
-        handleNewlineModeKeyDown(e);
-      } else {
-        handleSendModeKeyDown(e);
+        if (e.shiftKey) {
+          e.preventDefault();
+          onSubmit();
+        }
+      } else if (!e.shiftKey) {
+        e.preventDefault();
+        onSubmit();
       }
     }
   };
 
-  const handleNewlineModeKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    // Newline mode: Enter adds newline, Shift+Enter sends
-    if (e.shiftKey) {
-      e.preventDefault();
-      onSubmit();
-    }
-    // Enter is handled naturally by textarea (adds newline)
-  };
-
-  const handleSendModeKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    // Send mode: Enter sends, Shift+Enter adds newline
-    if (!e.shiftKey) {
-      e.preventDefault();
-      onSubmit();
-    }
-    // Shift+Enter is handled naturally by textarea (adds newline)
-  };
   const handleCompositionStart = () => {
     setIsComposing(true);
   };
 
   const handleCompositionEnd = () => {
-    // Add small delay to handle race condition between composition and keydown events
     setTimeout(() => setIsComposing(false), 0);
   };
 
-  // Get permission mode status indicator (CLI-style)
-  const getPermissionModeIndicator = (mode: PermissionMode): string => {
-    switch (mode) {
-      case "default":
-        return "🔧 normal mode";
-      case "plan":
-        return "⏸ plan mode";
-      case "acceptEdits":
-        return "⏵⏵ accept edits";
-    }
-  };
-
-  // Get clean permission mode name (without emoji)
-  const getPermissionModeName = (mode: PermissionMode): string => {
-    switch (mode) {
-      case "default":
-        return "normal mode";
-      case "plan":
-        return "plan mode";
-      case "acceptEdits":
-        return "accept edits";
-    }
-  };
-
-  // Get next permission mode for cycling
-  const getNextPermissionMode = (current: PermissionMode): PermissionMode => {
-    const modes: PermissionMode[] = ["default", "plan", "acceptEdits"];
-    const currentIndex = modes.indexOf(current);
-    return modes[(currentIndex + 1) % modes.length];
-  };
-
-  // If we're in plan permission mode, show the plan permission panel instead
   if (showPermissions && planPermissionData) {
     return (
       <PlanPermissionInputPanel
@@ -193,7 +150,6 @@ export function ChatInput({
     );
   }
 
-  // If we're in regular permission mode, show the permission panel instead
   if (showPermissions && permissionData) {
     return (
       <PermissionInputPanel
@@ -209,8 +165,8 @@ export function ChatInput({
   }
 
   return (
-    <div className="flex-shrink-0">
-      <form onSubmit={handleSubmit} className="relative">
+    <div className="flex-shrink-0 space-y-2">
+      <form onSubmit={handleSubmit} className="relative rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85">
         <textarea
           ref={inputRef}
           value={input}
@@ -218,47 +174,44 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={
-            isLoading && currentRequestId ? "Processing..." : "Type message..."
-          }
+          placeholder={isLoading && currentRequestId ? "正在处理中..." : "输入你的问题，Enter 发送"}
           rows={1}
-          className={`w-full px-4 py-3 pr-20 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm shadow-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none overflow-hidden min-h-[48px] max-h-[${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px]`}
+          style={{ maxHeight: `${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px` }}
+          className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
           disabled={isLoading}
         />
-        <div className="absolute right-2 bottom-3 flex gap-2">
+
+        <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {isLoading && currentRequestId && (
             <button
               type="button"
               onClick={onAbort}
-              className="p-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
-              title="Stop (ESC)"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300 dark:hover:bg-red-950/55"
+              title="停止 (ESC)"
             >
-              <StopIcon className="w-4 h-4" />
+              <StopIcon className="h-4 w-4" />
             </button>
           )}
+
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 text-sm"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isLoading ? "..." : permissionMode === "plan" ? "Plan" : "Send"}
+            <PaperAirplaneIcon className="h-3.5 w-3.5" />
+            {permissionMode === "plan" ? "规划" : "发送"}
           </button>
         </div>
       </form>
 
-      {/* Permission mode status bar */}
       <button
         type="button"
-        onClick={() =>
-          onPermissionModeChange(getNextPermissionMode(permissionMode))
-        }
-        className="w-full px-4 py-1 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-mono text-left transition-colors cursor-pointer"
-        title={`Current: ${getPermissionModeName(permissionMode)} - Click to cycle (Ctrl+Shift+M)`}
+        onClick={() => onPermissionModeChange(getNextPermissionMode(permissionMode))}
+        className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white/75 px-3 py-1.5 text-xs text-slate-600 transition hover:border-amber-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-amber-700 dark:hover:text-slate-100"
+        title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
       >
-        {getPermissionModeIndicator(permissionMode)}
-        <span className="ml-2 text-slate-400 dark:text-slate-500 text-[10px]">
-          - Click to cycle (Ctrl+Shift+M)
-        </span>
+        <span className="font-medium">执行模式：{permissionModeName[permissionMode]}</span>
+        <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Ctrl+Shift+M</span>
       </button>
     </div>
   );

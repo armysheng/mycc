@@ -20,6 +20,7 @@ import {
   isEditToolUseResult,
   isBashToolUseResult,
 } from "../utils/contentUtils";
+import { getToolDisplayText } from "../utils/toolDisplayMapper";
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -42,34 +43,68 @@ interface ChatMessageComponentProps {
 
 export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   const isUser = message.role === "user";
-  const colorScheme = isUser
-    ? "bg-blue-600 text-white"
-    : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100";
+  if (isUser) {
+    return (
+      <div className="mb-4 flex justify-end">
+        <div
+          className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-br-md px-4 py-3 border"
+          style={{
+            background: "var(--user-bubble)",
+            color: "var(--user-bubble-text)",
+            borderColor: "var(--surface-border)",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-4">
+            <span className="text-xs font-semibold opacity-90">你</span>
+            <TimestampComponent
+              timestamp={message.timestamp}
+              className="text-xs opacity-70"
+            />
+          </div>
+          <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+            {message.content}
+          </pre>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <MessageContainer
-      alignment={isUser ? "right" : "left"}
-      colorScheme={colorScheme}
-    >
-      <div className="mb-2 flex items-center justify-between gap-4">
-        <div
-          className={`text-xs font-semibold opacity-90 ${
-            isUser ? "text-blue-100" : "text-slate-600 dark:text-slate-400"
-          }`}
-        >
-          {isUser ? "User" : "Claude"}
-        </div>
-        <TimestampComponent
-          timestamp={message.timestamp}
-          className={`text-xs opacity-70 ${
-            isUser ? "text-blue-200" : "text-slate-500 dark:text-slate-500"
-          }`}
-        />
+    <div className="mb-4 flex justify-start">
+      <div
+        className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[10px] font-semibold"
+        style={{
+          background: "var(--bg-elevated)",
+          color: "var(--text-secondary)",
+          border: "1px solid var(--surface-border)",
+        }}
+      >
+        CC
       </div>
-      <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
-        {message.content}
-      </pre>
-    </MessageContainer>
+      <div
+        className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-bl-md px-4 py-3 border"
+        style={{
+          background: "var(--assistant-bubble)",
+          color: "var(--assistant-bubble-text)",
+          borderColor: "var(--surface-border)",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div className="mb-1.5 flex items-center justify-between gap-4">
+          <span className="text-xs font-semibold opacity-90">
+            Claude
+          </span>
+          <TimestampComponent
+            timestamp={message.timestamp}
+            className="text-xs opacity-70"
+          />
+        </div>
+        <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+          {message.content}
+        </pre>
+      </div>
+    </div>
   );
 }
 
@@ -116,24 +151,50 @@ export function SystemMessageComponent({
   const getLabel = () => {
     if (message.type === "system") return "System";
     if (message.type === "result") return "Result";
-    if (message.type === "error") return "Error";
+    if (message.type === "error") return "系统错误";
     return "Message";
   };
 
   const details = getDetails();
+  const isError = message.type === "error";
+  const isResult = message.type === "result";
+
+  const colorScheme = isError
+    ? {
+        header: "text-red-800 dark:text-red-300",
+        content: "text-red-700 dark:text-red-300",
+        border: "border-red-200 dark:border-red-700",
+        bg: "bg-red-50/80 dark:bg-red-900/20 border border-red-200 dark:border-red-800",
+      }
+    : isResult
+      ? {
+          header: "text-emerald-800 dark:text-emerald-300",
+          content: "text-emerald-700 dark:text-emerald-300",
+          border: "border-emerald-200 dark:border-emerald-700",
+          bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        }
+      : {
+          header: "text-blue-800 dark:text-blue-300",
+          content: "text-blue-700 dark:text-blue-300",
+          border: "border-blue-200 dark:border-blue-700",
+          bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
+        };
 
   return (
     <CollapsibleDetails
       label={getLabel()}
       details={details}
       badge={"subtype" in message ? message.subtype : undefined}
-      icon={<span className="bg-blue-400 dark:bg-blue-500">⚙</span>}
-      colorScheme={{
-        header: "text-blue-800 dark:text-blue-300",
-        content: "text-blue-700 dark:text-blue-300",
-        border: "border-blue-200 dark:border-blue-700",
-        bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
-      }}
+      icon={
+        isError ? (
+          <span className="bg-red-500 dark:bg-red-600">!</span>
+        ) : (
+          <span className="bg-blue-400 dark:bg-blue-500">⚙</span>
+        )
+      }
+      colorScheme={colorScheme}
+      defaultExpanded={isError}
+      detailsBorderStyle={isError ? "dashed" : "solid"}
     />
   );
 }
@@ -143,18 +204,26 @@ interface ToolMessageComponentProps {
 }
 
 export function ToolMessageComponent({ message }: ToolMessageComponentProps) {
+  const displayText = getToolDisplayText(
+    message.toolName || "Tool",
+    message.input,
+  );
+
   return (
-    <MessageContainer
-      alignment="left"
-      colorScheme="bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100"
-    >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-        <div className="w-4 h-4 bg-emerald-500 dark:bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs">
-          🔧
-        </div>
-        {message.content}
-      </div>
-    </MessageContainer>
+    <CollapsibleDetails
+      label={displayText}
+      details={message.content}
+      badge="调用中"
+      icon={<span className="bg-emerald-400 dark:bg-emerald-500">⚡</span>}
+      colorScheme={{
+        header: "text-emerald-800 dark:text-emerald-300",
+        content: "text-emerald-700 dark:text-emerald-300",
+        border: "border-emerald-200 dark:border-emerald-700",
+        bg: "bg-emerald-50/90 dark:bg-emerald-900/20",
+      }}
+      showPreview={false}
+      variant="pill"
+    />
   );
 }
 
@@ -169,7 +238,7 @@ export function ToolResultMessageComponent({
 
   let previewContent: string | undefined;
   let previewSummary: string | undefined;
-  let maxPreviewLines = 5;
+  let maxPreviewLines = 3;
   let displayContent = message.content;
   let defaultExpanded = false;
 
@@ -194,7 +263,7 @@ export function ToolResultMessageComponent({
       toolUseResult.stdout || "",
       toolUseResult.stderr || "",
       isError,
-      5,
+      3,
     );
     if (bashPreview.hasMore) {
       previewContent = bashPreview.preview;
@@ -204,7 +273,7 @@ export function ToolResultMessageComponent({
   // Handle specific tool results that benefit from content preview
   // Note: Read tool should NOT show preview, only line counts in summary
   else if (message.toolName === "Grep" && message.content.trim().length > 0) {
-    const contentPreview = createContentPreview(message.content, 5);
+    const contentPreview = createContentPreview(message.content, 3);
     if (contentPreview.hasMore) {
       previewContent = contentPreview.preview;
     }
@@ -218,21 +287,22 @@ export function ToolResultMessageComponent({
 
   return (
     <CollapsibleDetails
-      label={message.toolName}
+      label={`结果: ${message.toolName}`}
       details={displayContent}
-      badge={message.toolName === "Edit" ? undefined : message.summary}
+      badge={message.summary}
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">✓</span>}
       colorScheme={{
         header: "text-emerald-800 dark:text-emerald-300",
         content: "text-emerald-700 dark:text-emerald-300",
         border: "border-emerald-200 dark:border-emerald-700",
-        bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        bg: "bg-emerald-50/90 dark:bg-emerald-900/20",
       }}
       previewContent={previewContent}
       previewSummary={previewSummary}
       maxPreviewLines={maxPreviewLines}
       showPreview={shouldShowPreview}
       defaultExpanded={defaultExpanded}
+      variant="pill"
     />
   );
 }
@@ -276,14 +346,16 @@ export function PlanMessageComponent({ message }: PlanMessageComponentProps) {
 
 interface ThinkingMessageComponentProps {
   message: ThinkingMessage;
+  autoExpand?: boolean;
 }
 
 export function ThinkingMessageComponent({
   message,
+  autoExpand = false,
 }: ThinkingMessageComponentProps) {
   return (
     <CollapsibleDetails
-      label="Claude's Reasoning"
+      label="思考过程"
       details={message.content}
       badge="thinking"
       icon={<span className="bg-purple-400 dark:bg-purple-500">💭</span>}
@@ -291,9 +363,10 @@ export function ThinkingMessageComponent({
         header: "text-purple-700 dark:text-purple-300",
         content: "text-purple-600 dark:text-purple-400 italic",
         border: "border-purple-200 dark:border-purple-700",
-        bg: "bg-purple-50/60 dark:bg-purple-900/15 border border-purple-200 dark:border-purple-800",
+        bg: "bg-purple-50/70 dark:bg-purple-900/15 border border-purple-200 border-dashed dark:border-purple-800",
       }}
-      defaultExpanded={true}
+      defaultExpanded={autoExpand}
+      detailsBorderStyle="dashed"
     />
   );
 }
@@ -386,14 +459,17 @@ export function LoadingComponent() {
   return (
     <MessageContainer
       alignment="left"
-      colorScheme="bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100"
+      colorScheme="panel-surface border"
     >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-slate-600 dark:text-slate-400">
+      <div
+        className="text-xs font-semibold mb-2 opacity-90"
+        style={{ color: "var(--text-secondary)" }}
+      >
         Claude
       </div>
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-        <span className="animate-pulse">Thinking...</span>
+        <span className="animate-pulse">思考中...</span>
       </div>
     </MessageContainer>
   );

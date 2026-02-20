@@ -48,16 +48,59 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   }, [settings.enterBehavior, updateSettings]);
 
+  const toggleShowToolCalls = useCallback(() => {
+    updateSettings({
+      showToolCalls: !settings.showToolCalls,
+    });
+  }, [settings.showToolCalls, updateSettings]);
+
+  const toggleAutoExpandThinking = useCallback(() => {
+    updateSettings({
+      autoExpandThinking: !settings.autoExpandThinking,
+    });
+  }, [settings.autoExpandThinking, updateSettings]);
+
+  const setFontSize = useCallback(
+    (fontSize: "sm" | "md" | "lg") => {
+      updateSettings({ fontSize });
+    },
+    [updateSettings],
+  );
+
+  const setProfileNickname = useCallback(
+    (profileNickname: string) => {
+      updateSettings({ profileNickname });
+    },
+    [updateSettings],
+  );
+
   const value = useMemo(
     (): SettingsContextType => ({
       settings,
       theme: settings.theme,
       enterBehavior: settings.enterBehavior,
+      showToolCalls: settings.showToolCalls,
+      autoExpandThinking: settings.autoExpandThinking,
+      fontSize: settings.fontSize,
+      profileNickname: settings.profileNickname,
       toggleTheme,
       toggleEnterBehavior,
+      toggleShowToolCalls,
+      toggleAutoExpandThinking,
+      setFontSize,
+      setProfileNickname,
       updateSettings,
     }),
-    [settings, toggleTheme, toggleEnterBehavior, updateSettings],
+    [
+      settings,
+      toggleTheme,
+      toggleEnterBehavior,
+      toggleShowToolCalls,
+      toggleAutoExpandThinking,
+      setFontSize,
+      setProfileNickname,
+      updateSettings,
+    ],
   );
 
   return (

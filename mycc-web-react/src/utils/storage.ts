@@ -1,5 +1,5 @@
 import type { AppSettings, Theme, EnterBehavior } from "../types/settings";
-import { CURRENT_SETTINGS_VERSION } from "../types/settings";
+import { CURRENT_SETTINGS_VERSION, DEFAULT_SETTINGS } from "../types/settings";
 
 export const STORAGE_KEYS = {
   // Unified settings key
@@ -44,8 +44,8 @@ export function getSettings(): AppSettings {
     null,
   );
 
-  if (unifiedSettings && unifiedSettings.version === CURRENT_SETTINGS_VERSION) {
-    return unifiedSettings;
+  if (unifiedSettings) {
+    return migrateSettings(unifiedSettings);
   }
 
   // If no unified settings or outdated version, migrate from legacy format
@@ -75,6 +75,10 @@ function migrateLegacySettings(): AppSettings {
   const migratedSettings: AppSettings = {
     theme: legacyTheme,
     enterBehavior: legacyEnterBehavior,
+    showToolCalls: DEFAULT_SETTINGS.showToolCalls,
+    autoExpandThinking: DEFAULT_SETTINGS.autoExpandThinking,
+    fontSize: DEFAULT_SETTINGS.fontSize,
+    profileNickname: DEFAULT_SETTINGS.profileNickname,
     version: CURRENT_SETTINGS_VERSION,
   };
 
@@ -84,6 +88,21 @@ function migrateLegacySettings(): AppSettings {
   // Clean up legacy storage keys
   removeStorageItem(STORAGE_KEYS.THEME);
   removeStorageItem(STORAGE_KEYS.ENTER_BEHAVIOR);
+
+  return migratedSettings;
+}
+
+function migrateSettings(settings: Partial<AppSettings>): AppSettings {
+  const migratedSettings: AppSettings = {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    version: CURRENT_SETTINGS_VERSION,
+  };
+
+  // Persist migrated version if source data is outdated/incomplete
+  if (settings.version !== CURRENT_SETTINGS_VERSION) {
+    setSettings(migratedSettings);
+  }
 
   return migratedSettings;
 }

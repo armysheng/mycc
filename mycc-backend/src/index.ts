@@ -73,6 +73,10 @@ async function start() {
       username: process.env.VPS_SSH_USER || '',
       privateKeyPath: process.env.VPS_SSH_KEY_PATH || '',
       maxConnections: parseInt(process.env.VPS_SSH_MAX_CONNECTIONS || '5'),
+      readyTimeoutMs: parseInt(process.env.VPS_SSH_READY_TIMEOUT_MS || '30000'),
+      forceIPv4: process.env.VPS_SSH_FORCE_IPV4 !== 'false',
+      keepaliveIntervalMs: parseInt(process.env.VPS_SSH_KEEPALIVE_INTERVAL_MS || '10000'),
+      keepaliveCountMax: parseInt(process.env.VPS_SSH_KEEPALIVE_COUNT_MAX || '3'),
     };
 
     if (!sshConfig.host || !sshConfig.username || !sshConfig.privateKeyPath) {

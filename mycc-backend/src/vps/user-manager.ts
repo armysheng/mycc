@@ -8,6 +8,51 @@ import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
 export class VPSUserManager {
   /**
+   * 将模板文件复制到用户 workspace 并替换变量
+   *
+   * 注意：linuxUser 已通过 sanitizeLinuxUsername 校验，可安全用于路径拼接。
+   * escapeShellArg 仅用于命令参数。
+   */
+  private async initWorkspace(
+    connection: any,
+    linuxUser: string,
+    nickname: string
+  ): Promise<void> {
+    const sshPool = getSSHPool();
+    const templateDir = '/opt/mycc/templates/user-workspace';
+    const workspaceDir = `/home/${linuxUser}/workspace`;
+
+    // 1. 确保模板目录存在
+    const checkCmd = `sudo test -d ${templateDir}`;
+    const checkResult = await sshPool.exec(connection, checkCmd);
+    if (checkResult.exitCode !== 0) {
+      throw new Error(`模板目录不存在: ${templateDir}`);
+    }
+
+    // 2. 复制模板文件
+    const copyCmd = `sudo cp -r ${templateDir}/. ${workspaceDir}/`;
+    const copyResult = await sshPool.exec(connection, copyCmd);
+    if (copyResult.exitCode !== 0) {
+      throw new Error(`复制模板失败: ${copyResult.stderr}`);
+    }
+
+    // 3. 替换变量 {{USERNAME}}
+    const safeNickname = nickname.replace(/[/&\\]/g, '\\$&');
+    const sedCmd = `sudo find ${workspaceDir} -type f \\( -name '*.md' -o -name '*.json' \\) -exec sed -i 's/{{USERNAME}}/${safeNickname}/g' {} +`;
+    const sedResult = await sshPool.exec(connection, sedCmd);
+    if (sedResult.exitCode !== 0) {
+      console.warn(`⚠️ 变量替换部分失败: ${sedResult.stderr}`);
+    }
+
+    // 4. 设置文件归属
+    const chownCmd = `sudo chown -R ${linuxUser}:mycc /home/${linuxUser}`;
+    const chownResult = await sshPool.exec(connection, chownCmd);
+    if (chownResult.exitCode !== 0) {
+      throw new Error(`设置文件权限失败: ${chownResult.stderr}`);
+    }
+  }
+
+  /**
    * 检查用户是否存在
    */
   async userExists(linuxUser: string): Promise<boolean> {
@@ -33,7 +78,7 @@ export class VPSUserManager {
    * 2. 创建工作目录 /home/{linuxUser}/workspace
    * 3. 配置 sudoers（允许执行 claude 命令）
    */
-  async createUser(linuxUser: string): Promise<void> {
+  async createUser(linuxUser: string, nickname: string = '用户'): Promise<void> {
     // 验证用户名格式
     sanitizeLinuxUsername(linuxUser);
 
@@ -51,15 +96,16 @@ export class VPSUserManager {
         throw new Error(`创建用户失败: ${createResult.stderr}`);
       }
 
-      // 2. 创建工作目录
-      const escapedUser = escapeShellArg(linuxUser);
-      const workspaceDir = `/home/${linuxUser}/workspace`;
-      const mkdirCmd = `sudo mkdir -p ${escapeShellArg(workspaceDir)}/.claude/projects && sudo chown -R ${escapedUser}:mycc /home/${escapedUser}`;
+      // 2. 创建基础工作目录（模板复制前保证目标目录存在）
+      const mkdirCmd = `sudo mkdir -p /home/${linuxUser}/workspace`;
       const mkdirResult = await sshPool.exec(connection, mkdirCmd);
 
       if (mkdirResult.exitCode !== 0) {
         throw new Error(`创建工作目录失败: ${mkdirResult.stderr}`);
       }
+
+      // 3. 初始化 workspace（复制模板 + 替换变量 + 设置权限）
+      await this.initWorkspace(connection, linuxUser, nickname);
 
       console.log(`✅ VPS 用户创建成功: ${linuxUser}`);
     } catch (err) {
