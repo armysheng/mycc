@@ -1,11 +1,10 @@
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from '../types/auth';
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+import { getAuthLoginUrl, getAuthMeUrl, getAuthRegisterUrl } from "../config/api";
 
 export async function login(data: LoginRequest): Promise<AuthResponse> {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
+    const res = await fetch(getAuthLoginUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -22,7 +21,7 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
 
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/register`, {
+    const res = await fetch(getAuthRegisterUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -39,7 +38,7 @@ export async function register(data: RegisterRequest): Promise<AuthResponse> {
 
 export async function getCurrentUser(token: string): Promise<{ success: boolean; data?: User; error?: string }> {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/me`, {
+    const res = await fetch(getAuthMeUrl(), {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {

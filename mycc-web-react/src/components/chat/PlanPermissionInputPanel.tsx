@@ -4,16 +4,13 @@ interface PlanPermissionInputPanelProps {
   onAcceptWithEdits: () => void;
   onAcceptDefault: () => void;
   onKeepPlanning: () => void;
-  // Optional extension point for custom button styling (e.g., demo effects)
   getButtonClassName?: (
     buttonType: "acceptWithEdits" | "acceptDefault" | "keepPlanning",
     defaultClassName: string,
   ) => string;
-  // Optional callback for demo automation to control selection state
   onSelectionChange?: (
     selection: "acceptWithEdits" | "acceptDefault" | "keepPlanning",
   ) => void;
-  // Optional external control for demo automation (overrides internal state)
   externalSelectedOption?:
     | "acceptWithEdits"
     | "acceptDefault"
@@ -25,24 +22,19 @@ export function PlanPermissionInputPanel({
   onAcceptWithEdits,
   onAcceptDefault,
   onKeepPlanning,
-  getButtonClassName = (_, defaultClassName) => defaultClassName, // Default: no modification
-  onSelectionChange, // Optional callback for demo automation
-  externalSelectedOption, // Optional external control for demo automation
+  getButtonClassName = (_, defaultClassName) => defaultClassName,
+  onSelectionChange,
+  externalSelectedOption,
 }: PlanPermissionInputPanelProps) {
   const [selectedOption, setSelectedOption] = useState<
     "acceptWithEdits" | "acceptDefault" | "keepPlanning" | null
   >("acceptWithEdits");
 
-  // Check if component is externally controlled (for demo mode)
   const isExternallyControlled = externalSelectedOption !== undefined;
-
-  // Use external selection if provided (for demo), otherwise use internal state
   const effectiveSelectedOption = externalSelectedOption ?? selectedOption;
 
-  // Update selection state based on external changes (for demo automation)
   const updateSelectedOption = useCallback(
     (option: "acceptWithEdits" | "acceptDefault" | "keepPlanning") => {
-      // Only update internal state if not controlled externally
       if (externalSelectedOption === undefined) {
         setSelectedOption(option);
       }
@@ -51,17 +43,10 @@ export function PlanPermissionInputPanel({
     [onSelectionChange, externalSelectedOption],
   );
 
-  // Handle keyboard navigation
   useEffect(() => {
-    // Skip keyboard navigation if controlled externally (demo mode)
     if (externalSelectedOption !== undefined) return;
 
-    // Define options array inside useEffect to avoid unnecessary re-renders
-    const options = [
-      "acceptWithEdits",
-      "acceptDefault",
-      "keepPlanning",
-    ] as const;
+    const options = ["acceptWithEdits", "acceptDefault", "keepPlanning"] as const;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") {
@@ -76,7 +61,6 @@ export function PlanPermissionInputPanel({
         updateSelectedOption(options[prevIndex]);
       } else if (e.key === "Enter" && effectiveSelectedOption) {
         e.preventDefault();
-        // Execute the currently selected option
         if (effectiveSelectedOption === "acceptWithEdits") {
           onAcceptWithEdits();
         } else if (effectiveSelectedOption === "acceptDefault") {
@@ -86,7 +70,7 @@ export function PlanPermissionInputPanel({
         }
       } else if (e.key === "Escape") {
         e.preventDefault();
-        onKeepPlanning(); // "Keep planning" option when ESC is pressed
+        onKeepPlanning();
       }
     };
 
@@ -102,15 +86,12 @@ export function PlanPermissionInputPanel({
   ]);
 
   return (
-    <div className="flex-shrink-0 px-4 py-4 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl backdrop-blur-sm shadow-sm">
-      {/* Content */}
+    <div className="flex-shrink-0 rounded-2xl border border-sky-200/80 bg-gradient-to-b from-sky-50 to-white p-4 shadow-sm dark:border-sky-900/35 dark:from-sky-950/20 dark:to-slate-900">
       <div className="mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Choose how to proceed (Press ESC to keep planning)
-        </p>
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">规划阶段确认</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">请选择下一步动作（ESC = 继续规划）</p>
       </div>
 
-      {/* Permission options with selection state */}
       <div className="space-y-2">
         <button
           onClick={() => {
@@ -131,22 +112,14 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "acceptWithEdits",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full rounded-lg border p-3 text-left transition-all focus:outline-none ${
               effectiveSelectedOption === "acceptWithEdits"
-                ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-500 dark:border-green-400 shadow-sm"
-                : "border-2 border-transparent"
+                ? "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"
+                : "border-slate-200 bg-white hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-emerald-700"
             }`,
           )}
         >
-          <span
-            className={`text-sm font-medium ${
-              effectiveSelectedOption === "acceptWithEdits"
-                ? "text-green-700 dark:text-green-300"
-                : "text-slate-700 dark:text-slate-300"
-            }`}
-          >
-            Yes, and auto-accept edits
-          </span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">接受并自动应用编辑</span>
         </button>
 
         <button
@@ -168,22 +141,14 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "acceptDefault",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full rounded-lg border p-3 text-left transition-all focus:outline-none ${
               effectiveSelectedOption === "acceptDefault"
-                ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 shadow-sm"
-                : "border-2 border-transparent"
+                ? "border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20"
+                : "border-slate-200 bg-white hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-700"
             }`,
           )}
         >
-          <span
-            className={`text-sm font-medium ${
-              effectiveSelectedOption === "acceptDefault"
-                ? "text-blue-700 dark:text-blue-300"
-                : "text-slate-700 dark:text-slate-300"
-            }`}
-          >
-            Yes, and manually approve edits
-          </span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">接受并手动审批编辑</span>
         </button>
 
         <button
@@ -205,22 +170,14 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "keepPlanning",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full rounded-lg border p-3 text-left transition-all focus:outline-none ${
               effectiveSelectedOption === "keepPlanning"
-                ? "bg-slate-50 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-500 shadow-sm"
-                : "border-2 border-transparent"
+                ? "border-slate-400 bg-slate-50 dark:border-slate-600 dark:bg-slate-800"
+                : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-500"
             }`,
           )}
         >
-          <span
-            className={`text-sm font-medium ${
-              effectiveSelectedOption === "keepPlanning"
-                ? "text-slate-800 dark:text-slate-200"
-                : "text-slate-700 dark:text-slate-300"
-            }`}
-          >
-            No, keep planning
-          </span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">继续规划</span>
         </button>
       </div>
     </div>

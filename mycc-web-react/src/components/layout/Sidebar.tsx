@@ -2,12 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MagnifyingGlassIcon,
   MoonIcon,
+  PencilIcon,
+  PlusIcon,
   SunIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
-import { getChatSessionsUrl, getAuthHeaders } from "../../config/api";
+import {
+  getChatSessionRenameUrl,
+  getChatSessionsUrl,
+  getAuthHeaders,
+} from "../../config/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { useSettings } from "../../hooks/useSettings";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../../utils/apiError";
@@ -69,6 +75,9 @@ export function Sidebar({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -139,6 +148,49 @@ export function Sidebar({
     onClose?.();
   }, [onNewChat, onClose]);
 
+  const startRename = useCallback(
+    (sessionId: string, currentTitle?: string | null) => {
+      setRenamingSessionId(sessionId);
+      setRenameDraft(currentTitle || "");
+    },
+    [],
+  );
+
+  const cancelRename = useCallback(() => {
+    setRenamingSessionId(null);
+    setRenameDraft("");
+  }, []);
+
+  const submitRename = useCallback(
+    async (sessionId: string) => {
+      const title = renameDraft.trim();
+      if (!title || !token || renaming) {
+        return;
+      }
+
+      try {
+        setRenaming(true);
+        const response = await fetch(getChatSessionRenameUrl(sessionId), {
+          method: "POST",
+          headers: getAuthHeaders(token),
+          body: JSON.stringify({ newTitle: title }),
+        });
+        if (!response.ok) {
+          const parsed = await parseApiErrorResponse(response);
+          throw new Error(parsed.message);
+        }
+
+        await loadConversations();
+        cancelRename();
+      } catch (renameError) {
+        setError(getNetworkErrorMessage(renameError, "重命名会话失败"));
+      } finally {
+        setRenaming(false);
+      }
+    },
+    [cancelRename, loadConversations, renameDraft, renaming, token],
+  );
+
   const sidebarClassName = overlayMode
     ? `panel-surface border-r flex flex-col fixed inset-y-0 left-0 z-40 shadow-xl transition-transform duration-200 ${
         isOpen ? "translate-x-0" : "-translate-x-full"
@@ -150,15 +202,27 @@ export function Sidebar({
       className={sidebarClassName}
       style={{ width: "var(--sidebar-width)" }}
     >
-      <div className="p-4 border-b panel-surface">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-4 pt-5 pb-3 border-b panel-surface">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-sky-500 text-white flex items-center justify-center font-semibold">
+            <div
+              className="w-9 h-9 rounded-[10px] text-white flex items-center justify-center font-bold text-[13px] tracking-[-0.3px]"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--accent) 0%, #D47F20 100%)",
+                boxShadow: "0 2px 8px rgba(232, 169, 62, 0.3)",
+              }}
+            >
               cc
             </div>
             <div>
-              <div className="text-sm font-semibold">MyCC</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+              <div
+                className="text-sm font-semibold"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                MyCC
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] tracking-[0.2px]">
                 多用户助手
               </div>
             </div>
@@ -167,41 +231,51 @@ export function Sidebar({
             <button
               type="button"
               onClick={onClose}
-              className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-[var(--bg-hover)]"
               aria-label="关闭侧边栏"
             >
-              <XMarkIcon className="h-4 w-4 text-slate-500" />
+              <XMarkIcon className="h-4 w-4 text-[var(--text-secondary)]" />
             </button>
           )}
         </div>
         <button
           type="button"
           onClick={handleNewChat}
-          className="w-full rounded-lg px-3 py-2 text-sm font-medium bg-sky-500 hover:bg-sky-600 text-white transition-colors"
+          className="w-full rounded-xl px-3.5 py-2.5 text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-all duration-200"
+          style={{
+            background: "var(--accent)",
+            color: "var(--text-inverse)",
+            boxShadow: "0 2px 8px rgba(232, 169, 62, 0.25)",
+          }}
         >
+          <PlusIcon className="w-4 h-4" />
           新对话
         </button>
       </div>
 
-      <div className="p-3 border-b panel-surface">
+      <div className="px-4 py-2 border-b panel-surface">
         <label className="relative block">
-          <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="搜索对话"
-            className="w-full rounded-lg border panel-surface pl-8 pr-3 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full rounded-lg border pl-9 pr-3 py-2 text-xs bg-[var(--bg-elevated)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+            style={{
+              borderColor: "var(--surface-border)",
+              boxShadow: "none",
+            }}
           />
         </label>
       </div>
 
-      <div className="p-3 text-[11px] text-slate-500 dark:text-slate-400 border-b">
+      <div className="px-4 py-2 text-[11px] text-[var(--text-muted)] border-b">
         工作区: <span className="font-mono">{currentPathLabel || "/"}</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
         {loading && (
-          <div className="text-xs text-slate-500 dark:text-slate-400">加载中...</div>
+          <div className="text-xs text-[var(--text-muted)] px-1">加载中...</div>
         )}
         {!loading && error && (
           <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 p-3">
@@ -216,7 +290,7 @@ export function Sidebar({
           </div>
         )}
         {!loading && !error && Object.keys(groupedConversations).length === 0 && (
-          <p className="text-xs text-slate-500 dark:text-slate-400">暂无会话</p>
+          <p className="text-xs text-[var(--text-muted)] px-1">暂无会话</p>
         )}
 
         {(["今天", "昨天", "更早"] as const).map((groupName) => {
@@ -224,30 +298,105 @@ export function Sidebar({
           if (list.length === 0) return null;
           return (
             <section key={groupName}>
-              <h3 className="mb-2 px-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              <h3 className="mb-1.5 px-1 text-[11px] font-medium text-[var(--text-muted)]">
                 {groupName}
               </h3>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {list.map((conversation) => {
                   const isActive = activeSessionId === conversation.sessionId;
+                  const isRenaming = renamingSessionId === conversation.sessionId;
                   return (
-                    <button
+                    <div
                       key={conversation.sessionId}
-                      type="button"
-                      onClick={() => handleConversationSelect(conversation.sessionId)}
-                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-all ${
                         isActive
-                          ? "border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20"
-                          : "border-transparent hover:border-slate-200 hover:bg-slate-100 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                          ? "bg-[var(--accent-subtle)]"
+                          : "border-transparent hover:bg-[var(--bg-hover)]"
                       }`}
+                      style={{
+                        borderColor: isActive
+                          ? "var(--accent-border)"
+                          : "transparent",
+                      }}
                     >
-                      <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
-                        {conversation.customTitle || "未命名对话"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {conversation.lastMessagePreview}
-                      </p>
-                    </button>
+                      {isRenaming ? (
+                        <div className="space-y-1.5">
+                          <input
+                            value={renameDraft}
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void submitRename(conversation.sessionId);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelRename();
+                              }
+                            }}
+                            className="w-full rounded-md border px-2 py-1 text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none"
+                            style={{ borderColor: "var(--accent-border)" }}
+                            placeholder="输入会话名称"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void submitRename(conversation.sessionId)}
+                              disabled={renaming}
+                              className="h-6 px-2 rounded border text-[11px] text-[var(--text-primary)] disabled:opacity-50"
+                            >
+                              保存
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelRename}
+                              disabled={renaming}
+                              className="h-6 px-2 rounded border text-[11px] text-[var(--text-secondary)] disabled:opacity-50"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleConversationSelect(conversation.sessionId)}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <p className="text-xs font-medium text-[var(--text-primary)] truncate">
+                                {conversation.customTitle || "未命名对话"}
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                startRename(
+                                  conversation.sessionId,
+                                  conversation.customTitle,
+                                )
+                              }
+                              className="h-5 w-5 rounded flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                              title="重命名会话"
+                              aria-label="重命名会话"
+                            >
+                              <PencilIcon className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleConversationSelect(conversation.sessionId)}
+                            className="mt-1 w-full text-left"
+                          >
+                            <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                              {conversation.lastMessagePreview}
+                            </p>
+                          </button>
+                        </>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -256,34 +405,36 @@ export function Sidebar({
         })}
       </div>
 
-      <div className="p-3 border-t panel-surface">
+      <div className="px-3 py-3 border-t panel-surface">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center text-xs font-semibold">
+          <div className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] text-[var(--text-primary)] flex items-center justify-center text-xs font-semibold">
             {avatarChar}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium truncate">{displayName}</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+            <p className="text-xs font-medium truncate text-[var(--text-primary)]">
+              {displayName}
+            </p>
+            <p className="text-[11px] text-[var(--text-muted)] truncate">
               {user?.plan || "free"}
             </p>
           </div>
           <button
             type="button"
             onClick={toggleTheme}
-            className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-[var(--bg-hover)]"
             aria-label="切换主题"
             title="切换主题"
           >
             {theme === "dark" ? (
-              <SunIcon className="w-4 h-4 text-slate-500" />
+              <SunIcon className="w-4 h-4 text-[var(--text-secondary)]" />
             ) : (
-              <MoonIcon className="w-4 h-4 text-slate-500" />
+              <MoonIcon className="w-4 h-4 text-[var(--text-secondary)]" />
             )}
           </button>
           <button
             type="button"
             onClick={onOpenSettings}
-            className="h-8 px-2 rounded-md border panel-surface text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="h-8 px-2 rounded-md border panel-surface text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
           >
             设置
           </button>

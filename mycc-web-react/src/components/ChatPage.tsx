@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bars3Icon, ChevronLeftIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -13,7 +13,6 @@ import { usePermissions } from "../hooks/chat/usePermissions";
 import { usePermissionMode } from "../hooks/chat/usePermissionMode";
 import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
-import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
@@ -52,7 +51,6 @@ export function ChatPage() {
 
   // Get sessionId from query parameters
   const sessionId = searchParams.get("sessionId");
-  const isLoadedConversation = !!sessionId;
 
   const { processStreamLine } = useClaudeStreaming();
   const { abortRequest, createAbortHandler } = useAbortController();
@@ -367,10 +365,6 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
-  const handleBackToChat = useCallback(() => {
-    navigate({ search: "" });
-  }, [navigate]);
-
   const handleBackToProjects = useCallback(() => {
     navigate("/");
   }, [navigate]);
@@ -491,26 +485,17 @@ export function ChatPage() {
         />
       )}
 
-      <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
+      <div className="flex-1 min-w-0 p-3 sm:p-5 h-screen flex flex-col relative z-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0">
           <div className="flex items-center gap-4 min-w-0">
             {isSidebarOverlayMode && (
               <button
                 onClick={handleSidebarToggle}
-                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                className="h-9 w-9 rounded-lg panel-surface border hover:bg-[var(--bg-hover)] transition-all duration-200 shadow-[var(--shadow-sm)] flex items-center justify-center"
                 aria-label="打开会话侧边栏"
               >
-                <Bars3Icon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
-            {isLoadedConversation && (
-              <button
-                onClick={handleBackToChat}
-                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
-                aria-label="Back to chat"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <Bars3Icon className="w-5 h-5 text-[var(--text-secondary)]" />
               </button>
             )}
             <div className="min-w-0">
@@ -518,44 +503,23 @@ export function ChatPage() {
                 <div className="flex items-center">
                   <button
                     onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
+                    className="text-[var(--text-primary)] text-lg sm:text-[26px] font-bold tracking-tight hover:opacity-85 transition-colors duration-200 rounded-md px-1 -mx-1 truncate"
+                    style={{ fontFamily: "var(--font-display)" }}
                     aria-label="Back to project selection"
                   >
-                    Claude Code Web UI
+                    MyCC Workspace
                   </button>
-                  {sessionId && (
-                    <>
-                      <span
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
-                        aria-hidden="true"
-                      >
-                        {" "}
-                        ›{" "}
-                      </span>
-                      <h1
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
-                        aria-current="page"
-                      >
-                        Conversation
-                      </h1>
-                    </>
-                  )}
                 </div>
               </nav>
               {workingDirectory && (
-                <div className="flex items-center text-sm font-mono mt-1">
+                <div className="flex items-center text-xs font-mono mt-1 text-[var(--text-muted)]">
                   <button
                     onClick={handleBackToProjectChat}
-                    className="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
+                    className="hover:text-[var(--accent)] transition-colors duration-200 rounded px-1 -mx-1 cursor-pointer"
                     aria-label={`Return to new chat in ${workingDirectory}`}
                   >
                     {workingDirectory}
                   </button>
-                  {sessionId && (
-                    <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                      Session: {sessionId.substring(0, 8)}...
-                    </span>
-                  )}
                 </div>
               )}
             </div>
@@ -564,7 +528,7 @@ export function ChatPage() {
             {isRightPanelOverlayMode ? (
               <button
                 onClick={handleRightPanelToggle}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
               >
                 {isRightPanelOverlayOpen ? "关闭工具箱" : "打开工具箱"}
               </button>
@@ -573,7 +537,7 @@ export function ChatPage() {
                 {!isRightPanelCollapsed && (
                   <button
                     onClick={handleRightPanelToggle}
-                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     收起工具箱
                   </button>
@@ -581,14 +545,13 @@ export function ChatPage() {
                 {isRightPanelCollapsed && (
                   <button
                     onClick={handleRightPanelToggle}
-                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     打开工具箱
                   </button>
                 )}
               </>
             )}
-            <SettingsButton onClick={handleSettingsClick} />
           </div>
         </div>
 
@@ -597,9 +560,7 @@ export function ChatPage() {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 dark:text-slate-400">
-                Loading conversation history...
-              </p>
+              <p className="text-slate-600 dark:text-slate-400">正在加载会话...</p>
             </div>
           </div>
         ) : historyError ? (
@@ -621,7 +582,7 @@ export function ChatPage() {
                 </svg>
               </div>
               <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                Error Loading Conversation
+                会话加载失败
               </h2>
               <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 {historyError}
@@ -630,7 +591,7 @@ export function ChatPage() {
                 onClick={() => navigate({ search: "" })}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Start New Conversation
+                开始新会话
               </button>
             </div>
           </div>

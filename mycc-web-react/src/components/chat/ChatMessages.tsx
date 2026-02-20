@@ -100,7 +100,11 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
   return (
     <div
       ref={messagesContainerRef}
-      className={`flex-1 overflow-y-auto bg-white/70 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 p-3 sm:p-6 mb-3 sm:mb-6 rounded-2xl shadow-sm backdrop-blur-sm flex flex-col ${fontSizeClass}`}
+      className={`flex-1 overflow-y-auto border p-3 sm:p-5 mb-3 sm:mb-5 rounded-[16px] shadow-[var(--shadow-sm)] flex flex-col ${fontSizeClass}`}
+      style={{
+        background: "var(--bg-surface)",
+        borderColor: "var(--surface-border)",
+      }}
     >
       {visibleMessages.length === 0 ? (
         <EmptyState />
@@ -119,16 +123,16 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
 
 function EmptyState() {
   return (
-    <div className="flex-1 flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
+    <div className="flex-1 flex items-center justify-center text-center text-[var(--text-secondary)]">
       <div>
-        <div className="text-6xl mb-6 opacity-60">
+        <div className="text-5xl mb-5 opacity-60">
           <span role="img" aria-label="chat icon">
             💬
           </span>
         </div>
-        <p className="text-lg font-medium">Start a conversation with Claude</p>
+        <p className="text-base font-medium">开始与 Claude 对话</p>
         <p className="text-sm mt-2 opacity-80">
-          Type your message below to begin
+          在下方输入内容即可开始
         </p>
       </div>
     </div>

@@ -46,12 +46,20 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   if (isUser) {
     return (
       <div className="mb-4 flex justify-end">
-        <div className="max-w-[85%] sm:max-w-[72%] rounded-2xl rounded-br-md px-4 py-3 bg-sky-600 text-white shadow-sm">
+        <div
+          className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-br-md px-4 py-3 border"
+          style={{
+            background: "var(--user-bubble)",
+            color: "var(--user-bubble-text)",
+            borderColor: "var(--surface-border)",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
           <div className="mb-1.5 flex items-center justify-between gap-4">
-            <span className="text-xs font-semibold text-sky-100">你</span>
+            <span className="text-xs font-semibold opacity-90">你</span>
             <TimestampComponent
               timestamp={message.timestamp}
-              className="text-xs text-sky-100/80"
+              className="text-xs opacity-70"
             />
           </div>
           <pre className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -64,17 +72,32 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
 
   return (
     <div className="mb-4 flex justify-start">
-      <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900 flex items-center justify-center text-[11px] font-semibold">
+      <div
+        className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[10px] font-semibold"
+        style={{
+          background: "var(--bg-elevated)",
+          color: "var(--text-secondary)",
+          border: "1px solid var(--surface-border)",
+        }}
+      >
         CC
       </div>
-      <div className="max-w-[85%] sm:max-w-[72%] rounded-2xl rounded-bl-md px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 shadow-sm">
+      <div
+        className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-bl-md px-4 py-3 border"
+        style={{
+          background: "var(--assistant-bubble)",
+          color: "var(--assistant-bubble-text)",
+          borderColor: "var(--surface-border)",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
         <div className="mb-1.5 flex items-center justify-between gap-4">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+          <span className="text-xs font-semibold opacity-90">
             Claude
           </span>
           <TimestampComponent
             timestamp={message.timestamp}
-            className="text-xs text-slate-500 dark:text-slate-400"
+            className="text-xs opacity-70"
           />
         </div>
         <pre className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -436,14 +459,17 @@ export function LoadingComponent() {
   return (
     <MessageContainer
       alignment="left"
-      colorScheme="bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100"
+      colorScheme="panel-surface border"
     >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-slate-600 dark:text-slate-400">
+      <div
+        className="text-xs font-semibold mb-2 opacity-90"
+        style={{ color: "var(--text-secondary)" }}
+      >
         Claude
       </div>
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-        <span className="animate-pulse">Thinking...</span>
+        <span className="animate-pulse">思考中...</span>
       </div>
     </MessageContainer>
   );

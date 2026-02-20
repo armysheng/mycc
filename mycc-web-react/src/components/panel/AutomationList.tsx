@@ -25,14 +25,28 @@ function getStatusLabel(status: AutomationItem["status"]) {
 }
 
 export function AutomationList({ automations }: AutomationListProps) {
+  if (automations.length === 0) {
+    return (
+      <div className="rounded-xl border p-3 text-xs text-[var(--text-secondary)] panel-surface">
+        暂无自动化任务。
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {automations.map((automation) => (
-        <article key={automation.id} className="rounded-lg border panel-surface p-3">
+        <article
+          key={automation.id}
+          className="rounded-xl border p-3 transition-colors hover:bg-[var(--bg-hover)]"
+          style={{ borderColor: "var(--surface-border)", background: "var(--bg-surface)" }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold truncate">{automation.name}</h4>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <h4 className="text-[13px] font-semibold truncate text-[var(--text-primary)]">
+                {automation.name}
+              </h4>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 {automation.scheduleText}
               </p>
             </div>
@@ -60,7 +74,7 @@ export function AutomationList({ automations }: AutomationListProps) {
             </label>
           </div>
 
-          <div className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <div className="mt-2 inline-flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
             <span className={`inline-block h-2 w-2 rounded-full ${getStatusDotClass(automation.status)}`} />
             {getStatusLabel(automation.status)}
           </div>
@@ -69,7 +83,7 @@ export function AutomationList({ automations }: AutomationListProps) {
 
       <button
         type="button"
-        className="w-full rounded-lg border border-dashed panel-surface px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        className="w-full rounded-lg border border-dashed panel-surface px-3 py-2.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
       >
         新建自动化任务
       </button>

@@ -24,21 +24,35 @@ function getSkillBadge(status: SkillItem["status"]) {
 }
 
 export function SkillList({ skills }: SkillListProps) {
+  if (skills.length === 0) {
+    return (
+      <div className="rounded-xl border p-3 text-xs text-[var(--text-secondary)] panel-surface">
+        暂无技能数据。
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {skills.map((skill) => {
         const badge = getSkillBadge(skill.status);
 
         return (
-          <article key={skill.id} className="rounded-lg border panel-surface p-3">
+          <article
+            key={skill.id}
+            className="rounded-xl border p-3 transition-colors hover:bg-[var(--bg-hover)]"
+            style={{ borderColor: "var(--surface-border)", background: "var(--bg-surface)" }}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="h-8 w-8 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                <div className="h-8 w-8 rounded-md bg-[var(--bg-elevated)] flex items-center justify-center text-[11px] font-semibold text-[var(--text-primary)]">
                   {skill.icon}
                 </div>
                 <div className="min-w-0">
-                  <h4 className="text-sm font-semibold truncate">{skill.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  <h4 className="text-[13px] font-semibold truncate text-[var(--text-primary)]">
+                    {skill.name}
+                  </h4>
+                  <p className="text-[11px] text-[var(--text-muted)] truncate">
                     {skill.trigger}
                   </p>
                 </div>
@@ -50,7 +64,7 @@ export function SkillList({ skills }: SkillListProps) {
               </span>
             </div>
 
-            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p className="mt-2 text-[12px] text-[var(--text-secondary)] leading-relaxed">
               {skill.description}
             </p>
           </article>
