@@ -41,6 +41,11 @@ export async function skillsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ success: false, error: '用户不存在' });
       }
 
+      // 验证用户名格式，防止路径遍历攻击
+      if (!/^[a-zA-Z0-9_-]+$/.test(user.linux_user)) {
+        return reply.status(400).send({ success: false, error: '无效的用户名格式' });
+      }
+
       const sshPool = getSSHPool();
       const connection = await sshPool.acquire();
 
