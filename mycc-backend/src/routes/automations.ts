@@ -14,19 +14,27 @@ export interface AutomationInfo {
   type: 'daily' | 'weekly' | 'once' | 'interval';
 }
 
+/**
+ * 将 scheduler 的时间格式转为可读文本
+ */
 function toScheduleText(time: string): string {
+  // 每日：HH:MM → "每天 HH:MM"
   if (/^\d{1,2}:\d{2}$/.test(time)) return `每天 ${time}`;
+  // 每周：周X HH:MM → "每周X HH:MM"
   if (/^周[一二三四五六日]/.test(time)) return `每${time}`;
-
+  // 间隔：每30分钟 → "每 30 分钟"
   const intervalMatch = time.match(/^每(\d+)(分钟|m|小时|h)$/);
   if (intervalMatch) {
     const unit = intervalMatch[2] === 'm' ? '分钟' : intervalMatch[2] === 'h' ? '小时' : intervalMatch[2];
     return `每 ${intervalMatch[1]} ${unit}`;
   }
-
+  // 一次性
   return time;
 }
 
+/**
+ * 检测任务类型
+ */
 function detectType(time: string): AutomationInfo['type'] {
   if (/^每\d+(分钟|m|小时|h)$/.test(time)) return 'interval';
   if (/^周[一二三四五六日]/.test(time)) return 'weekly';
@@ -34,6 +42,9 @@ function detectType(time: string): AutomationInfo['type'] {
   return 'daily';
 }
 
+/**
+ * 解析 tasks.md 表格为任务列表
+ */
 function parseTasksMd(content: string): AutomationInfo[] {
   const tasks: AutomationInfo[] = [];
   const lines = content.split('\n');
@@ -47,6 +58,7 @@ function parseTasksMd(content: string): AutomationInfo[] {
 
     const [time, name, skill, desc] = cells;
 
+    // 验证时间格式
     if (!/^\d{1,2}:\d{2}$/.test(time) &&
         !/^周[一二三四五六日]/.test(time) &&
         !/^\d{4}-\d{2}-\d{2}/.test(time) &&
@@ -70,6 +82,7 @@ function parseTasksMd(content: string): AutomationInfo[] {
 }
 
 export async function automationsRoutes(fastify: FastifyInstance) {
+  // GET /api/automations - 获取用户的自动化任务列表
   fastify.get('/api/automations', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -83,6 +96,7 @@ export async function automationsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ success: false, error: '用户不存在' });
       }
 
+      // 验证用户名格式，防止路径遍历攻击
       if (!/^[a-zA-Z0-9_-]+$/.test(user.linux_user)) {
         return reply.status(400).send({ success: false, error: '无效的用户名格式' });
       }
@@ -92,6 +106,7 @@ export async function automationsRoutes(fastify: FastifyInstance) {
 
       try {
         const tasksPath = `/home/${user.linux_user}/workspace/.claude/skills/scheduler/tasks.md`;
+
         const catResult = await sshPool.exec(connection, `cat "${tasksPath}" 2>/dev/null || echo ""`);
 
         const automations = catResult.stdout.trim()

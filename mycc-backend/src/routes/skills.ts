@@ -13,6 +13,7 @@ export interface SkillInfo {
   status: 'installed' | 'available' | 'disabled';
 }
 
+// 图标映射（根据 skill 名称推断）
 const ICON_MAP: Record<string, string> = {
   'cc-usage': '📊',
   'mycc': '📱',
@@ -26,6 +27,7 @@ const ICON_MAP: Record<string, string> = {
 };
 
 export async function skillsRoutes(fastify: FastifyInstance) {
+  // GET /api/skills - 获取用户已安装的技能列表
   fastify.get('/api/skills', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -39,6 +41,7 @@ export async function skillsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ success: false, error: '用户不存在' });
       }
 
+      // 验证用户名格式，防止路径遍历攻击
       if (!/^[a-zA-Z0-9_-]+$/.test(user.linux_user)) {
         return reply.status(400).send({ success: false, error: '无效的用户名格式' });
       }
@@ -49,6 +52,7 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       try {
         const skillsDir = `/home/${user.linux_user}/workspace/.claude/skills`;
 
+        // 列出 skills 目录下的子目录
         const lsResult = await sshPool.exec(
           connection,
           `ls -d ${skillsDir}/*/SKILL.md 2>/dev/null || echo ""`
