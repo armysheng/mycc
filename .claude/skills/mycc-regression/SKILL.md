@@ -29,7 +29,7 @@ bash .claude/skills/mycc-regression/scripts/run_regression.sh \
   --credential "<手机号或邮箱>" \
   --password "<密码>" \
   --api-url "http://localhost:8080" \
-  --web-url "http://localhost:3000"
+  --web-url "http://localhost:3001"
 ```
 
 该脚本会验证：
@@ -37,6 +37,10 @@ bash .claude/skills/mycc-regression/scripts/run_regression.sh \
 - 登录获取 token
 - `/api/auth/me` 鉴权
 - `/api/chat` SSE 流返回
+- `/api/chat/sessions` 会话列表
+- `/api/chat/sessions/:sessionId/messages` 历史加载
+- `/api/chat/sessions/:sessionId/rename` 会话命名
+- `/api/skills` 与 `/api/automations`
 
 ## UI 回归（Playwright）
 

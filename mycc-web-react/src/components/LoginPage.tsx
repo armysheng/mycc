@@ -125,7 +125,7 @@ export function LoginPage() {
               className="h-9 w-9 rounded-[10px] text-white flex items-center justify-center text-[13px] font-bold"
               style={{
                 background:
-                  "linear-gradient(135deg, var(--accent) 0%, #D47F20 100%)",
+                  "linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)",
               }}
             >
               cc

@@ -3,17 +3,12 @@ import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../types";
 import { getChatSessionsUrl, getAuthHeaders } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
-import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 
-interface ConversationRow {
-  sessionId: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount?: number;
-  title?: string;
+interface HistoryViewProps {
+  onBack?: () => void;
 }
 
-export function HistoryView() {
+export function HistoryView(_props: HistoryViewProps) {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,12 +24,13 @@ export function HistoryView() {
         });
 
         if (!response.ok) {
-          const parsed = await parseApiErrorResponse(response);
-          throw new Error(parsed.message);
+          throw new Error(
+            `Failed to load conversations: ${response.status} ${response.statusText}`,
+          );
         }
         const data = await response.json();
-        const rows: ConversationRow[] = data?.data?.conversations || [];
-        const mapped: ConversationSummary[] = rows.map((item) => ({
+        const rows = data?.data?.conversations || [];
+        const mapped: ConversationSummary[] = rows.map((item: any) => ({
           sessionId: item.sessionId,
           startTime: item.createdAt,
           lastTime: item.updatedAt,
@@ -44,7 +40,9 @@ export function HistoryView() {
         }));
         setConversations(mapped);
       } catch (err) {
-        setError(getNetworkErrorMessage(err, "加载历史会话失败"));
+        setError(
+          err instanceof Error ? err.message : "Failed to load conversations",
+        );
       } finally {
         setLoading(false);
       }
