@@ -18,22 +18,22 @@
 
 :root,
 .light {
-  --bg-base: #f5f3ee;
+  --bg-base: #f4f7fc;
   --bg-surface: #ffffff;
-  --bg-elevated: #ede9e0;
-  --bg-hover: #e5e0d5;
-  --bg-active: #ddd7ca;
+  --bg-elevated: #edf3ff;
+  --bg-hover: #e4edff;
+  --bg-active: #d8e6ff;
   --bg-input: #ffffff;
 
-  --text-primary: #1a1d2b;
-  --text-secondary: #6b7085;
-  --text-muted: #9ca3b5;
+  --text-primary: #121a2d;
+  --text-secondary: #55607a;
+  --text-muted: #8a96b2;
   --text-inverse: #ffffff;
 
-  --accent: #c48b2c;
-  --accent-hover: #a97520;
-  --accent-subtle: rgba(196, 139, 44, 0.08);
-  --accent-border: rgba(196, 139, 44, 0.3);
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-subtle: rgba(37, 99, 235, 0.12);
+  --accent-border: rgba(37, 99, 235, 0.32);
 
   --success: #16a34a;
   --error: #dc2626;
@@ -44,29 +44,29 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
 
-  --user-bubble: #e8dfd0;
-  --user-bubble-text: #3d3526;
+  --user-bubble: #e6efff;
+  --user-bubble-text: #1f3d85;
   --assistant-bubble: #ffffff;
-  --assistant-bubble-text: #1a1d2b;
+  --assistant-bubble-text: #121a2d;
 }
 
 .dark {
-  --bg-base: #0e1015;
-  --bg-surface: #181b24;
-  --bg-elevated: #222735;
-  --bg-hover: #2c3244;
-  --bg-active: #343b50;
-  --bg-input: #1e2230;
+  --bg-base: #0b1220;
+  --bg-surface: #111a2b;
+  --bg-elevated: #16233a;
+  --bg-hover: #1c2b46;
+  --bg-active: #23365a;
+  --bg-input: #14203a;
 
-  --text-primary: #e4e5ea;
-  --text-secondary: #8e95a9;
-  --text-muted: #5a6178;
-  --text-inverse: #0e1015;
+  --text-primary: #e6edf8;
+  --text-secondary: #93a1bd;
+  --text-muted: #657596;
+  --text-inverse: #ffffff;
 
-  --accent: #e8a93e;
-  --accent-hover: #d4962e;
-  --accent-subtle: rgba(232, 169, 62, 0.1);
-  --accent-border: rgba(232, 169, 62, 0.25);
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-subtle: rgba(96, 165, 250, 0.14);
+  --accent-border: rgba(96, 165, 250, 0.35);
 
   --success: #3dd68c;
   --error: #f47174;
@@ -77,10 +77,10 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
 
-  --user-bubble: #2a3a5c;
-  --user-bubble-text: #c8d6f0;
-  --assistant-bubble: #1e2230;
-  --assistant-bubble-text: #e4e5ea;
+  --user-bubble: #1d355d;
+  --user-bubble-text: #d9e6ff;
+  --assistant-bubble: #14203a;
+  --assistant-bubble-text: #e6edf8;
 }
 
 body {

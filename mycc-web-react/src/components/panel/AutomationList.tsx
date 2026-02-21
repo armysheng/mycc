@@ -61,7 +61,7 @@ export function AutomationList({ automations }: AutomationListProps) {
               <span
                 className={`h-5 w-9 rounded-full p-[2px] transition-colors ${
                   automation.enabled
-                    ? "bg-sky-500"
+                    ? "bg-[var(--accent)]"
                     : "bg-slate-300 dark:bg-slate-700"
                 }`}
               >

@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AllMessage, ConversationHistory } from "../types";
-import { getAuthHeaders, getChatSessionMessagesUrl } from "../config/api";
-import { useAuth } from "../contexts/AuthContext";
-import { useMessageConverter } from "./useMessageConverter";
-import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
+import type { AllMessage } from "../types";
 
 interface HistoryLoaderState {
   messages: AllMessage[];
@@ -21,8 +17,6 @@ interface HistoryLoaderResult extends HistoryLoaderState {
  * Hook for loading and converting conversation history from the backend
  */
 export function useHistoryLoader(): HistoryLoaderResult {
-  const { token } = useAuth();
-  const { convertConversationHistory } = useMessageConverter();
   const [state, setState] = useState<HistoryLoaderState>({
     messages: [],
     loading: false,
@@ -40,47 +34,17 @@ export function useHistoryLoader(): HistoryLoaderResult {
         return;
       }
 
-      try {
-        setState((prev) => ({
-          ...prev,
-          loading: true,
-          error: null,
-        }));
-
-        const response = await fetch(getChatSessionMessagesUrl(sessionId), {
-          headers: getAuthHeaders(token),
-        });
-
-        if (!response.ok) {
-          const parsed = await parseApiErrorResponse(response);
-          throw new Error(parsed.message);
-        }
-
-        const data = (await response.json()) as {
-          success: boolean;
-          data?: ConversationHistory;
-        };
-        const historyMessages = data?.data?.messages || [];
-        const convertedMessages = convertConversationHistory(historyMessages);
-
-        setState((prev) => ({
-          ...prev,
-          messages: convertedMessages,
-          loading: false,
-          error: null,
-          sessionId,
-        }));
-      } catch (error) {
-        setState((prev) => ({
-          ...prev,
-          messages: [],
-          loading: false,
-          error: getNetworkErrorMessage(error, "加载会话历史失败"),
-          sessionId,
-        }));
-      }
+      // Current backend stores session metadata, not full message transcripts.
+      // Keep message list empty and set sessionId so follow-up messages can resume.
+      setState((prev) => ({
+        ...prev,
+        messages: [],
+        loading: false,
+        error: null,
+        sessionId,
+      }));
     },
-    [convertConversationHistory, token],
+    [],
   );
 
   const clearHistory = useCallback(() => {
