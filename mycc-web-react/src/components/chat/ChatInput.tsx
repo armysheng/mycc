@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useMemo, useState } from "react";
 import { StopIcon, PaperAirplaneIcon } from "@heroicons/react/24/solid";
 import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
@@ -49,6 +49,17 @@ interface ChatInputProps {
   showPermissions?: boolean;
   permissionData?: PermissionData;
   planPermissionData?: PlanPermissionData;
+  onSlashRequestRefresh?: () => void;
+  slashSkillsLoaded?: boolean;
+  slashSkillsLoading?: boolean;
+  slashSkills?: Array<{
+    id: string;
+    name: string;
+    trigger: string;
+    description?: string;
+    installed?: boolean;
+    enabled?: boolean;
+  }>;
 }
 
 const permissionModeName: Record<PermissionMode, string> = {
@@ -69,10 +80,63 @@ export function ChatInput({
   showPermissions = false,
   permissionData,
   planPermissionData,
+  onSlashRequestRefresh,
+  slashSkillsLoaded = false,
+  slashSkillsLoading = false,
+  slashSkills = [],
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const [activeSlashIndex, setActiveSlashIndex] = useState(0);
+  const [dismissedSlashToken, setDismissedSlashToken] = useState<string | null>(null);
+  const [slashRefreshToken, setSlashRefreshToken] = useState<string | null>(null);
   const { enterBehavior } = useEnterBehavior();
+
+  const slashMatch = useMemo(() => input.match(/^\/([^\s\n]*)$/), [input]);
+  const slashToken = slashMatch ? slashMatch[0] : null;
+  const slashQuery = (slashMatch?.[1] || "").toLowerCase();
+  const installedSkills = useMemo(
+    () => slashSkills.filter((skill) => skill.installed && skill.enabled !== false),
+    [slashSkills],
+  );
+  const slashSuggestions = useMemo(() => {
+    if (!slashMatch) return [];
+    return installedSkills.filter((skill) => {
+      const haystack = `${skill.trigger} ${skill.name} ${skill.id}`.toLowerCase();
+      return haystack.includes(slashQuery);
+    });
+  }, [installedSkills, slashMatch, slashQuery]);
+  const isSlashPickerOpen = Boolean(
+    slashMatch && dismissedSlashToken !== slashToken,
+  );
+
+  useEffect(() => {
+    setActiveSlashIndex(0);
+  }, [slashToken]);
+
+  useEffect(() => {
+    if (!slashToken) {
+      setSlashRefreshToken(null);
+    }
+  }, [slashToken]);
+
+  useEffect(() => {
+    if (
+      isSlashPickerOpen &&
+      installedSkills.length === 0 &&
+      slashToken &&
+      slashRefreshToken !== slashToken
+    ) {
+      onSlashRequestRefresh?.();
+      setSlashRefreshToken(slashToken);
+    }
+  }, [
+    installedSkills.length,
+    isSlashPickerOpen,
+    onSlashRequestRefresh,
+    slashRefreshToken,
+    slashToken,
+  ]);
 
   useEffect(() => {
     if (!isLoading && !showPermissions && inputRef.current) {
@@ -97,6 +161,24 @@ export function ChatInput({
     onSubmit();
   };
 
+  const applySlashSkill = (skill: {
+    trigger: string;
+  }) => {
+    onInputChange(`${skill.trigger} `);
+    setDismissedSlashToken(null);
+    setActiveSlashIndex(0);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  };
+
+  const handleInputChange = (value: string) => {
+    onInputChange(value);
+    if (dismissedSlashToken && value !== dismissedSlashToken) {
+      setDismissedSlashToken(null);
+    }
+  };
+
   const getNextPermissionMode = (current: PermissionMode): PermissionMode => {
     const modes: PermissionMode[] = ["default", "plan", "acceptEdits"];
     const currentIndex = modes.indexOf(current);
@@ -104,6 +186,40 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isSlashPickerOpen && !isComposing) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (slashSuggestions.length > 0) {
+          setActiveSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
+        }
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (slashSuggestions.length > 0) {
+          setActiveSlashIndex(
+            (prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length,
+          );
+        }
+        return;
+      }
+
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        if (slashSuggestions.length > 0) {
+          applySlashSkill(slashSuggestions[activeSlashIndex] || slashSuggestions[0]);
+        }
+        return;
+      }
+
+      if (e.key === "Escape" && slashToken) {
+        e.preventDefault();
+        setDismissedSlashToken(slashToken);
+        return;
+      }
+    }
+
     if (
       e.key === KEYBOARD_SHORTCUTS.PERMISSION_MODE_TOGGLE &&
       e.shiftKey &&
@@ -170,7 +286,7 @@ export function ChatInput({
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => onInputChange(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
@@ -180,6 +296,68 @@ export function ChatInput({
           className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
           disabled={isLoading}
         />
+
+        {isSlashPickerOpen && (
+          <div className="absolute left-2 right-2 bottom-14 z-20 max-h-64 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--bg-surface)] p-1.5 shadow-[var(--shadow-md)]">
+            <div className="px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
+              输入 / 选择技能，Enter 或 Tab 填充
+            </div>
+            {slashSkillsLoading && installedSkills.length === 0 ? (
+              <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                技能加载中，请稍候...
+              </div>
+            ) : installedSkills.length === 0 && !slashSkillsLoaded ? (
+              <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                正在拉取技能列表，请稍候...
+              </div>
+            ) : installedSkills.length === 0 ? (
+              <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                暂无已安装技能，请先到技能页安装后再使用。
+              </div>
+            ) : slashSuggestions.length === 0 ? (
+              <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                没有匹配的技能
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {slashSuggestions.map((skill, index) => {
+                  const active = index === activeSlashIndex;
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applySlashSkill(skill)}
+                      className="w-full rounded-lg border px-2.5 py-2 text-left transition"
+                      style={
+                        active
+                          ? {
+                              background: "var(--accent-subtle)",
+                              borderColor: "var(--accent-border)",
+                            }
+                          : { borderColor: "transparent" }
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-[var(--text-primary)]">
+                          {skill.name}
+                        </span>
+                        <span className="text-xs text-[var(--accent)]">
+                          {skill.trigger}
+                        </span>
+                      </div>
+                      {skill.description && (
+                        <div className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">
+                          {skill.description}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {isLoading && currentRequestId && (

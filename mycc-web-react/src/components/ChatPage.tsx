@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
@@ -20,7 +20,7 @@ import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import { RightPanel } from "./layout/RightPanel";
-import { getChatUrl, getAuthHeaders } from "../config/api";
+import { getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
@@ -32,6 +32,19 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [slashSkills, setSlashSkills] = useState<
+    Array<{
+      id: string;
+      name: string;
+      trigger: string;
+      description?: string;
+      installed?: boolean;
+      enabled?: boolean;
+    }>
+  >([]);
+  const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
+  const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
+  const slashSkillsFetchInFlightRef = useRef(false);
   const { token } = useAuth();
 
   // Extract and normalize working directory from URL
@@ -405,6 +418,69 @@ export function ChatPage() {
     [setInput],
   );
 
+  const loadSlashSkills = useCallback(async () => {
+    if (!token || slashSkillsFetchInFlightRef.current) {
+      return;
+    }
+
+    slashSkillsFetchInFlightRef.current = true;
+    setSlashSkillsLoading(true);
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetch(getSkillsUrl(), {
+            headers: getAuthHeaders(token),
+          });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok || !json?.success) {
+            throw new Error(json?.error || `skills request failed: ${response.status}`);
+          }
+
+          const skills = (json?.data?.skills || []) as Array<{
+            id: string;
+            name: string;
+            trigger?: string;
+            description?: string;
+            installed?: boolean;
+            enabled?: boolean;
+          }>;
+
+          setSlashSkills(
+            skills.map((skill) => ({
+              id: skill.id,
+              name: skill.name || skill.id,
+              trigger: skill.trigger || `/${skill.id}`,
+              description: skill.description || "",
+              installed: skill.installed,
+              enabled: skill.enabled,
+            })),
+          );
+          setSlashSkillsLoaded(true);
+          return;
+        } catch (error) {
+          if (attempt === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            continue;
+          }
+          console.warn("加载 slash 技能失败", error);
+        }
+      }
+    } finally {
+      setSlashSkillsLoading(false);
+      slashSkillsFetchInFlightRef.current = false;
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setSlashSkills([]);
+      setSlashSkillsLoaded(false);
+      setSlashSkillsLoading(false);
+      return;
+    }
+    loadSlashSkills();
+  }, [token, loadSlashSkills]);
+
   // Handle global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -589,6 +665,10 @@ export function ChatPage() {
               showPermissions={isPermissionMode}
               permissionData={permissionData}
               planPermissionData={planPermissionData}
+              slashSkills={slashSkills}
+              slashSkillsLoaded={slashSkillsLoaded}
+              slashSkillsLoading={slashSkillsLoading}
+              onSlashRequestRefresh={loadSlashSkills}
             />
           </>
         )}
