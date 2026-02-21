@@ -9,20 +9,34 @@ const ACTION_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 250;
 
 export class SkillsService implements ISkillsService {
+  private static listInFlight = new Map<string, Promise<SkillsListResult>>();
+
   constructor(private readonly store: RemoteSkillStore) {}
 
   async listSkills(context: SkillsContext): Promise<SkillsListResult> {
     this.validateContext(context);
-    const result = await this.executeSkillOperation(
+    const cacheKey = context.linuxUser;
+    const existing = SkillsService.listInFlight.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const pending = this.executeSkillOperation(
       () => this.store.listSkillInfos(context.linuxUser),
       LIST_TIMEOUT_MS,
       '技能列表加载超时，请稍后重试'
-    );
-    return {
-      skills: result.skills,
-      total: result.skills.length,
-      catalogAvailable: result.catalogAvailable,
-    };
+    )
+      .then((result) => ({
+        skills: result.skills,
+        total: result.skills.length,
+        catalogAvailable: result.catalogAvailable,
+      }))
+      .finally(() => {
+        SkillsService.listInFlight.delete(cacheKey);
+      });
+
+    SkillsService.listInFlight.set(cacheKey, pending);
+    return pending;
   }
 
   async installSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult> {

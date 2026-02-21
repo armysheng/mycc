@@ -463,7 +463,7 @@ export function ChatPage() {
                 <div className="flex items-center">
                   <button
                     onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
+                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
                     aria-label="Back to project selection"
                   >
                     Claude Code Web UI
@@ -493,7 +493,7 @@ export function ChatPage() {
                 <div className="flex items-center text-sm font-mono mt-1">
                   <button
                     onClick={handleBackToProjectChat}
-                    className="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
+                    className="text-slate-600 dark:text-slate-400 hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
                     aria-label={`Return to new chat in ${workingDirectory}`}
                   >
                     {workingDirectory}
@@ -567,7 +567,8 @@ export function ChatPage() {
               </p>
               <button
                 onClick={() => navigate({ search: "" })}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 text-[var(--text-inverse)] rounded-lg transition-colors"
+                style={{ background: "var(--accent)" }}
               >
                 Start New Conversation
               </button>

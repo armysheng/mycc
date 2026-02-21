@@ -134,8 +134,13 @@ export function RightPanel({ collapsed, onToggle, token, onSkillUse }: RightPane
             type="button"
             onClick={() => setTab("skills")}
             className={`px-3 py-1.5 text-xs rounded-md border ${
-              tab === "skills" ? "bg-sky-500 text-white border-sky-500" : "panel-surface"
+              tab === "skills" ? "text-[var(--text-inverse)]" : "panel-surface"
             }`}
+            style={
+              tab === "skills"
+                ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                : undefined
+            }
           >
             ⚡ 技能
           </button>
@@ -143,8 +148,13 @@ export function RightPanel({ collapsed, onToggle, token, onSkillUse }: RightPane
             type="button"
             onClick={() => setTab("automations")}
             className={`px-3 py-1.5 text-xs rounded-md border ${
-              tab === "automations" ? "bg-sky-500 text-white border-sky-500" : "panel-surface"
+              tab === "automations" ? "text-[var(--text-inverse)]" : "panel-surface"
             }`}
+            style={
+              tab === "automations"
+                ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                : undefined
+            }
           >
             ⏰ 自动化
           </button>
@@ -199,7 +209,8 @@ export function RightPanel({ collapsed, onToggle, token, onSkillUse }: RightPane
                           type="button"
                           onClick={() => handleInstall(skill.id)}
                           disabled={installingId === skill.id}
-                          className="px-2 py-1 text-xs rounded bg-sky-500 text-white disabled:opacity-60"
+                          className="px-2 py-1 text-xs rounded text-[var(--text-inverse)] disabled:opacity-60"
+                          style={{ background: "var(--accent)" }}
                         >
                           {installingId === skill.id ? "安装中..." : "安装"}
                         </button>

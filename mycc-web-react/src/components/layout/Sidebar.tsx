@@ -20,7 +20,10 @@ export function Sidebar({
     >
       <div className="p-4 border-b panel-surface">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-sky-500 text-white flex items-center justify-center font-semibold">
+          <div
+            className="w-9 h-9 rounded-lg text-white flex items-center justify-center font-semibold"
+            style={{ background: "var(--accent)" }}
+          >
             cc
           </div>
           <div>
@@ -36,9 +39,14 @@ export function Sidebar({
             onClick={onOpenChat || onNewChat}
             className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${
               currentSection === "chat"
-                ? "bg-sky-500 border-sky-500 text-white"
+                ? "text-[var(--text-inverse)]"
                 : "panel-surface hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
+            style={
+              currentSection === "chat"
+                ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                : undefined
+            }
           >
             聊天
           </button>
@@ -47,9 +55,14 @@ export function Sidebar({
             onClick={onOpenSkills}
             className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${
               currentSection === "skills"
-                ? "bg-sky-500 border-sky-500 text-white"
+                ? "text-[var(--text-inverse)]"
                 : "panel-surface hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
+            style={
+              currentSection === "skills"
+                ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                : undefined
+            }
           >
             技能
           </button>

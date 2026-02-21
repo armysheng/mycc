@@ -19,7 +19,8 @@ function getSkillBadge(status: SkillItem["status"]) {
   }
   return {
     label: "可安装",
-    className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+    className:
+      "bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent-border)]",
   };
 }
 

@@ -185,9 +185,14 @@ export function SkillsPage() {
                 onClick={() => setActiveTab("installed")}
                 className={`px-3 py-1.5 text-sm rounded-lg border ${
                   activeTab === "installed"
-                    ? "bg-sky-500 text-white border-sky-500"
+                    ? "text-[var(--text-inverse)]"
                     : "panel-surface"
                 }`}
+                style={
+                  activeTab === "installed"
+                    ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                    : undefined
+                }
               >
                 已安装 ({installedCount})
               </button>
@@ -196,9 +201,14 @@ export function SkillsPage() {
                 onClick={() => setActiveTab("market")}
                 className={`px-3 py-1.5 text-sm rounded-lg border ${
                   activeTab === "market"
-                    ? "bg-sky-500 text-white border-sky-500"
+                    ? "text-[var(--text-inverse)]"
                     : "panel-surface"
                 }`}
+                style={
+                  activeTab === "market"
+                    ? { background: "var(--accent)", borderColor: "var(--accent)" }
+                    : undefined
+                }
               >
                 市场 ({marketCount})
               </button>
@@ -207,7 +217,7 @@ export function SkillsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索技能..."
-              className="w-full rounded-xl border px-3 py-2 panel-surface outline-none focus:ring-2 focus:ring-sky-500/35"
+              className="w-full rounded-xl border px-3 py-2 panel-surface outline-none focus:ring-2 focus:ring-[var(--accent)]/35"
             />
           </div>
 
@@ -242,7 +252,8 @@ export function SkillsPage() {
                         type="button"
                         onClick={() => callSkillAction(skill.id, "install")}
                         disabled={processingId === skill.id}
-                        className="px-3 py-1.5 rounded-lg text-sm bg-sky-500 text-white disabled:opacity-60"
+                        className="px-3 py-1.5 rounded-lg text-sm text-[var(--text-inverse)] disabled:opacity-60"
+                        style={{ background: "var(--accent)" }}
                       >
                         {processingId === skill.id ? "处理中..." : "安装"}
                       </button>
