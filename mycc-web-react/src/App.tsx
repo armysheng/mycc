@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import { ChatPage } from "./components/ChatPage";
 import { LoginPage } from "./components/LoginPage";
+import { SkillsPage } from "./components/SkillsPage";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
 import { isDevelopment } from "./utils/environment";
@@ -36,6 +37,7 @@ function App() {
         <Routes>
           {/* 多用户模式：直接进入聊天界面 */}
           <Route path="/" element={<ChatPage />} />
+          <Route path="/skills" element={<SkillsPage />} />
           {DemoPage && (
             <Route
               path="/demo"

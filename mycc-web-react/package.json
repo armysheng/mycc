@@ -17,6 +17,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "playwright:install": "npx playwright install",
+    "verify:skills": "node scripts/verify-skills-page.mjs",
     "record-demo": "npx tsx scripts/record-demo.ts",
     "capture-screenshots": "npx tsx scripts/capture-screenshots.ts"
   },

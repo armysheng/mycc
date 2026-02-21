@@ -1,10 +1,9 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bars3Icon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
-  ErrorMessage,
   PermissionMode,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
@@ -13,15 +12,17 @@ import { usePermissions } from "../hooks/chat/usePermissions";
 import { usePermissionMode } from "../hooks/chat/usePermissionMode";
 import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
+import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
+import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
+import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import { RightPanel } from "./layout/RightPanel";
 import { getChatUrl, getAuthHeaders } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
-import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -31,10 +32,6 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
-  const [isSidebarOverlayOpen, setIsSidebarOverlayOpen] = useState(false);
-  const [isRightPanelOverlayOpen, setIsRightPanelOverlayOpen] = useState(false);
-  const [isSidebarOverlayMode, setIsSidebarOverlayMode] = useState(false);
-  const [isRightPanelOverlayMode, setIsRightPanelOverlayMode] = useState(false);
   const { token } = useAuth();
 
   // Extract and normalize working directory from URL
@@ -49,8 +46,11 @@ export function ChatPage() {
     return normalizeWindowsPath(decodedPath);
   })();
 
-  // Get sessionId from query parameters
+  // Get current view and sessionId from query parameters
+  const currentView = searchParams.get("view");
   const sessionId = searchParams.get("sessionId");
+  const isHistoryView = currentView === "history";
+  const isLoadedConversation = !!sessionId && !isHistoryView;
 
   const { processStreamLine } = useClaudeStreaming();
   const { abortRequest, createAbortHandler } = useAbortController();
@@ -160,11 +160,6 @@ export function ChatPage() {
           } as ChatRequest),
         });
 
-        if (!response.ok) {
-          const parsed = await parseApiErrorResponse(response);
-          throw new Error(parsed.message);
-        }
-
         if (!response.body) throw new Error("No response body");
 
         const reader = response.body.getReader();
@@ -212,17 +207,12 @@ export function ChatPage() {
         }
       } catch (error) {
         console.error("Failed to send message:", error);
-        const errorMessage = getNetworkErrorMessage(
-          error,
-          "请求失败，请稍后重试。",
-        );
-        const streamErrorMessage: ErrorMessage = {
-          type: "error",
-          subtype: "stream_error",
-          message: errorMessage,
+        addMessage({
+          type: "chat",
+          role: "assistant",
+          content: "Error: Failed to get response",
           timestamp: Date.now(),
-        };
-        addMessage(streamErrorMessage);
+        });
       } finally {
         resetRequestState();
       }
@@ -361,9 +351,29 @@ export function ChatPage() {
       }
     : undefined;
 
+  const handleHistoryClick = useCallback(() => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("view", "history");
+    navigate({ search: searchParams.toString() });
+  }, [navigate]);
+
+  const handleSettingsClick = useCallback(() => {
+    setIsSettingsOpen(true);
+  }, []);
+
   const handleSettingsClose = useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+
+  const handleBackToChat = useCallback(() => {
+    navigate({ search: "" });
+  }, [navigate]);
+
+  const handleBackToHistory = useCallback(() => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("view", "history");
+    navigate({ search: searchParams.toString() });
+  }, [navigate]);
 
   const handleBackToProjects = useCallback(() => {
     navigate("/");
@@ -379,73 +389,25 @@ export function ChatPage() {
     navigate({ search: "" });
   }, [navigate]);
 
+  const handleOpenSkills = useCallback(() => {
+    navigate("/skills");
+  }, [navigate]);
+
   const handleRightPanelToggle = useCallback(() => {
-    if (isRightPanelOverlayMode) {
-      setIsRightPanelOverlayOpen((prev) => {
-        const next = !prev;
-        if (next) {
-          setIsSidebarOverlayOpen(false);
-        }
-        return next;
-      });
-      return;
-    }
     setIsRightPanelCollapsed((prev) => !prev);
-  }, [isRightPanelOverlayMode]);
-
-  const handleSidebarToggle = useCallback(() => {
-    if (!isSidebarOverlayMode) return;
-    setIsSidebarOverlayOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setIsRightPanelOverlayOpen(false);
-      }
-      return next;
-    });
-  }, [isSidebarOverlayMode]);
-
-  const closeOverlays = useCallback(() => {
-    setIsSidebarOverlayOpen(false);
-    setIsRightPanelOverlayOpen(false);
   }, []);
 
-  const handleSettingsClick = useCallback(() => {
-    closeOverlays();
-    setIsSettingsOpen(true);
-  }, [closeOverlays]);
-
-  useEffect(() => {
-    const syncLayoutModes = () => {
-      const width = window.innerWidth;
-      setIsSidebarOverlayMode(width <= 768);
-      setIsRightPanelOverlayMode(width <= 1024);
-    };
-
-    syncLayoutModes();
-    window.addEventListener("resize", syncLayoutModes);
-    return () => window.removeEventListener("resize", syncLayoutModes);
-  }, []);
-
-  useEffect(() => {
-    if (!isSidebarOverlayMode) {
-      setIsSidebarOverlayOpen(false);
-    }
-  }, [isSidebarOverlayMode]);
-
-  useEffect(() => {
-    if (!isRightPanelOverlayMode) {
-      setIsRightPanelOverlayOpen(false);
-    }
-  }, [isRightPanelOverlayMode]);
+  const handleSkillUse = useCallback(
+    (trigger: string) => {
+      const text = trigger.endsWith(" ") ? trigger : `${trigger} `;
+      setInput(text);
+    },
+    [setInput],
+  );
 
   // Handle global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && (isSidebarOverlayOpen || isRightPanelOverlayOpen)) {
-        e.preventDefault();
-        closeOverlays();
-        return;
-      }
       if (e.key === KEYBOARD_SHORTCUTS.ABORT && isLoading && currentRequestId) {
         e.preventDefault();
         handleAbort();
@@ -454,48 +416,46 @@ export function ChatPage() {
 
     document.addEventListener("keydown", handleGlobalKeyDown);
     return () => document.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [
-    isLoading,
-    currentRequestId,
-    handleAbort,
-    closeOverlays,
-    isSidebarOverlayOpen,
-    isRightPanelOverlayOpen,
-  ]);
+  }, [isLoading, currentRequestId, handleAbort]);
 
-  const isAnyOverlayOpen = isSidebarOverlayOpen || isRightPanelOverlayOpen;
+  useEffect(() => {
+    const prefill = (location.state as { prefill?: string } | null)?.prefill;
+    if (prefill) {
+      setInput(prefill);
+      navigate(location.pathname + location.search, { replace: true, state: null });
+    }
+  }, [location.pathname, location.search, location.state, navigate, setInput]);
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
         onNewChat={handleNewChat}
-        onOpenSettings={handleSettingsClick}
         currentPathLabel={workingDirectory}
-        activeSessionId={sessionId}
-        overlayMode={isSidebarOverlayMode}
-        isOpen={!isSidebarOverlayMode || isSidebarOverlayOpen}
-        onClose={closeOverlays}
+        currentSection="chat"
+        onOpenSkills={handleOpenSkills}
+        onOpenChat={handleNewChat}
       />
 
-      {isAnyOverlayOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-slate-900/35 backdrop-blur-[1px]"
-          onClick={closeOverlays}
-          aria-hidden="true"
-        />
-      )}
-
-      <div className="flex-1 min-w-0 p-3 sm:p-5 h-screen flex flex-col relative z-10">
+      <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
           <div className="flex items-center gap-4 min-w-0">
-            {isSidebarOverlayMode && (
+            {isHistoryView && (
               <button
-                onClick={handleSidebarToggle}
-                className="h-9 w-9 rounded-lg panel-surface border hover:bg-[var(--bg-hover)] transition-all duration-200 shadow-[var(--shadow-sm)] flex items-center justify-center"
-                aria-label="打开会话侧边栏"
+                onClick={handleBackToChat}
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                aria-label="Back to chat"
               >
-                <Bars3Icon className="w-5 h-5 text-[var(--text-secondary)]" />
+                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+              </button>
+            )}
+            {isLoadedConversation && (
+              <button
+                onClick={handleBackToHistory}
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                aria-label="Back to history"
+              >
+                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </button>
             )}
             <div className="min-w-0">
@@ -503,64 +463,82 @@ export function ChatPage() {
                 <div className="flex items-center">
                   <button
                     onClick={handleBackToProjects}
-                    className="text-[var(--text-primary)] text-lg sm:text-[26px] font-bold tracking-tight hover:opacity-85 transition-colors duration-200 rounded-md px-1 -mx-1 truncate"
-                    style={{ fontFamily: "var(--font-display)" }}
+                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
                     aria-label="Back to project selection"
                   >
-                    MyCC Workspace
+                    Claude Code Web UI
                   </button>
+                  {(isHistoryView || sessionId) && (
+                    <>
+                      <span
+                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
+                        aria-hidden="true"
+                      >
+                        {" "}
+                        ›{" "}
+                      </span>
+                      <h1
+                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
+                        aria-current="page"
+                      >
+                        {isHistoryView
+                          ? "Conversation History"
+                          : "Conversation"}
+                      </h1>
+                    </>
+                  )}
                 </div>
               </nav>
               {workingDirectory && (
-                <div className="flex items-center text-xs font-mono mt-1 text-[var(--text-muted)]">
+                <div className="flex items-center text-sm font-mono mt-1">
                   <button
                     onClick={handleBackToProjectChat}
-                    className="hover:text-[var(--accent)] transition-colors duration-200 rounded px-1 -mx-1 cursor-pointer"
+                    className="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
                     aria-label={`Return to new chat in ${workingDirectory}`}
                   >
                     {workingDirectory}
                   </button>
+                  {sessionId && (
+                    <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
+                      Session: {sessionId.substring(0, 8)}...
+                    </span>
+                  )}
                 </div>
               )}
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {isRightPanelOverlayMode ? (
+            {!isRightPanelCollapsed && (
               <button
                 onClick={handleRightPanelToggle}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
-                {isRightPanelOverlayOpen ? "关闭工具箱" : "打开工具箱"}
+                收起工具箱
               </button>
-            ) : (
-              <>
-                {!isRightPanelCollapsed && (
-                  <button
-                    onClick={handleRightPanelToggle}
-                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-                  >
-                    收起工具箱
-                  </button>
-                )}
-                {isRightPanelCollapsed && (
-                  <button
-                    onClick={handleRightPanelToggle}
-                    className="px-3 py-2 rounded-lg panel-surface border text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-                  >
-                    打开工具箱
-                  </button>
-                )}
-              </>
             )}
+            {isRightPanelCollapsed && (
+              <button
+                onClick={handleRightPanelToggle}
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                打开工具箱
+              </button>
+            )}
+            {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
+            <SettingsButton onClick={handleSettingsClick} />
           </div>
         </div>
 
         {/* Main Content */}
-        {historyLoading ? (
+        {isHistoryView ? (
+          <HistoryView onBack={handleBackToChat} />
+        ) : historyLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 dark:text-slate-400">正在加载会话...</p>
+              <p className="text-slate-600 dark:text-slate-400">
+                Loading conversation history...
+              </p>
             </div>
           </div>
         ) : historyError ? (
@@ -582,7 +560,7 @@ export function ChatPage() {
                 </svg>
               </div>
               <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                会话加载失败
+                Error Loading Conversation
               </h2>
               <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 {historyError}
@@ -591,7 +569,7 @@ export function ChatPage() {
                 onClick={() => navigate({ search: "" })}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                开始新会话
+                Start New Conversation
               </button>
             </div>
           </div>
@@ -620,9 +598,8 @@ export function ChatPage() {
       <RightPanel
         collapsed={isRightPanelCollapsed}
         onToggle={handleRightPanelToggle}
-        overlayMode={isRightPanelOverlayMode}
-        isOpen={!isRightPanelOverlayMode || isRightPanelOverlayOpen}
-        onClose={closeOverlays}
+        token={token}
+        onSkillUse={handleSkillUse}
       />
     </div>
   );

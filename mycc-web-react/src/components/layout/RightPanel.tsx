@@ -1,97 +1,53 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import { PanelTabs, type PanelTab } from "../panel/PanelTabs";
-import { SkillList } from "../panel/SkillList";
-import { AutomationList } from "../panel/AutomationList";
-import type { AutomationItem, SkillItem } from "../../types/toolbox";
-import { getAutomationsUrl, getAuthHeaders, getSkillsUrl } from "../../config/api";
-import { useAuth } from "../../contexts/AuthContext";
-import { getNetworkErrorMessage, parseApiErrorResponse } from "../../utils/apiError";
+import {
+  getAutomationsUrl,
+  getAuthHeaders,
+  getSkillInstallUrl,
+  getSkillsUrl,
+} from "../../config/api";
 
 interface RightPanelProps {
   collapsed: boolean;
   onToggle: () => void;
-  overlayMode?: boolean;
-  isOpen?: boolean;
-  onClose?: () => void;
+  token: string | null;
+  onSkillUse?: (trigger: string) => void;
 }
 
-interface SkillsApiResponse {
-  success: boolean;
-  data?: {
-    skills?: Array<{
-      id: string;
-      name: string;
-      description?: string;
-      trigger?: string;
-      icon?: string;
-      status?: "installed" | "available" | "disabled";
-    }>;
-  };
+interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  icon: string;
+  status: "installed" | "available" | "disabled";
+  installed: boolean;
+  version: string;
+  installedVersion: string | null;
+  latestVersion: string;
+  source: string;
+  legacy: boolean;
 }
 
-interface AutomationsApiResponse {
-  success: boolean;
-  data?: {
-    automations?: Array<{
-      id: string;
-      name: string;
-      scheduleText?: string;
-      status?: "healthy" | "paused" | "error";
-      enabled?: boolean;
-    }>;
-  };
+interface AutomationItem {
+  id: string;
+  name: string;
+  scheduleText: string;
+  skill: string;
+  description: string;
+  status: "healthy" | "paused" | "error";
+  enabled: boolean;
 }
 
-function mapSkillsToViewModel(skills?: NonNullable<SkillsApiResponse["data"]>["skills"]): SkillItem[] {
-  return (skills || []).map((skill) => {
-    const status = skill.status || "available";
-    return {
-      id: skill.id,
-      name: skill.name,
-      icon: skill.icon || "⚡",
-      trigger: skill.trigger || `/${skill.id}`,
-      description: skill.description || "暂无描述",
-      status,
-      installed: status === "installed",
-    };
-  });
-}
-
-function mapAutomationsToViewModel(
-  automations?: NonNullable<AutomationsApiResponse["data"]>["automations"],
-): AutomationItem[] {
-  return (automations || []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    scheduleText: item.scheduleText || "未配置",
-    status: item.status || "healthy",
-    enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-  }));
-}
-
-export function RightPanel({
-  collapsed,
-  onToggle,
-  overlayMode = false,
-  isOpen = true,
-  onClose,
-}: RightPanelProps) {
-  const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState<PanelTab>("skills");
+export function RightPanel({ collapsed, onToggle, token, onSkillUse }: RightPanelProps) {
+  const [tab, setTab] = useState<"skills" | "automations">("skills");
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [automations, setAutomations] = useState<AutomationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installingId, setInstallingId] = useState<string | null>(null);
 
-  const loadPanelData = useCallback(async () => {
-    if (!token) {
-      setError("未检测到登录状态，请重新登录。");
-      setSkills([]);
-      setAutomations([]);
-      return;
-    }
-
+  const loadData = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     setError(null);
     try {
@@ -99,109 +55,197 @@ export function RightPanel({
         fetch(getSkillsUrl(), { headers: getAuthHeaders(token) }),
         fetch(getAutomationsUrl(), { headers: getAuthHeaders(token) }),
       ]);
-
       if (!skillsRes.ok) {
-        const parsed = await parseApiErrorResponse(skillsRes);
-        throw new Error(parsed.message);
+        throw new Error(`技能接口异常: ${skillsRes.status} ${skillsRes.statusText}`);
       }
       if (!automationsRes.ok) {
-        const parsed = await parseApiErrorResponse(automationsRes);
-        throw new Error(parsed.message);
+        throw new Error(`自动化接口异常: ${automationsRes.status} ${automationsRes.statusText}`);
       }
-
-      const skillsJson = (await skillsRes.json()) as SkillsApiResponse;
-      const automationsJson = (await automationsRes.json()) as AutomationsApiResponse;
-
-      setSkills(mapSkillsToViewModel(skillsJson.data?.skills));
-      setAutomations(mapAutomationsToViewModel(automationsJson.data?.automations));
-    } catch (fetchError) {
-      setError(getNetworkErrorMessage(fetchError, "加载工具箱数据失败"));
+      const skillsJson = await skillsRes.json();
+      const automationsJson = await automationsRes.json();
+      setSkills((skillsJson?.data?.skills || []) as SkillItem[]);
+      setAutomations((automationsJson?.data?.automations || []) as AutomationItem[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载工具箱失败");
     } finally {
       setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    loadPanelData();
-  }, [loadPanelData]);
+    loadData();
+  }, [loadData]);
 
-  const panelContent = useMemo(() => {
-    if (loading) {
-      return (
-        <div className="rounded-xl border p-3 text-xs text-[var(--text-secondary)] panel-surface">
-          正在加载工具箱数据...
-        </div>
-      );
-    }
+  const handleInstall = useCallback(
+    async (skillId: string) => {
+      if (!token) return;
+      setInstallingId(skillId);
+      setError(null);
+      try {
+        const res = await fetch(getSkillInstallUrl(skillId), {
+          method: "POST",
+          headers: getAuthHeaders(token),
+          body: "{}",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || `安装失败: ${res.status} ${res.statusText}`);
+        }
+        await loadData();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "安装技能失败");
+      } finally {
+        setInstallingId(null);
+      }
+    },
+    [loadData, token],
+  );
 
-    if (error) {
-      return (
-        <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 p-3">
-          <p className="text-xs text-red-700 dark:text-red-300">{error}</p>
-          <button
-            type="button"
-            onClick={loadPanelData}
-            className="mt-2 text-xs underline text-red-700 dark:text-red-300"
-          >
-            重试
-          </button>
-        </div>
-      );
-    }
-
-    if (activeTab === "skills") {
-      return <SkillList skills={skills} />;
-    }
-    return <AutomationList automations={automations} />;
-  }, [activeTab, automations, error, loadPanelData, loading, skills]);
-
-  const panelClassName = overlayMode
-    ? `panel-surface border-l flex flex-col fixed inset-y-0 right-0 z-40 shadow-xl transition-transform duration-200 ${
-        isOpen ? "translate-x-0" : "translate-x-full"
-      }`
-    : `panel-surface border-l flex flex-col shrink-0 transition-all duration-200 ${
-        collapsed ? "w-0 min-w-0 overflow-hidden" : ""
-      }`;
+  const skillsStats = useMemo(() => {
+    const installed = skills.filter((s) => s.installed).length;
+    return `${installed}/${skills.length} 已安装`;
+  }, [skills]);
 
   return (
     <aside
-      className={panelClassName}
+      className={`panel-surface border-l flex flex-col shrink-0 transition-all duration-200 ${
+        collapsed ? "w-0 min-w-0 overflow-hidden" : ""
+      }`}
       style={
-        !overlayMode && collapsed
+        collapsed
           ? undefined
-          : {
-              width: "var(--right-panel-width)",
-              minWidth: "var(--right-panel-width)",
-            }
+          : { width: "var(--right-panel-width)", minWidth: "var(--right-panel-width)" }
       }
     >
-      <div className="px-4 pt-4 pb-3 border-b panel-surface flex items-center justify-between">
-        <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-          工具箱
-        </div>
-        {overlayMode ? (
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 w-8 rounded-md border panel-surface flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
-            aria-label="关闭工具箱"
-          >
-            <XMarkIcon className="h-4 w-4 text-[var(--text-secondary)]" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="px-2.5 py-1 text-xs rounded-md border panel-surface text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-          >
-            收起
-          </button>
-        )}
+      <div className="p-4 border-b panel-surface flex items-center justify-between">
+        <div className="text-sm font-semibold">工具箱</div>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="px-2 py-1 text-xs rounded border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          收起
+        </button>
       </div>
 
-      <div className="px-4 py-3 flex-1 overflow-y-auto">
-        <PanelTabs activeTab={activeTab} onChange={setActiveTab} />
-        <div className="mt-3">{panelContent}</div>
+      <div className="px-4 pt-3 pb-2 border-b panel-surface">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("skills")}
+            className={`px-3 py-1.5 text-xs rounded-md border ${
+              tab === "skills" ? "bg-sky-500 text-white border-sky-500" : "panel-surface"
+            }`}
+          >
+            ⚡ 技能
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("automations")}
+            className={`px-3 py-1.5 text-xs rounded-md border ${
+              tab === "automations" ? "bg-sky-500 text-white border-sky-500" : "panel-surface"
+            }`}
+          >
+            ⏰ 自动化
+          </button>
+          <button
+            type="button"
+            onClick={loadData}
+            className="ml-auto px-2 py-1 text-xs rounded border panel-surface"
+          >
+            刷新
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 text-sm overflow-y-auto flex-1">
+        {loading && <div className="text-xs text-slate-500">加载中...</div>}
+        {error && <div className="text-xs text-red-600 mb-3">系统错误：{error}</div>}
+
+        {!loading && tab === "skills" && (
+          <div>
+            <div className="text-xs text-slate-500 mb-2">技能状态：{skillsStats}</div>
+            <div className="space-y-2">
+              {skills.length === 0 && (
+                <div className="text-xs text-slate-500 border rounded-md p-3">
+                  暂无技能。请先确保 VPS 有技能目录或等待自动初始化完成。
+                </div>
+              )}
+              {skills.map((skill) => {
+                const upgradable =
+                  skill.installedVersion &&
+                  skill.latestVersion &&
+                  skill.installedVersion !== skill.latestVersion;
+                return (
+                  <div key={skill.id} className="rounded-md border p-3">
+                    <div className="flex items-center gap-2">
+                      <span>{skill.icon}</span>
+                      <div className="font-medium text-sm">{skill.name}</div>
+                      <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded border">
+                        {skill.installed ? "已安装" : "可安装"}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">{skill.description || "无描述"}</div>
+                    <div className="text-[11px] text-slate-500 mt-1">
+                      触发词：<code>{skill.trigger}</code>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1">
+                      版本：{skill.installedVersion || "-"} / 最新 {skill.latestVersion}
+                      {skill.legacy && <span className="ml-1 text-amber-600">legacy</span>}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      {!skill.installed ? (
+                        <button
+                          type="button"
+                          onClick={() => handleInstall(skill.id)}
+                          disabled={installingId === skill.id}
+                          className="px-2 py-1 text-xs rounded bg-sky-500 text-white disabled:opacity-60"
+                        >
+                          {installingId === skill.id ? "安装中..." : "安装"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSkillUse?.(skill.trigger)}
+                          className="px-2 py-1 text-xs rounded border panel-surface"
+                        >
+                          使用
+                        </button>
+                      )}
+                      {upgradable && (
+                        <span className="px-2 py-1 text-[10px] rounded bg-amber-100 text-amber-700">
+                          可升级
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!loading && tab === "automations" && (
+          <div className="space-y-2">
+            {automations.length === 0 && (
+              <div className="text-xs text-slate-500 border rounded-md p-3">暂无自动化任务</div>
+            )}
+            {automations.map((item) => (
+              <div key={item.id} className="rounded-md border p-3">
+                <div className="flex items-center gap-2">
+                  <div className="font-medium text-sm">{item.name}</div>
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded border">
+                    {item.enabled ? "启用中" : "已暂停"}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">{item.scheduleText}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {item.skill} · {item.description}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </aside>
   );
