@@ -164,7 +164,9 @@ export function ChatInput({
   const applySlashSkill = (skill: {
     trigger: string;
   }) => {
-    onInputChange(`${skill.trigger} `);
+    const normalizedTrigger = skill.trigger.replace(/^\/+/, "").trim();
+    if (!normalizedTrigger) return;
+    onInputChange(`/${normalizedTrigger} `);
     setDismissedSlashToken(null);
     setActiveSlashIndex(0);
     requestAnimationFrame(() => {
@@ -343,7 +345,7 @@ export function ChatInput({
                           {skill.name}
                         </span>
                         <span className="text-xs text-[var(--accent)]">
-                          {skill.trigger}
+                          /{skill.trigger.replace(/^\/+/, "")}
                         </span>
                       </div>
                       {skill.description && (
