@@ -34,6 +34,11 @@ export const getSkillsUrl = () => {
   return API_CONFIG.ENDPOINTS.SKILLS;
 };
 
+// Helper function to search skills
+export const getSkillsSearchUrl = (query: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/search?q=${encodeURIComponent(query)}`;
+};
+
 // Helper function to get skill install URL
 export const getSkillInstallUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${skillId}/install`;

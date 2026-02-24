@@ -2,7 +2,7 @@ import { validateLinuxUsername } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
 import type { ISkillsService } from './contracts.js';
-import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult } from './types.js';
+import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo } from './types.js';
 
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
@@ -37,6 +37,15 @@ export class SkillsService implements ISkillsService {
 
     SkillsService.listInFlight.set(cacheKey, pending);
     return pending;
+  }
+
+  async searchSkills(context: SkillsContext, query: string): Promise<SkillInfo[]> {
+    this.validateContext(context);
+    return this.executeSkillOperation(
+      () => this.store.searchSkills(context.linuxUser, query),
+      LIST_TIMEOUT_MS,
+      '搜索技能超时，请稍后重试'
+    );
   }
 
   async installSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult> {

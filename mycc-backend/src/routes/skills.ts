@@ -47,6 +47,46 @@ export async function skillsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.get('/api/skills/search', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { q } = request.query as { q?: string };
+      if (!q || q.trim().length < 2) {
+        return reply.status(400).send({
+          success: false,
+          error: '搜索关键词至少需要 2 个字符',
+        });
+      }
+
+      const user = await withUser(request.user.userId);
+      const skills = await skillsService.searchSkills({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      }, q);
+
+      return reply.send({
+        success: true,
+        data: skills,
+      });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({
+          success: false,
+          error: err.message,
+        });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '搜索技能失败',
+      });
+    }
+  });
+
   fastify.post('/api/skills/:skillId/install', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {

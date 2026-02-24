@@ -8,6 +8,7 @@ import {
   getSkillEnableUrl,
   getSkillInstallUrl,
   getSkillsUrl,
+  getSkillsSearchUrl,
   getSkillUpgradeUrl,
 } from "../config/api";
 
@@ -48,6 +49,8 @@ export function SkillsPage() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"installed" | "market">("installed");
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<SkillItem[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const fetchJsonWithTimeout = useCallback(
     async (url: string, init?: RequestInit, timeoutMs = 45000) => {
@@ -111,6 +114,41 @@ export function SkillsPage() {
     loadSkills();
   }, [loadSkills]);
 
+  const searchRemoteSkills = useCallback(
+    async (query: string) => {
+      if (!token || query.trim().length < 2) {
+        setSearchResults([]);
+        return;
+      }
+      setSearching(true);
+      setError(null);
+      try {
+        const json = await fetchJsonWithTimeout(getSkillsSearchUrl(query), {
+          headers: getAuthHeaders(token),
+        });
+        setSearchResults((json.data || []) as SkillItem[]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "搜索失败");
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [fetchJsonWithTimeout, token],
+  );
+
+  // 当在市场标签页搜索时，触发远程搜索
+  useEffect(() => {
+    if (activeTab === "market" && query.trim().length >= 2) {
+      const timer = setTimeout(() => {
+        searchRemoteSkills(query);
+      }, 500); // 防抖 500ms
+      return () => clearTimeout(timer);
+    } else {
+      setSearchResults([]);
+    }
+  }, [activeTab, query, searchRemoteSkills]);
+
   const callSkillAction = useCallback(
     async (skillId: string, action: "install" | "upgrade" | "enable" | "disable") => {
       if (!token) return;
@@ -135,11 +173,18 @@ export function SkillsPage() {
         setProcessingId(null);
       }
     },
-    [loadSkills, token],
+    [fetchJsonWithTimeout, loadSkills, token],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+
+    // 市场标签页：如果有搜索词且长度>=2，显示远程搜索结果
+    if (activeTab === "market" && q.length >= 2) {
+      return searchResults;
+    }
+
+    // 否则使用本地过滤
     const base =
       activeTab === "installed"
         ? skills.filter((s) => s.installed)
@@ -148,7 +193,7 @@ export function SkillsPage() {
     return base.filter((s) =>
       [s.id, s.name, s.description, s.trigger].join(" ").toLowerCase().includes(q),
     );
-  }, [activeTab, query, skills]);
+  }, [activeTab, query, skills, searchResults]);
 
   const installedCount = skills.filter((s) => s.installed).length;
   const marketCount = skills.filter((s) => !s.installed).length;
@@ -229,6 +274,8 @@ export function SkillsPage() {
 
           {loading ? (
             <div className="text-sm text-slate-500">加载中...</div>
+          ) : searching ? (
+            <div className="text-sm text-slate-500">搜索中...</div>
           ) : (
             <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filtered.map((skill) => (

@@ -3,6 +3,7 @@ import { getSSHPool } from '../ssh/pool.js';
 import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import type { SkillInfo } from './types.js';
+import { ClawHubAdapter } from './clawhub-adapter.js';
 
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
@@ -82,6 +83,7 @@ function runAsLinuxUserCommand(linuxUser: string, command: string): string {
 
 export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
+  private clawhubAdapter = new ClawHubAdapter();
 
   async listSkillInfos(linuxUser: string): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
     const sshPool = getSSHPool();
@@ -143,6 +145,19 @@ export class RemoteSkillStore {
         }
       }
 
+      // 合并 ClawHub 技能（如果可用）
+      try {
+        const clawhubSkills = await this.clawhubAdapter.listAvailableSkills(linuxUser);
+        for (const skill of clawhubSkills) {
+          if (!map.has(skill.id)) {
+            map.set(skill.id, skill);
+          }
+        }
+      } catch (error) {
+        console.warn('[RemoteSkillStore] ClawHub 技能加载失败:', error);
+        // 不阻断主流程，继续返回其他技能
+      }
+
       const skills = Array.from(map.values()).sort((a, b) => {
         if (a.installed !== b.installed) return a.installed ? -1 : 1;
         return a.id.localeCompare(b.id);
@@ -154,6 +169,24 @@ export class RemoteSkillStore {
       };
     } finally {
       sshPool.release(connection);
+    }
+  }
+
+  async searchSkills(linuxUser: string, query: string): Promise<SkillInfo[]> {
+    if (!query || query.trim().length < 2) {
+      throw new SkillsError(400, '搜索关键词至少需要 2 个字符');
+    }
+
+    try {
+      // 搜索 ClawHub
+      const clawhubResults = await this.clawhubAdapter.searchSkills(linuxUser, query);
+
+      // TODO: 也可以搜索本地 catalog（通过 grep SKILL.md 的 description）
+
+      return clawhubResults;
+    } catch (error) {
+      console.error('[RemoteSkillStore] 搜索失败:', error);
+      throw new SkillsError(500, '搜索技能失败');
     }
   }
 
@@ -169,21 +202,46 @@ export class RemoteSkillStore {
       const run: ExecFn = (command) => sshPool.exec(connection, command);
       const runAsUser: ExecFn = (command) =>
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+
+      // 先检查是否是 ClawHub 技能
+      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
+      const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
+
+      if (!targetCheck.stdout.trim()) {
+        // 技能未安装，尝试从 ClawHub 安装
+        try {
+          const version = await this.clawhubAdapter.installSkill(linuxUser, skillId);
+
+          // 更新 manifest 和 lock
+          await this.updateManifestAndLock(runAsUser, linuxUser, {
+            skillId,
+            version,
+            source: 'clawhub',
+            installedPath: targetDir,
+            disabled: false,
+          });
+
+          return version;
+        } catch (clawhubError) {
+          console.warn(`[RemoteSkillStore] ClawHub 安装失败，尝试本地 catalog:`, clawhubError);
+          // 回退到本地 catalog 安装
+        }
+      }
+
+      // 本地 catalog 安装逻辑（原有逻辑）
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       if (!catalogDir) {
         throw new SkillsError(503, '未找到技能目录，已尝试自动初始化但失败');
       }
 
       const sourceDir = `${catalogDir}/${skillId}`;
-      const targetBaseDir = userSkillsDir(linuxUser);
-      const targetDir = `${targetBaseDir}/${skillId}`;
 
       const sourceCheck = await run(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
       if (!sourceCheck.stdout.trim()) {
         throw new SkillsError(404, '技能不存在于目录中');
       }
 
-      await runAsUser(`mkdir -p ${escapeShellArg(targetBaseDir)}`);
+      await runAsUser(`mkdir -p ${escapeShellArg(userSkillsDir(linuxUser))}`);
       const copy = await runAsUser(
         `[ -d ${escapeShellArg(targetDir)} ] || cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}`
       );
@@ -221,13 +279,45 @@ export class RemoteSkillStore {
       const run: ExecFn = (command) => sshPool.exec(connection, command);
       const runAsUser: ExecFn = (command) =>
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+
+      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
+      const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
+
+      if (!targetCheck.stdout.trim()) {
+        throw new SkillsError(404, '技能未安装，无法升级');
+      }
+
+      // 读取当前技能的 source
+      const manifest = await this.readManifest(runAsUser, linuxUser);
+      const currentSource = manifest?.skills?.[skillId]?.source;
+
+      // 如果是 ClawHub 技能，使用 ClawHub 升级
+      if (currentSource === 'clawhub') {
+        try {
+          const version = await this.clawhubAdapter.upgradeSkill(linuxUser, skillId);
+          const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
+
+          await this.updateManifestAndLock(runAsUser, linuxUser, {
+            skillId,
+            version,
+            source: 'clawhub',
+            installedPath: targetDir,
+            disabled,
+          });
+
+          return version;
+        } catch (clawhubError) {
+          console.warn(`[RemoteSkillStore] ClawHub 升级失败:`, clawhubError);
+          throw new SkillsError(500, `升级失败: ${clawhubError instanceof Error ? clawhubError.message : String(clawhubError)}`);
+        }
+      }
+
+      // 本地 catalog 升级逻辑（原有逻辑）
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       if (!catalogDir) {
         throw new SkillsError(503, '未找到技能目录，无法升级');
       }
       const sourceDir = `${catalogDir}/${skillId}`;
-      const targetBaseDir = userSkillsDir(linuxUser);
-      const targetDir = `${targetBaseDir}/${skillId}`;
 
       if (sourceDir === targetDir) {
         const currentSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
@@ -236,12 +326,8 @@ export class RemoteSkillStore {
       }
 
       const sourceCheck = await run(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
-      const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
       if (!sourceCheck.stdout.trim()) {
         throw new SkillsError(404, '技能不存在于目录中');
-      }
-      if (!targetCheck.stdout.trim()) {
-        throw new SkillsError(404, '技能未安装，无法升级');
       }
 
       const upgrade = await runAsUser(
@@ -254,7 +340,6 @@ export class RemoteSkillStore {
       const catSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
       const parsed = matter(catSkill.stdout || '');
       const version = normalizeVersion(parsed.data.version).version;
-      const manifest = await this.readManifest(runAsUser, linuxUser);
       const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
 
       await this.updateManifestAndLock(runAsUser, linuxUser, {
