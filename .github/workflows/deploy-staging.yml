@@ -1,0 +1,107 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging:
+    name: deploy-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      STAGING_PROJECT_DIR: ${{ secrets.STAGING_PROJECT_DIR }}
+      STAGING_FRONTEND_DIST_DIR: ${{ secrets.STAGING_FRONTEND_DIST_DIR }}
+      STAGING_BACKEND_HEALTH_URL: ${{ secrets.STAGING_BACKEND_HEALTH_URL }}
+      STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
+    steps:
+      - name: Validate required staging secrets
+        run: |
+          set -euo pipefail
+          for key in STAGING_HOST STAGING_USER STAGING_SSH_KEY; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing required secret: $key" >&2
+              exit 1
+            fi
+          done
+          if [ -z "${STAGING_PORT:-}" ]; then
+            echo "STAGING_PORT not set, fallback to 22"
+          fi
+          if [ -z "${STAGING_PROJECT_DIR:-}" ]; then
+            echo "STAGING_PROJECT_DIR not set, fallback to /home/armysheng/mycc"
+          fi
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Add staging host to known_hosts
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on staging server
+        run: |
+          set -euo pipefail
+          SSH_PORT="${STAGING_PORT:-22}"
+          PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
+          FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
+          ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          cd "${PROJECT_DIR}"
+
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+          npm -C mycc-web-react ci
+          npm -C mycc-web-react run build
+
+          if [ -n "${FRONTEND_DIST_DIR}" ]; then
+            mkdir -p "${FRONTEND_DIST_DIR}"
+            rsync -a --delete mycc-web-react/dist/ "${FRONTEND_DIST_DIR}/"
+          fi
+
+          npm -C mycc-backend ci
+          npm -C mycc-backend run build
+
+          if systemctl --user restart mycc-backend 2>/dev/null; then
+            echo "restarted with systemctl --user"
+          elif sudo systemctl restart mycc-backend; then
+            echo "restarted with sudo systemctl"
+          else
+            echo "failed to restart mycc-backend service" >&2
+            exit 1
+          fi
+          EOF
+
+      - name: Verify backend health endpoint
+        run: |
+          set -euo pipefail
+          HEALTH_URL="${STAGING_BACKEND_HEALTH_URL:-http://34.85.0.184:8080/health}"
+          curl -fsS "${HEALTH_URL}" >/tmp/staging-health.json
+          cat /tmp/staging-health.json
+
+      - name: Verify frontend endpoint (optional)
+        if: env.STAGING_FRONTEND_URL != ''
+        run: |
+          set -euo pipefail
+          curl -fsSIL "${STAGING_FRONTEND_URL}" | head -n 20
