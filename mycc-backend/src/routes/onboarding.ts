@@ -38,16 +38,28 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
       const claudeMdPath = `/home/${linuxUser}/workspace/CLAUDE.md`;
 
-      // 替换 CLAUDE.md 中的变量（仅限 CLAUDE.md，不全量扫描）
-      const safeAssistantName = body.assistantName.replace(/[/&\\]/g, '\\$&');
-      const safeOwnerName = body.ownerName.replace(/[/&\\]/g, '\\$&');
+      // 使用 node -e 做文件替换，避免 shell 插值注入风险
+      // 将用户输入 Base64 编码后传入，在 node 内部解码并做纯字符串替换
+      const assistantB64 = Buffer.from(body.assistantName).toString('base64');
+      const ownerB64 = Buffer.from(body.ownerName).toString('base64');
+
+      const nodeScript = [
+        `const fs=require("fs");`,
+        `const a=Buffer.from("${assistantB64}","base64").toString();`,
+        `const o=Buffer.from("${ownerB64}","base64").toString();`,
+        `const f="${claudeMdPath}";`,
+        `let c=fs.readFileSync(f,"utf8");`,
+        `c=c.split("{{ASSISTANT_NAME}}").join(a);`,
+        `c=c.split("{{OWNER_NAME}}").join(o);`,
+        `fs.writeFileSync(f,c);`,
+      ].join('');
 
       const sshPool = getSSHPool();
       const connection = await sshPool.acquire();
 
       try {
-        const sedCmd = `sudo sed -i 's/{{ASSISTANT_NAME}}/${safeAssistantName}/g; s/{{OWNER_NAME}}/${safeOwnerName}/g' ${claudeMdPath}`;
-        const result = await sshPool.exec(connection, sedCmd);
+        const cmd = `sudo node -e '${nodeScript}'`;
+        const result = await sshPool.exec(connection, cmd);
         if (result.exitCode !== 0) {
           console.error(`❌ Onboarding 变量替换失败: ${result.stderr}`);
           return reply.status(500).send({

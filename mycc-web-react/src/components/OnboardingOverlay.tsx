@@ -21,11 +21,14 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
   const [assistantName, setAssistantName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
   const [error, setError] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [showButton, setShowButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancelledRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const defaultOwnerName = (userNickname || '用户').slice(0, 20);
   const defaultAssistantName = 'cc';
@@ -36,6 +39,7 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
 
   // Typing animation for assistant messages
   const typeMessage = useCallback(async (text: string): Promise<void> => {
+    if (cancelledRef.current) return;
     setIsTyping(true);
     setShowInput(false);
     setShowButton(false);
@@ -46,6 +50,12 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
       setMessages(prev => [...prev, partialMsg]);
 
       const timer = setInterval(() => {
+        if (cancelledRef.current) {
+          clearInterval(timer);
+          timerRef.current = null;
+          resolve();
+          return;
+        }
         i++;
         setMessages(prev => {
           const updated = [...prev];
@@ -56,23 +66,44 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
 
         if (i >= text.length) {
           clearInterval(timer);
+          timerRef.current = null;
           setIsTyping(false);
           resolve();
         }
       }, 40);
+      timerRef.current = timer;
     });
   }, [scrollToBottom]);
 
+  // Helper: cancellable delay
+  const delay = useCallback((ms: number) => new Promise<void>(resolve => {
+    if (cancelledRef.current) { resolve(); return; }
+    const t = setTimeout(() => resolve(), ms);
+    // Store in timerRef for cleanup (reuse same ref, ok since delays are sequential)
+    timerRef.current = t as unknown as ReturnType<typeof setInterval>;
+  }), []);
+
   // Start dialog sequence
   useEffect(() => {
+    cancelledRef.current = false;
     const startDialog = async () => {
       await typeMessage('你好！我是你的个人 AI 助手。');
-      await new Promise(r => setTimeout(r, 400));
+      await delay(400);
+      if (cancelledRef.current) return;
       await typeMessage('在开始之前，给我取个名字吧？');
+      if (cancelledRef.current) return;
       setShowInput(true);
       setTimeout(() => inputRef.current?.focus(), 100);
     };
     startDialog();
+
+    return () => {
+      cancelledRef.current = true;
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,12 +114,17 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
     setInput('');
     setShowInput(false);
     setStep(1);
+    setIsAdvancing(true);
 
-    await new Promise(r => setTimeout(r, 300));
+    await delay(300);
+    if (cancelledRef.current) return;
     await typeMessage(`好的，${name} 就是我了！`);
-    await new Promise(r => setTimeout(r, 400));
+    await delay(400);
+    if (cancelledRef.current) return;
     await typeMessage('那我该怎么称呼你呢？');
+    if (cancelledRef.current) return;
     setShowInput(true);
+    setIsAdvancing(false);
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -99,18 +135,24 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
     setInput('');
     setShowInput(false);
     setStep(2);
+    setIsAdvancing(true);
 
-    await new Promise(r => setTimeout(r, 300));
+    await delay(300);
+    if (cancelledRef.current) return;
     await typeMessage(`${name}，很高兴认识你！`);
-    await new Promise(r => setTimeout(r, 400));
+    await delay(400);
+    if (cancelledRef.current) return;
     await typeMessage('简单介绍一下我能做什么：\n\n• 💬 聊天对话 — 随时找我聊，我会记住上下文\n• 🛠 技能系统 — 输入 / 触发各种技能\n• 📱 多端访问 — 手机电脑都能用');
-    await new Promise(r => setTimeout(r, 400));
+    await delay(400);
+    if (cancelledRef.current) return;
     await typeMessage('准备好了吗？开始吧！');
+    if (cancelledRef.current) return;
     setShowButton(true);
+    setIsAdvancing(false);
   };
 
   const handleSubmitInput = () => {
-    if (isTyping || isSubmitting) return;
+    if (isTyping || isSubmitting || isAdvancing) return;
     if (step === 0) {
       handleStep1Submit();
     } else if (step === 1) {
