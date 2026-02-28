@@ -202,9 +202,8 @@ export function SkillsPage() {
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
         onNewChat={() => navigate("/")}
-        currentSection="skills"
-        onOpenChat={() => navigate("/")}
-        onOpenSkills={() => navigate("/skills")}
+        isOpen={false}
+        onClose={() => {}}
       />
 
       <main className="flex-1 overflow-y-auto">
