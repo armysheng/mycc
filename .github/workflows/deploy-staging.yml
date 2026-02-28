@@ -106,12 +106,13 @@ jobs:
           fi
           EOF
 
-      - name: Verify backend health endpoint
+      - name: Verify backend health endpoint (via SSH)
         run: |
           set -euo pipefail
-          HEALTH_URL="${STAGING_BACKEND_HEALTH_URL:-http://34.85.0.184:8080/health}"
-          curl -fsS "${HEALTH_URL}" >/tmp/staging-health.json
-          cat /tmp/staging-health.json
+          SSH_PORT="${STAGING_PORT:-22}"
+          HEALTH_URL="${STAGING_BACKEND_HEALTH_URL:-http://127.0.0.1:8080/health}"
+          ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+            "curl -fsS '${HEALTH_URL}'"
 
       - name: Verify frontend endpoint (optional)
         if: env.STAGING_FRONTEND_URL != ''
