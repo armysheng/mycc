@@ -136,12 +136,17 @@ git commit -m "feat(settings): implement system theme mode with live media query
 
 ---
 
-### Task 3: 侧栏默认开关
+### Task 3: 侧栏默认开关（P0 修订：设置项与运行时状态拆开）
+
+**语义拆分：**
+- `sidebarDefaultOpen`（设置项）— 持久化在 localStorage，只影响页面初始加载时的值
+- `isDesktopSidebarVisible`（运行时状态）— ChatPage 内的 state，用户可随时 toggle，不写回设置
 
 **Files:**
 - Modify: `mycc-web-react/src/types/settings.ts`
 - Modify: `mycc-web-react/src/components/settings/GeneralSettings.tsx`
 - Modify: `mycc-web-react/src/components/ChatPage.tsx`
+- Modify: `mycc-web-react/src/components/layout/Sidebar.tsx`
 
 **Step 1: AppSettings 新增字段**
 
@@ -164,52 +169,77 @@ sidebarDefaultOpen: boolean;
 ```tsx
 <ToggleRow
   title="侧栏默认展开"
-  description="关闭后桌面端默认收起侧栏。移动端始终默认收起。"
+  description="控制页面加载时桌面端侧栏是否默认展开。移动端始终默认收起。"
   checked={sidebarDefaultOpen}
   onToggle={() => updateSettings({ sidebarDefaultOpen: !sidebarDefaultOpen })}
 />
 ```
 
-**Step 3: ChatPage 读取设置**
+**Step 3: ChatPage — 用设置初始化运行时状态**
 
-`isSidebarOpen` 初始值改为从 settings 读取：
+两个独立 state，语义明确：
 ```typescript
 const { sidebarDefaultOpen } = useSettings();
-const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-// 仅桌面端使用默认值（Sidebar 在桌面端是 hidden lg:flex，不受此 state 控制）
-// 移动端抽屉始终默认关闭
-```
-
-注意：当前 Sidebar 桌面端用 `hidden lg:flex` CSS 控制始终可见，和 `isSidebarOpen` state 无关。`isSidebarOpen` 只控制移动端抽屉。所以实际上这个设置需要改 Sidebar 桌面端可见性逻辑。
-
-桌面端改为：如果 `sidebarDefaultOpen` 为 false，桌面端 aside 也隐藏，通过一个 `isDesktopSidebarVisible` state 控制：
-```typescript
+// 运行时状态：用户可随时 toggle，不写回设置
 const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] = useState(sidebarDefaultOpen);
+// 移动端抽屉：始终默认关闭
+const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 ```
 
-Sidebar props 新增 `desktopVisible: boolean`，桌面端 aside className 改为：
+原有 `isSidebarOpen` 拆成上面两个。修改所有引用：
+- 汉堡按钮 → `setIsMobileSidebarOpen(true)`
+- Sidebar `isOpen` prop → `isMobileSidebarOpen`
+- Sidebar `onClose` prop → `() => setIsMobileSidebarOpen(false)`
+
+**Step 4: Sidebar props 新增 `desktopVisible`**
+
+```typescript
+interface SidebarProps {
+  // ...existing
+  desktopVisible: boolean;
+}
 ```
+
+桌面端 aside className 改为：
+```tsx
 className={`panel-surface border-r ${desktopVisible ? 'hidden lg:flex' : 'hidden'} flex-col shrink-0`}
 ```
 
-ChatPage header 新增桌面端 toggle 按钮（仅当侧栏隐藏时显示）。
+**Step 5: ChatPage header 新增桌面端 toggle 按钮**
 
-**Step 4: 类型检查 + 构建**
+```tsx
+{/* 桌面端侧栏 toggle（仅 lg 以上显示） */}
+<button
+  onClick={() => setIsDesktopSidebarVisible(v => !v)}
+  className="hidden lg:inline-flex p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+  aria-label={isDesktopSidebarVisible ? "收起侧栏" : "展开侧栏"}
+>
+  <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+</button>
+```
+
+**Step 6: 类型检查 + 构建**
 
 Run: `cd mycc-web-react && npx tsc --noEmit && npm run build`
 Expected: PASS
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 ```bash
 git add mycc-web-react/src/types/settings.ts mycc-web-react/src/components/settings/GeneralSettings.tsx mycc-web-react/src/components/ChatPage.tsx mycc-web-react/src/components/layout/Sidebar.tsx
-git commit -m "feat(settings): add sidebar default open toggle with desktop visibility control"
+git commit -m "feat(settings): add sidebar default open toggle, split setting vs runtime state"
 ```
 
 ---
 
-### Task 4: 清空当前会话
+### Task 4: 清空当前会话（P0 修订：直接重置 state，不仅靠 URL）
+
+**P0 问题：** `handleNewChat()` 只做 `navigate({ search: "" })`，依赖 URL 变化触发 `useChatState` 重新初始化。但如果当前已经没有 sessionId query，URL 不会变化，state 不会重置。必须直接清空 state。
+
+**方案：** `handleClearChat` 先重置 `useChatState` 暴露的所有 state setter，再清 URL。
 
 **Files:**
 - Modify: `mycc-web-react/src/components/ChatPage.tsx`
@@ -228,17 +258,27 @@ git commit -m "feat(settings): add sidebar default open toggle with desktop visi
 )}
 ```
 
-**Step 2: handleClearChat 回调**
+**Step 2: handleClearChat 回调 — 直接重置 state**
 
 ```typescript
 const handleClearChat = useCallback(() => {
   if (!window.confirm("确定清空当前会话？")) return;
-  // 利用 handleNewChat 已有的逻辑跳到空白状态
-  handleNewChat();
-}, [handleNewChat]);
+  // 直接重置聊天 state，不依赖 URL 变化
+  setMessages([]);
+  setCurrentSessionId(null);
+  setHasShownInitMessage(false);
+  setHasReceivedInit(false);
+  setCurrentAssistantMessage(null);
+  clearInput();
+  // 同时清 URL query（确保 sessionId 参数被移除）
+  navigate({ search: "" });
+}, [
+  setMessages, setCurrentSessionId, setHasShownInitMessage,
+  setHasReceivedInit, setCurrentAssistantMessage, clearInput, navigate,
+]);
 ```
 
-注意：`handleNewChat` 已经会 `navigate({ search: "" })`，加上 useChatState 的 initialMessages/initialSessionId 会因 URL 变化重新初始化为空。确认这个路径是否生效，如果不够需要额外清除 state。
+注意：`setMessages` 等 setter 均由 `useChatState` 在 ChatPage 中解构而出，已在作用域内。
 
 **Step 3: 类型检查**
 
@@ -249,12 +289,16 @@ Expected: PASS
 
 ```bash
 git add mycc-web-react/src/components/ChatPage.tsx
-git commit -m "feat(chat): add clear conversation button with confirmation"
+git commit -m "feat(chat): add clear conversation button with direct state reset"
 ```
 
 ---
 
-### Task 5: 会话重命名
+### Task 5: 会话重命名（P0 修订：避免 button 嵌套）
+
+**P0 问题：** 原方案在 `<button>` 内嵌套 `<button>`（编辑按钮），违反 HTML 规范，导致交互冲突。
+
+**方案：** 对话条目外层从 `<button>` 改为 `<div role="button" tabIndex={0}>`，用 `onClick` + `onKeyDown(Enter)` 模拟按钮语义。这样内部的编辑 `<button>` 就不再是嵌套 button。
 
 **Files:**
 - Modify: `mycc-web-react/src/components/layout/Sidebar.tsx`
@@ -266,45 +310,67 @@ const [editingId, setEditingId] = useState<string | null>(null);
 const [editTitle, setEditTitle] = useState("");
 ```
 
-**Step 2: 对话条目 hover 时显示编辑图标**
+**Step 2: 对话条目改为 div，避免 button 嵌套**
 
-在对话 button 内部，标题 div 右侧新增编辑按钮：
+将原有的 `<button>` 改为 `<div>`：
 ```tsx
-<button
-  type="button"
-  onClick={(e) => {
-    e.stopPropagation();
-    setEditingId(conv.sessionId);
-    setEditTitle(conv.customTitle || conv.lastMessagePreview || "");
+<div
+  key={conv.sessionId}
+  role="button"
+  tabIndex={0}
+  onClick={() => handleSelectSession(conv.sessionId)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") handleSelectSession(conv.sessionId);
   }}
-  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity shrink-0"
+  className="group w-full text-left rounded-lg px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
 >
-  ✎
-</button>
 ```
 
-对话 button 加 `group` class 以支持 `group-hover`。
+注意加了 `group` class 以支持内部 `group-hover`。
 
-**Step 3: 编辑模式渲染**
+**Step 3: 标题行加编辑按钮**
 
-当 `editingId === conv.sessionId` 时，标题区替换为 input：
+标题 div 改为 flex 布局，右侧加编辑按钮：
 ```tsx
-{editingId === conv.sessionId ? (
-  <input
-    value={editTitle}
-    onChange={(e) => setEditTitle(e.target.value)}
-    onKeyDown={(e) => {
-      if (e.key === "Enter") handleRename(conv.sessionId);
-      if (e.key === "Escape") setEditingId(null);
-    }}
-    onBlur={() => setEditingId(null)}
-    autoFocus
-    className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
-  />
-) : (
-  // 原标题渲染
-)}
+<div className="flex items-center gap-1">
+  <div className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">
+    {editingId === conv.sessionId ? (
+      <input
+        value={editTitle}
+        onChange={(e) => setEditTitle(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleRename(conv.sessionId);
+          if (e.key === "Escape") setEditingId(null);
+        }}
+        onBlur={() => handleRename(conv.sessionId)}
+        autoFocus
+        className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
+      />
+    ) : (
+      conv.customTitle || conv.lastMessagePreview || conv.sessionId.substring(0, 8)
+    )}
+  </div>
+  {editingId !== conv.sessionId && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditingId(conv.sessionId);
+        setEditTitle(conv.customTitle || conv.lastMessagePreview || "");
+      }}
+      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity shrink-0"
+    >
+      ✎
+    </button>
+  )}
+</div>
 ```
+
+关键点：
+- `input` 的 `onClick` 加 `e.stopPropagation()` 防止点击 input 触发 session 切换
+- `onBlur` 时也调用 `handleRename`（保存），而非直接取消
+- 编辑模式时隐藏编辑按钮
 
 **Step 4: handleRename 回调**
 
@@ -346,7 +412,7 @@ Expected: PASS
 
 ```bash
 git add mycc-web-react/src/components/layout/Sidebar.tsx
-git commit -m "feat(sidebar): add inline conversation rename with API call"
+git commit -m "feat(sidebar): add inline conversation rename, div-based to avoid button nesting"
 ```
 
 ---
