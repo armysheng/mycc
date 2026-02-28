@@ -31,6 +31,7 @@ export interface User {
   nickname?: string;
   linux_user: string;
   status: string;
+  is_initialized: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -316,4 +317,12 @@ export async function upgradePlan(userId: number, plan: 'basic' | 'pro'): Promis
      WHERE user_id = $3`,
     [plan, tokensLimit, userId]
   );
+}
+
+export async function markUserInitialized(userId: number): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE users SET is_initialized = true WHERE id = $1 AND is_initialized = false`,
+    [userId]
+  );
+  return (result.rowCount || 0) > 0;
 }

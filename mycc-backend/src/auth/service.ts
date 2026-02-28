@@ -152,6 +152,7 @@ export async function getCurrentUser(userId: number) {
     nickname: user.nickname,
     linux_user: user.linux_user,
     status: user.status,
+    is_initialized: user.is_initialized,
     subscription: subscription ? {
       plan: subscription.plan,
       tokens_limit: subscription.tokens_limit,

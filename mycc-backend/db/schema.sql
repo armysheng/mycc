@@ -10,6 +10,7 @@ CREATE TABLE users (
   nickname VARCHAR(50),
   linux_user VARCHAR(50) UNIQUE NOT NULL,  -- mycc_u{id}
   status VARCHAR(20) DEFAULT 'active',
+  is_initialized BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

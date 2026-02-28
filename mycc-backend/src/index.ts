@@ -6,6 +6,7 @@ import { chatRoutes } from './routes/chat.js';
 import { billingRoutes } from './routes/billing.js';
 import { skillsRoutes } from './routes/skills.js';
 import { automationsRoutes } from './routes/automations.js';
+import { onboardingRoutes } from './routes/onboarding.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
@@ -58,6 +59,7 @@ await fastify.register(chatRoutes);
 await fastify.register(billingRoutes);
 await fastify.register(skillsRoutes);
 await fastify.register(automationsRoutes);
+await fastify.register(onboardingRoutes);
 
 // 启动服务器
 async function start() {
