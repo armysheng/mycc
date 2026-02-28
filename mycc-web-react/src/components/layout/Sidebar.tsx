@@ -87,9 +87,7 @@ export function Sidebar({
   }, [token]);
 
   const handleSelectSession = (sessionId: string) => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("sessionId", sessionId);
-    navigate({ search: searchParams.toString() });
+    navigate(`/?sessionId=${encodeURIComponent(sessionId)}`);
     onClose();
   };
 
@@ -136,16 +134,6 @@ export function Sidebar({
             className="flex-1 px-2 py-1.5 text-xs rounded-md border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             ⚡ 技能
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              navigate("/automations");
-              onClose();
-            }}
-            className="flex-1 px-2 py-1.5 text-xs rounded-md border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            ⏰ 自动化
           </button>
         </div>
       </div>
