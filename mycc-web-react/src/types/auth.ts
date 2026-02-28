@@ -5,6 +5,7 @@ export interface User {
   nickname?: string;
   linux_user: string;
   plan: 'free' | 'basic' | 'pro';
+  is_initialized?: boolean;
 }
 
 export interface LoginRequest {

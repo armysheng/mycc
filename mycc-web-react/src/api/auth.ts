@@ -27,3 +27,18 @@ export async function getCurrentUser(token: string): Promise<{ success: boolean;
   });
   return res.json();
 }
+
+export async function initializeOnboarding(
+  token: string,
+  data: { assistantName: string; ownerName: string }
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(apiUrl('/api/onboarding/initialize'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}

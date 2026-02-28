@@ -25,6 +25,7 @@ import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
+import { OnboardingOverlay } from "./OnboardingOverlay";
 
 export function ChatPage() {
   const location = useLocation();
@@ -45,7 +46,7 @@ export function ChatPage() {
   const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
-  const { token } = useAuth();
+  const { token, user, refreshUser } = useAuth();
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -504,6 +505,12 @@ export function ChatPage() {
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
+      {user && user.is_initialized === false && (
+        <OnboardingOverlay
+          onComplete={refreshUser}
+          userNickname={user.nickname}
+        />
+      )}
       <Sidebar
         onNewChat={handleNewChat}
         currentPathLabel={workingDirectory}
