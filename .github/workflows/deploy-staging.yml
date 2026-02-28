@@ -28,6 +28,7 @@ jobs:
       STAGING_FRONTEND_DIST_DIR: ${{ secrets.STAGING_FRONTEND_DIST_DIR }}
       STAGING_BACKEND_HEALTH_URL: ${{ secrets.STAGING_BACKEND_HEALTH_URL }}
       STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
+      STAGING_BACKEND_RESTART_CMD: ${{ secrets.STAGING_BACKEND_RESTART_CMD }}
     steps:
       - name: Validate required staging secrets
         run: |
@@ -83,13 +84,25 @@ jobs:
           npm -C mycc-backend ci
           npm -C mycc-backend run build
 
-          if systemctl --user restart mycc-backend 2>/dev/null; then
-            echo "restarted with systemctl --user"
-          elif sudo systemctl restart mycc-backend; then
-            echo "restarted with sudo systemctl"
+          if [ -n "${STAGING_BACKEND_RESTART_CMD:-}" ]; then
+            echo "restart via custom command"
+            bash -lc "${STAGING_BACKEND_RESTART_CMD}"
           else
-            echo "failed to restart mycc-backend service" >&2
-            exit 1
+            USER_UNIT="$(systemctl --user list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
+            SYS_UNIT="$(sudo systemctl list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
+            if [ -n "${USER_UNIT}" ] && systemctl --user restart "${USER_UNIT}" 2>/dev/null; then
+              echo "restarted with systemctl --user ${USER_UNIT}"
+            elif [ -n "${SYS_UNIT}" ] && sudo systemctl restart "${SYS_UNIT}" 2>/dev/null; then
+              echo "restarted with sudo systemctl ${SYS_UNIT}"
+            elif command -v pm2 >/dev/null 2>&1 && pm2 restart mycc-backend 2>/dev/null; then
+              echo "restarted with pm2 mycc-backend"
+            else
+              echo "failed to restart backend service" >&2
+              systemctl --user list-unit-files --type=service 2>/dev/null | grep -i mycc || true
+              sudo systemctl list-unit-files --type=service 2>/dev/null | grep -i mycc || true
+              pm2 list || true
+              exit 1
+            fi
           fi
           EOF
 
