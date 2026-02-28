@@ -402,15 +402,6 @@ export function ChatPage() {
     navigate({ search: "" });
   }, [navigate]);
 
-
-  const handleSkillUse = useCallback(
-    (trigger: string) => {
-      const text = trigger.endsWith(" ") ? trigger : `${trigger} `;
-      setInput(text);
-    },
-    [setInput],
-  );
-
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
       return;
