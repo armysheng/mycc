@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-ci:
+    name: frontend-ci
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mycc-web-react
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: mycc-web-react/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Health check project entrypoints
+        run: |
+          test -f package.json
+          test -f package-lock.json
+          test -f tsconfig.json
+          test -f vite.config.ts
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!p.scripts?.typecheck||!p.scripts?.build){throw new Error('Missing typecheck/build script');}"
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload dist artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: mycc-web-react/dist
+          if-no-files-found: warn
+          retention-days: 3
+
+  backend-ci:
+    name: backend-ci
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mycc-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: mycc-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Health check project entrypoints
+        run: |
+          test -f package.json
+          test -f package-lock.json
+          test -f tsconfig.json
+          test -f src/index.ts
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!p.scripts?.build){throw new Error('Missing build script');}"
+
+      - name: Type check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build

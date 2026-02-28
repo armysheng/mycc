@@ -5,6 +5,8 @@ import type { SDKMessage } from "../types";
 import { generateId } from "../utils/id";
 
 describe("useClaudeStreaming", () => {
+  const toSSE = (payload: unknown) => `data: ${JSON.stringify(payload)}`;
+
   it("does not extract session_id from system messages", () => {
     const { result } = renderHook(() => useClaudeStreaming());
     const onSessionId = vi.fn();
@@ -34,7 +36,7 @@ describe("useClaudeStreaming", () => {
       output_style: "default",
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: systemMessage,
     });
@@ -86,7 +88,7 @@ describe("useClaudeStreaming", () => {
       uuid: generateId(),
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: assistantMessage,
     });
@@ -126,7 +128,7 @@ describe("useClaudeStreaming", () => {
       uuid: generateId(),
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: assistantMessage,
     });
@@ -164,7 +166,7 @@ describe("useClaudeStreaming", () => {
       permission_denials: [],
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: resultMessage,
     });
@@ -203,7 +205,7 @@ describe("useClaudeStreaming", () => {
       output_style: "default",
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: systemMessage,
     });
@@ -248,7 +250,7 @@ describe("useClaudeStreaming", () => {
       uuid: generateId(),
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: assistantMessage,
     });
@@ -291,7 +293,7 @@ describe("useClaudeStreaming", () => {
       uuid: generateId(),
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: userMessage,
     });
@@ -343,7 +345,7 @@ describe("useClaudeStreaming", () => {
       uuid: generateId(),
     };
 
-    const streamLine = JSON.stringify({
+    const streamLine = toSSE({
       type: "claude_json",
       data: assistantMessage,
     });

@@ -28,12 +28,12 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       expect(
-        screen.getByText("Yes, and auto-accept edits"),
+        screen.getByText("接受并自动应用编辑"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Yes, and manually approve edits"),
+        screen.getByText("接受并手动审批编辑"),
       ).toBeInTheDocument();
-      expect(screen.getByText("No, keep planning")).toBeInTheDocument();
+      expect(screen.getByText("继续规划")).toBeInTheDocument();
     });
 
     it("should render helper text", () => {
@@ -46,7 +46,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       expect(
-        screen.getByText("Choose how to proceed (Press ESC to keep planning)"),
+        screen.getByText("请选择下一步动作（ESC = 继续规划）"),
       ).toBeInTheDocument();
     });
 
@@ -60,11 +60,11 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptWithEditsButton = screen
-        .getByText("Yes, and auto-accept edits")
+        .getByText("接受并自动应用编辑")
         .closest("button")!;
       expect(acceptWithEditsButton).toHaveClass(
-        "bg-green-50",
-        "border-green-500",
+        "bg-emerald-50",
+        "border-emerald-400",
       );
     });
   });
@@ -79,7 +79,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("Yes, and auto-accept edits"));
+      fireEvent.click(screen.getByText("接受并自动应用编辑"));
       expect(mockOnAcceptWithEdits).toHaveBeenCalledTimes(1);
     });
 
@@ -92,7 +92,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("Yes, and manually approve edits"));
+      fireEvent.click(screen.getByText("接受并手动审批编辑"));
       expect(mockOnAcceptDefault).toHaveBeenCalledTimes(1);
     });
 
@@ -105,7 +105,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("No, keep planning"));
+      fireEvent.click(screen.getByText("继续规划"));
       expect(mockOnKeepPlanning).toHaveBeenCalledTimes(1);
     });
 
@@ -120,12 +120,12 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
       fireEvent.mouseEnter(acceptDefaultButton);
 
       expect(mockOnSelectionChange).toHaveBeenCalledWith("acceptDefault");
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
   });
 
@@ -235,9 +235,9 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
 
     it("should not respond to keyboard navigation when externally controlled", () => {
@@ -259,9 +259,9 @@ describe("PlanPermissionInputPanel", () => {
 
       // Selection should remain on acceptDefault
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
 
     it("should not reset selection on mouse leave when externally controlled", () => {
@@ -275,13 +275,13 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
 
       fireEvent.mouseLeave(acceptDefaultButton);
 
       // Selection should remain unchanged in external control mode
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
 
     it("should handle external selection change", () => {
@@ -305,7 +305,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const keepPlanningButton = screen
-        .getByText("No, keep planning")
+        .getByText("继续规划")
         .closest("button")!;
       expect(keepPlanningButton).toHaveClass("bg-slate-50", "border-slate-400");
     });
@@ -341,7 +341,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptWithEditsButton = screen
-        .getByText("Yes, and auto-accept edits")
+        .getByText("接受并自动应用编辑")
         .closest("button")!;
       expect(acceptWithEditsButton).toHaveClass("custom-acceptWithEdits");
     });
@@ -359,7 +359,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
       fireEvent.focus(acceptDefaultButton);
 
@@ -376,7 +376,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("Yes, and manually approve edits")
+        .getByText("接受并手动审批编辑")
         .closest("button")!;
 
       fireEvent.focus(acceptDefaultButton);
@@ -384,8 +384,8 @@ describe("PlanPermissionInputPanel", () => {
 
       // After blur, no button should have selected styling
       expect(acceptDefaultButton).not.toHaveClass(
-        "bg-blue-50",
-        "border-blue-500",
+        "bg-sky-50",
+        "border-sky-400",
       );
     });
   });

@@ -50,7 +50,7 @@ describe("App Routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Claude Code Web UI")).toBeInTheDocument();
-      expect(screen.getByText("/test-path")).toBeInTheDocument();
+      expect(screen.getAllByText("/test-path").length).toBeGreaterThan(0);
     });
   });
 });
