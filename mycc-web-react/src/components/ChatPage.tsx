@@ -19,7 +19,6 @@ import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
-import { RightPanel } from "./layout/RightPanel";
 import { getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -32,7 +31,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [slashSkills, setSlashSkills] = useState<
     Array<{
       id: string;
@@ -403,22 +402,6 @@ export function ChatPage() {
     navigate({ search: "" });
   }, [navigate]);
 
-  const handleOpenSkills = useCallback(() => {
-    navigate("/skills");
-  }, [navigate]);
-
-  const handleRightPanelToggle = useCallback(() => {
-    setIsRightPanelCollapsed((prev) => !prev);
-  }, []);
-
-  const handleSkillUse = useCallback(
-    (trigger: string) => {
-      const text = trigger.endsWith(" ") ? trigger : `${trigger} `;
-      setInput(text);
-    },
-    [setInput],
-  );
-
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
       return;
@@ -514,9 +497,8 @@ export function ChatPage() {
       <Sidebar
         onNewChat={handleNewChat}
         currentPathLabel={workingDirectory}
-        currentSection="chat"
-        onOpenSkills={handleOpenSkills}
-        onOpenChat={handleNewChat}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
@@ -591,22 +573,23 @@ export function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {!isRightPanelCollapsed && (
-              <button
-                onClick={handleRightPanelToggle}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                收起工具箱
-              </button>
-            )}
-            {isRightPanelCollapsed && (
-              <button
-                onClick={handleRightPanelToggle}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                打开工具箱
-              </button>
-            )}
+            {/* 移动端汉堡按钮 */}
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="打开菜单"
+            >
+              <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            {/* 移动端技能入口 */}
+            <button
+              onClick={() => navigate("/skills")}
+              className="lg:hidden px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              技能
+            </button>
             {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
@@ -683,12 +666,6 @@ export function ChatPage() {
         <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
       </div>
 
-      <RightPanel
-        collapsed={isRightPanelCollapsed}
-        onToggle={handleRightPanelToggle}
-        token={token}
-        onSkillUse={handleSkillUse}
-      />
     </div>
   );
 }

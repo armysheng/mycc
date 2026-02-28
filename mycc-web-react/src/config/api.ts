@@ -61,6 +61,11 @@ export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;
 };
 
+// Helper function to get session messages URL
+export const getChatSessionMessagesUrl = (sessionId: string) => {
+  return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/messages`;
+};
+
 // Helper function to get rename session URL
 export const getChatSessionRenameUrl = (sessionId: string) => {
   return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/rename`;

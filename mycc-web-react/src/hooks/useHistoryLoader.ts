@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AllMessage } from "../types";
+import type { AllMessage, TimestampedSDKMessage } from "../types";
+import { getChatSessionMessagesUrl, getAuthHeaders } from "../config/api";
+import { convertConversationHistory } from "../utils/messageConversion";
+import { useAuth } from "../contexts/AuthContext";
 
 interface HistoryLoaderState {
   messages: AllMessage[];
@@ -17,6 +20,7 @@ interface HistoryLoaderResult extends HistoryLoaderState {
  * Hook for loading and converting conversation history from the backend
  */
 export function useHistoryLoader(): HistoryLoaderResult {
+  const { token } = useAuth();
   const [state, setState] = useState<HistoryLoaderState>({
     messages: [],
     loading: false,
@@ -34,17 +38,50 @@ export function useHistoryLoader(): HistoryLoaderResult {
         return;
       }
 
-      // Current backend stores session metadata, not full message transcripts.
-      // Keep message list empty and set sessionId so follow-up messages can resume.
       setState((prev) => ({
         ...prev,
-        messages: [],
-        loading: false,
+        loading: true,
         error: null,
         sessionId,
       }));
+
+      try {
+        const response = await fetch(getChatSessionMessagesUrl(sessionId), {
+          headers: getAuthHeaders(token),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load messages: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        const data = await response.json();
+        const rawMessages: TimestampedSDKMessage[] =
+          data?.data?.messages || [];
+
+        const converted = convertConversationHistory(rawMessages);
+
+        setState((prev) => ({
+          ...prev,
+          messages: converted,
+          loading: false,
+          error: null,
+        }));
+      } catch (err) {
+        console.error("Failed to load conversation history:", err);
+        setState((prev) => ({
+          ...prev,
+          messages: [],
+          loading: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to load conversation history",
+        }));
+      }
     },
-    [],
+    [token],
   );
 
   const clearHistory = useCallback(() => {
