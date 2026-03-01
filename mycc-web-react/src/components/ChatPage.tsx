@@ -88,7 +88,6 @@ export function ChatPage() {
     currentRequestId,
     hasShownInitMessage,
     currentAssistantMessage,
-    setMessages,
     setInput,
     setCurrentSessionId,
     setHasShownInitMessage,
@@ -400,21 +399,8 @@ export function ChatPage() {
   }, [navigate, workingDirectory]);
 
   const handleNewChat = useCallback(() => {
-    setMessages([]);
-    setCurrentSessionId(null);
-    resetRequestState();
-    setHasShownInitMessage(false);
-    setHasReceivedInit(false);
     navigate({ search: "" });
-  }, [
-    navigate,
-    resetRequestState,
-    setCurrentSessionId,
-    setHasReceivedInit,
-    setHasShownInitMessage,
-    setMessages,
-  ]);
-
+  }, [navigate]);
 
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
@@ -513,7 +499,6 @@ export function ChatPage() {
         currentPathLabel={workingDirectory}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        currentSessionId={currentSessionId || sessionId || undefined}
       />
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
@@ -604,12 +589,6 @@ export function ChatPage() {
               className="lg:hidden px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               技能
-            </button>
-            <button
-              onClick={() => navigate("/automations")}
-              className="lg:hidden px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              自动化
             </button>
             {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
