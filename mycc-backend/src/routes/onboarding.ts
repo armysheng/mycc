@@ -36,6 +36,7 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       }
 
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
+      const workspaceDir = `/home/${linuxUser}/workspace`;
       const claudeMdPath = `/home/${linuxUser}/workspace/CLAUDE.md`;
 
       // 使用 node -e 做文件替换，避免 shell 插值注入风险
@@ -58,6 +59,21 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const connection = await sshPool.acquire();
 
       try {
+        const preflightCmd = [
+          `sudo test -d "${workspaceDir}"`,
+          `sudo test -f "${claudeMdPath}"`,
+          `sudo grep -q "{{ASSISTANT_NAME}}" "${claudeMdPath}"`,
+          `sudo grep -q "{{OWNER_NAME}}" "${claudeMdPath}"`,
+        ].join(' && ');
+        const preflight = await sshPool.exec(connection, preflightCmd);
+        if (preflight.exitCode !== 0) {
+          console.error(`❌ Onboarding 目录或模板异常 userId=${request.user.userId} linuxUser=${linuxUser} path=${claudeMdPath}`);
+          return reply.status(500).send({
+            success: false,
+            error: '初始化目录或模板异常，请联系管理员',
+          });
+        }
+
         const cmd = `sudo node -e '${nodeScript}'`;
         const result = await sshPool.exec(connection, cmd);
         if (result.exitCode !== 0) {

@@ -284,23 +284,25 @@ export function ChatInput({
 
   return (
     <div className="flex-shrink-0 space-y-2">
-      <form onSubmit={handleSubmit} className="relative rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85">
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
-          placeholder={isLoading && currentRequestId ? "正在处理中..." : "输入你的问题，Enter 发送"}
-          rows={1}
-          style={{ maxHeight: `${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px` }}
-          className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
-          disabled={isLoading}
-        />
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85">
+        <div className="flex items-end gap-2">
+          <div className="relative flex-1 min-w-0">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              placeholder={isLoading && currentRequestId ? "正在处理中..." : "输入你的问题，Enter 发送"}
+              rows={1}
+              style={{ maxHeight: `${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px` }}
+              className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
+              disabled={isLoading}
+            />
 
-        {isSlashPickerOpen && (
-          <div className="absolute left-2 right-2 bottom-14 z-20 max-h-64 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--bg-surface)] p-1.5 shadow-[var(--shadow-md)]">
+            {isSlashPickerOpen && (
+              <div className="absolute left-0 right-0 bottom-full mb-2 z-20 max-h-64 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--bg-surface)] p-1.5 shadow-[var(--shadow-md)]">
             <div className="px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
               输入 / 选择技能，Enter 或 Tab 填充
             </div>
@@ -358,29 +360,31 @@ export function ChatInput({
                 })}
               </div>
             )}
+              </div>
+            )}
           </div>
-        )}
 
-        <div className="absolute bottom-3 right-3 flex items-center gap-2">
-          {isLoading && currentRequestId && (
+          <div className="shrink-0 flex items-center gap-2 pb-1">
+            {isLoading && currentRequestId && (
+              <button
+                type="button"
+                onClick={onAbort}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300 dark:hover:bg-red-950/55"
+                title="停止 (ESC)"
+              >
+                <StopIcon className="h-4 w-4" />
+              </button>
+            )}
+
             <button
-              type="button"
-              onClick={onAbort}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300 dark:hover:bg-red-950/55"
-              title="停止 (ESC)"
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              <StopIcon className="h-4 w-4" />
+              <PaperAirplaneIcon className="h-3.5 w-3.5" />
+              {permissionMode === "plan" ? "规划" : "发送"}
             </button>
-          )}
-
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            <PaperAirplaneIcon className="h-3.5 w-3.5" />
-            {permissionMode === "plan" ? "规划" : "发送"}
-          </button>
+          </div>
         </div>
       </form>
 
