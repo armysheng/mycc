@@ -98,6 +98,17 @@ export class SkillsService implements ISkillsService {
     return { skillId, success: true, enabled: false };
   }
 
+  async uninstallSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult> {
+    this.validateContext(context);
+    this.validateSkillId(skillId);
+    await this.executeSkillOperation(
+      () => this.store.uninstallSkill(context.linuxUser, skillId),
+      ACTION_TIMEOUT_MS,
+      '卸载技能超时，请稍后重试'
+    );
+    return { skillId, success: true, uninstalled: true };
+  }
+
   private validateContext(context: SkillsContext): void {
     if (!context.userId || !context.linuxUser) {
       throw new SkillsError(400, '用户上下文不完整');

@@ -56,6 +56,10 @@ export const getSkillDisableUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${skillId}/disable`;
 };
 
+export const getSkillUninstallUrl = (skillId: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/uninstall`;
+};
+
 // Helper function to get automations URL
 export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;

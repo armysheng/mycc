@@ -8,6 +8,7 @@ export interface SkillItem {
   description: string;
   installed: boolean;
   status: SkillStatus;
+  examplePrompt?: string;
 }
 
 export type AutomationStatus = "healthy" | "paused" | "error";
