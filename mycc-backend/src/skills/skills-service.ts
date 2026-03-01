@@ -21,6 +21,9 @@ export class SkillsService implements ISkillsService {
       return existing;
     }
 
+    // First-time auto-bootstrap (idempotent, per-user lock)
+    await this.store.autoBootstrapDefaults(context.linuxUser);
+
     const pending = this.executeSkillOperation(
       () => this.store.listSkillInfos(context.linuxUser),
       LIST_TIMEOUT_MS,
@@ -96,6 +99,17 @@ export class SkillsService implements ISkillsService {
       '禁用技能超时，请稍后重试'
     );
     return { skillId, success: true, enabled: false };
+  }
+
+  async uninstallSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult> {
+    this.validateContext(context);
+    this.validateSkillId(skillId);
+    await this.executeSkillOperation(
+      () => this.store.uninstallSkill(context.linuxUser, skillId),
+      ACTION_TIMEOUT_MS,
+      '卸载技能超时，请稍后重试'
+    );
+    return { skillId, success: true, uninstalled: true };
   }
 
   private validateContext(context: SkillsContext): void {
