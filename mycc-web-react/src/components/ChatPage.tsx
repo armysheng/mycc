@@ -93,6 +93,7 @@ export function ChatPage() {
     currentRequestId,
     hasShownInitMessage,
     currentAssistantMessage,
+    setMessages,
     setInput,
     setCurrentSessionId,
     setHasShownInitMessage,
@@ -407,6 +408,22 @@ export function ChatPage() {
     navigate({ search: "" });
   }, [navigate]);
 
+  const handleClearChat = useCallback(() => {
+    if (!window.confirm("确定清空当前会话？")) return;
+    // 直接重置聊天 state，不依赖 URL 变化
+    setMessages([]);
+    setCurrentSessionId(null);
+    setHasShownInitMessage(false);
+    setHasReceivedInit(false);
+    setCurrentAssistantMessage(null);
+    clearInput();
+    // 同时清 URL query（确保 sessionId 参数被移除）
+    navigate({ search: "" });
+  }, [
+    setMessages, setCurrentSessionId, setHasShownInitMessage,
+    setHasReceivedInit, setCurrentAssistantMessage, clearInput, navigate,
+  ]);
+
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
       return;
@@ -606,6 +623,14 @@ export function ChatPage() {
             >
               技能
             </button>
+            {messages.length > 0 && !isHistoryView && (
+              <button
+                onClick={handleClearChat}
+                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
+              >
+                清空
+              </button>
+            )}
             {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
