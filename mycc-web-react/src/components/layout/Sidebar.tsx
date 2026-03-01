@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
-import { getChatSessionsUrl, getAuthHeaders } from "../../config/api";
+import { getChatSessionsUrl, getChatSessionRenameUrl, getAuthHeaders } from "../../config/api";
 import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
@@ -40,6 +40,8 @@ export function Sidebar({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
@@ -92,6 +94,31 @@ export function Sidebar({
     navigate(`/?sessionId=${encodeURIComponent(sessionId)}`);
     onClose();
   };
+
+  const handleRename = useCallback(async (sessionId: string) => {
+    const trimmed = editTitle.trim();
+    if (!trimmed || !token) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      const res = await fetch(getChatSessionRenameUrl(sessionId), {
+        method: "PUT",
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (res.ok) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.sessionId === sessionId ? { ...c, customTitle: trimmed } : c
+          )
+        );
+      }
+    } catch {
+      // 静默失败
+    }
+    setEditingId(null);
+  }, [editTitle, token]);
 
   const userInitial = user?.nickname?.charAt(0)?.toUpperCase() || "U";
   const userDisplayName =
@@ -177,16 +204,49 @@ export function Sidebar({
         {!loading && conversations.length > 0 && (
           <div className="space-y-1">
             {conversations.map((conv) => (
-              <button
+              <div
                 key={conv.sessionId}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectSession(conv.sessionId)}
-                className="w-full text-left rounded-lg px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSelectSession(conv.sessionId);
+                }}
+                className="group w-full text-left rounded-lg px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                <div className="font-medium text-slate-700 dark:text-slate-200 truncate">
-                  {conv.customTitle ||
-                    conv.lastMessagePreview ||
-                    conv.sessionId.substring(0, 8)}
+                <div className="flex items-center gap-1">
+                  <div className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">
+                    {editingId === conv.sessionId ? (
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") handleRename(conv.sessionId);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        onBlur={() => handleRename(conv.sessionId)}
+                        autoFocus
+                        className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
+                      />
+                    ) : (
+                      conv.customTitle || conv.lastMessagePreview || conv.sessionId.substring(0, 8)
+                    )}
+                  </div>
+                  {editingId !== conv.sessionId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingId(conv.sessionId);
+                        setEditTitle(conv.customTitle || conv.lastMessagePreview || "");
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity shrink-0"
+                    >
+                      ✎
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 text-slate-400 dark:text-slate-500">
                   <span>
@@ -194,7 +254,7 @@ export function Sidebar({
                   </span>
                   <span>{conv.messageCount} 条</span>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
