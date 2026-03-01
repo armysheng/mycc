@@ -275,7 +275,11 @@ export function Sidebar({
                               setRenameError(null);
                             }
                           }}
-                          onBlur={() => {
+                          onBlur={(event) => {
+                            const next = event.relatedTarget as HTMLElement | null;
+                            if (next?.dataset?.renameSave === conv.sessionId) {
+                              return;
+                            }
                             setEditingId(null);
                             setRenameError(null);
                           }}
@@ -308,6 +312,10 @@ export function Sidebar({
                     {!isEditing && (
                       <button
                         type="button"
+                        data-rename-save={conv.sessionId}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                        }}
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();

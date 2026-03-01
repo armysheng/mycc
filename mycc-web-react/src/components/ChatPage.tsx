@@ -415,10 +415,6 @@ export function ChatPage() {
     setMessages,
   ]);
 
-  const handleClearChat = useCallback(() => {
-    if (!window.confirm("确定清空当前会话并开始新对话吗？")) return;
-    handleNewChat();
-  }, [handleNewChat]);
 
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
@@ -615,14 +611,6 @@ export function ChatPage() {
             >
               自动化
             </button>
-            {!isHistoryView && messages.length > 0 && (
-              <button
-                onClick={handleClearChat}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
-              >
-                清空
-              </button>
-            )}
             {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
             <SettingsButton onClick={handleSettingsClick} />
           </div>
