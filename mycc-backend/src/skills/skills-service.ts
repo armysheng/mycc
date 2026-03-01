@@ -21,9 +21,6 @@ export class SkillsService implements ISkillsService {
       return existing;
     }
 
-    // First-time auto-bootstrap (idempotent, per-user lock)
-    await this.store.autoBootstrapDefaults(context.linuxUser);
-
     const pending = this.executeSkillOperation(
       () => this.store.listSkillInfos(context.linuxUser),
       LIST_TIMEOUT_MS,

@@ -1,18 +1,12 @@
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import matter from 'gray-matter';
 import { getSSHPool } from '../ssh/pool.js';
 import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
-import type { SkillInfo, SkillRegistry, RegistrySkillEntry } from './types.js';
+import type { SkillInfo, RegistrySkillEntry } from './types.js';
+import { SKILL_REGISTRY } from './skill-registry.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-function loadRegistry(): SkillRegistry {
-  const raw = readFileSync(join(__dirname, 'skill-registry.json'), 'utf-8');
-  return JSON.parse(raw);
+function loadRegistry() {
+  return SKILL_REGISTRY;
 }
 
 function registryEntryToSkillInfo(entry: RegistrySkillEntry): SkillInfo {
@@ -113,7 +107,6 @@ function runAsLinuxUserCommand(linuxUser: string, command: string): string {
 
 export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
-  private static bootstrapLocks = new Map<string, Promise<void>>();
 
   async listSkillInfos(linuxUser: string): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
     const sshPool = getSSHPool();
@@ -383,67 +376,6 @@ export class RemoteSkillStore {
     }
   }
 
-  async autoBootstrapDefaults(linuxUser: string): Promise<void> {
-    const existing = RemoteSkillStore.bootstrapLocks.get(linuxUser);
-    if (existing) {
-      await existing;
-      return;
-    }
-
-    const doBootstrap = async () => {
-      const sshPool = getSSHPool();
-      const connection = await sshPool.acquire();
-      try {
-        const runAsUser: ExecFn = (command) =>
-          sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
-
-        const manifest = await this.readManifest(runAsUser, linuxUser);
-        if ((manifest as Record<string, unknown>)?.bootstrapped) return;
-
-        const registry = loadRegistry();
-        const defaults = registry.skills.filter((s) => s.defaultInstall);
-
-        for (const entry of defaults) {
-          const targetDir = `${userSkillsDir(linuxUser)}/${entry.id}`;
-          const check = await runAsUser(
-            `[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`
-          );
-          if (check.stdout.trim()) continue;
-
-          // Try install from catalog (best-effort)
-          try {
-            await this.installSkill(linuxUser, entry.id);
-          } catch {
-            // Skill may not exist in catalog yet — skip silently
-          }
-        }
-
-        // Mark bootstrapped
-        const manifestPath = skillsManifestPath(linuxUser);
-        const script = `
-MANIFEST=${escapeShellArg(manifestPath)}
-export MANIFEST
-node <<'NODE'
-const fs = require('fs');
-const readJson = (p, fb) => { try { return JSON.parse(fs.readFileSync(p,'utf8')); } catch { return fb; } };
-const m = readJson(process.env.MANIFEST, { version: 1, skills: {} });
-m.bootstrapped = true;
-m.updatedAt = new Date().toISOString();
-fs.writeFileSync(process.env.MANIFEST, JSON.stringify(m, null, 2));
-NODE
-`;
-        await runAsUser(script);
-      } finally {
-        sshPool.release(connection);
-        RemoteSkillStore.bootstrapLocks.delete(linuxUser);
-      }
-    };
-
-    const promise = doBootstrap();
-    RemoteSkillStore.bootstrapLocks.set(linuxUser, promise);
-    await promise;
-  }
-
   private async readSkillInfo(
     exec: ExecFn,
     skillFilePath: string,
@@ -506,11 +438,8 @@ NODE
       return userCatalog;
     }
 
-    const bootstrapped = await this.bootstrapCatalog(execAsUser, linuxUser);
-    if (bootstrapped) {
-      this.cacheCatalogPath(linuxUser, bootstrapped);
-    }
-    return bootstrapped;
+    // No catalog found — do not bootstrap implicitly
+    return null;
   }
 
   private cacheCatalogPath(linuxUser: string, path: string): void {
@@ -518,54 +447,6 @@ NODE
       path,
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
-  }
-
-  private async bootstrapCatalog(exec: ExecFn, linuxUser: string): Promise<string | null> {
-    const catalogDir = userCatalogSeedDir(linuxUser);
-    const seedFrom = userSkillsDir(linuxUser);
-    const registry = loadRegistry();
-
-    // Build skill generation commands from registry
-    const mkdirParts = registry.skills.map((s) => `"$CATALOG/${s.id}"`).join(' ');
-    const skillFiles = registry.skills.map((s) => {
-      const triggers = s.triggers.map((t) => `  - ${t}`).join('\n');
-      return `cat > "$CATALOG/${s.id}/SKILL.md" <<'SKILL'
----
-name: ${s.id}
-description: ${s.description}
-version: 1.0.0
-source: mycc-builtin
-triggers:
-${triggers}
----
-
-${s.description}
-SKILL`;
-    }).join('\n');
-
-    const command = `
-set -e
-CATALOG=${escapeShellArg(catalogDir)}
-SEED=${escapeShellArg(seedFrom)}
-mkdir -p "$CATALOG"
-if [ "$(ls -A "$CATALOG" 2>/dev/null || true)" != "" ]; then
-  echo "$CATALOG"
-  exit 0
-fi
-if [ -d "$SEED" ] && [ "$(find "$SEED" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -gt 0 ]; then
-  cp -a "$SEED/." "$CATALOG"/
-  echo "$CATALOG"
-  exit 0
-fi
-# 最后回退：从 registry 生成基础内置 skills
-mkdir -p ${mkdirParts}
-${skillFiles}
-echo "$CATALOG"
-exit 0
-`;
-    const result = await exec(command);
-    const out = result.stdout.trim();
-    return out ? out.split('\n').pop() || null : null;
   }
 
   private async removeFromManifestAndLock(
