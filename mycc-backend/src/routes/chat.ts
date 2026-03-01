@@ -45,6 +45,15 @@ function isHistoryMessage(value: unknown): value is HistoryMessage {
   );
 }
 
+function extractConversationTitle(message: string): string {
+  const normalized = message.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '新会话';
+  const cleaned = normalized.replace(/^\/[^\s]+/, '').trim();
+  const source = cleaned || normalized;
+  const maxLength = 40;
+  return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
+}
+
 export async function chatRoutes(fastify: FastifyInstance) {
   // POST /api/chat - 发送消息（SSE 流式响应）
   fastify.post('/api/chat', {
@@ -144,11 +153,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
 
-        // 确保会话元数据存在（首次消息会创建，会话续聊会刷新 updated_at）
+        // 确保会话元数据存在（首次消息会创建并自动提取标题，会话续聊仅刷新 updated_at）
         if (currentSessionId) {
+          const derivedTitle = body.sessionId ? undefined : extractConversationTitle(body.message);
           const upserted = await upsertConversation({
             userId,
             sessionId: currentSessionId,
+            title: derivedTitle,
           });
           if (!upserted) {
             throw new Error('会话归属校验失败');
@@ -254,22 +265,22 @@ export async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/chat/sessions/:sessionId/rename - 重命名会话
-  fastify.post('/api/chat/sessions/:sessionId/rename', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
+  // POST/PUT /api/chat/sessions/:sessionId/rename - 重命名会话
+  const renameSessionHandler = async (request: any, reply: any) => {
     if (!request.user) {
       return reply.status(401).send({ error: '未认证' });
     }
 
     try {
       const { sessionId } = request.params as { sessionId: string };
-      const { newTitle } = request.body as { newTitle: string };
+      const body = (request.body || {}) as { newTitle?: string; title?: string };
+      const rawTitle = body.newTitle ?? body.title;
+      const newTitle = typeof rawTitle === 'string' ? rawTitle.trim() : '';
 
-      if (!newTitle || typeof newTitle !== 'string' || newTitle.length === 0 || newTitle.length > 200) {
+      if (newTitle.length === 0 || newTitle.length > 200) {
         return reply.status(400).send({
           success: false,
-          error: 'newTitle 必须是 1-200 字符的字符串',
+          error: 'title/newTitle 必须是 1-200 字符的字符串',
         });
       }
 
@@ -295,7 +306,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
         error: err instanceof Error ? err.message : '重命名失败',
       });
     }
-  });
+  };
+
+  fastify.post('/api/chat/sessions/:sessionId/rename', {
+    preHandler: jwtAuthMiddleware,
+  }, renameSessionHandler);
+  fastify.put('/api/chat/sessions/:sessionId/rename', {
+    preHandler: jwtAuthMiddleware,
+  }, renameSessionHandler);
 
   // GET /api/chat/sessions/:sessionId/messages - 获取会话历史消息
   fastify.get('/api/chat/sessions/:sessionId/messages', {
