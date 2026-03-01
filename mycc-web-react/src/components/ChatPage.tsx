@@ -26,6 +26,7 @@ import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 import { OnboardingOverlay } from "./OnboardingOverlay";
+import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 
 export function ChatPage() {
   const location = useLocation();
@@ -179,6 +180,11 @@ export function ChatPage() {
           } as ChatRequest),
         });
 
+        if (!response.ok) {
+          const parsed = await parseApiErrorResponse(response);
+          throw new Error(parsed.message);
+        }
+
         if (!response.body) throw new Error("No response body");
 
         const reader = response.body.getReader();
@@ -226,10 +232,14 @@ export function ChatPage() {
         }
       } catch (error) {
         console.error("Failed to send message:", error);
+        const userMessage = getNetworkErrorMessage(
+          error,
+          "发送失败，请稍后重试。",
+        );
         addMessage({
           type: "chat",
           role: "assistant",
-          content: "Error: Failed to get response",
+          content: userMessage,
           timestamp: Date.now(),
         });
       } finally {
