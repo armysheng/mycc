@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   SunIcon,
   MoonIcon,
+  ComputerDesktopIcon,
   CommandLineIcon,
   WrenchScrewdriverIcon,
   EyeIcon,
@@ -10,7 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../contexts/AuthContext";
-import type { FontSize } from "../../types/settings";
+import type { FontSize, Theme } from "../../types/settings";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
 
@@ -68,17 +69,20 @@ function ToggleRow({
 export function GeneralSettings() {
   const {
     theme,
+    resolvedTheme,
     enterBehavior,
     showToolCalls,
     autoExpandThinking,
     fontSize,
     profileNickname,
-    toggleTheme,
+    sidebarDefaultOpen,
+    setTheme,
     toggleEnterBehavior,
     toggleShowToolCalls,
     toggleAutoExpandThinking,
     setFontSize,
     setProfileNickname,
+    updateSettings,
   } = useSettings();
   const { user } = useAuth();
 
@@ -164,23 +168,30 @@ export function GeneralSettings() {
       <section>
         <SectionTitle icon={<EyeIcon className="h-4 w-4" />} title="外观" />
         <div className="space-y-2">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white/90 p-3 transition-all hover:border-amber-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-amber-700"
-          >
-            <div className="flex items-center gap-2">
-              {theme === "light" ? (
-                <SunIcon className="h-5 w-5 text-amber-500" />
-              ) : (
-                <MoonIcon className="h-5 w-5 text-sky-400" />
-              )}
-              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                {theme === "light" ? "浅色模式" : "深色模式"}
-              </span>
+          <div className="rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">主题</div>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ["light", "浅色", <SunIcon key="sun" className="h-4 w-4" />],
+                ["dark", "深色", <MoonIcon key="moon" className="h-4 w-4" />],
+                ["system", "跟随系统", <ComputerDesktopIcon key="desktop" className="h-4 w-4" />],
+              ] as [Theme, string, React.ReactNode][]).map(([t, label, icon]) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTheme(t)}
+                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                    theme === t
+                      ? "border-amber-500 bg-amber-500 text-white"
+                      : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-amber-700"
+                  }`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              ))}
             </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">点击切换</span>
-          </button>
+          </div>
 
           <div className="rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-700 dark:bg-slate-800/80">
             <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">字号</div>
@@ -205,6 +216,13 @@ export function GeneralSettings() {
               ))}
             </div>
           </div>
+
+          <ToggleRow
+            title="侧栏默认展开"
+            description="控制页面加载时桌面端侧栏是否默认展开。移动端始终默认收起。"
+            checked={sidebarDefaultOpen}
+            onToggle={() => updateSettings({ sidebarDefaultOpen: !sidebarDefaultOpen })}
+          />
         </div>
       </section>
 
@@ -220,7 +238,7 @@ export function GeneralSettings() {
       <section>
         <SectionTitle icon={<WrenchScrewdriverIcon className="h-4 w-4" />} title="无障碍提示" />
         <div aria-live="polite" className="rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
-          当前主题：{theme === "light" ? "浅色" : "深色"}；发送方式：
+          当前主题：{theme === "system" ? `跟随系统（${resolvedTheme === "light" ? "浅色" : "深色"}）` : resolvedTheme === "light" ? "浅色" : "深色"}；发送方式：
           {enterBehavior === "send" ? "Enter 发送" : "Enter 换行"}；字号：{fontSize}
         </div>
       </section>

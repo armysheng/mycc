@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
-import { getChatSessionsUrl, getAuthHeaders } from "../../config/api";
+import { getChatSessionsUrl, getChatSessionRenameUrl, getAuthHeaders } from "../../config/api";
 import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
   onNewChat: () => void;
   currentPathLabel?: string;
+  desktopVisible?: boolean;
   isOpen: boolean;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 function formatTime(dateStr: string): string {
@@ -28,8 +30,10 @@ function formatTime(dateStr: string): string {
 
 export function Sidebar({
   onNewChat,
+  desktopVisible = true,
   isOpen,
   onClose,
+  onOpenSettings,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { token, user, logout } = useAuth();
@@ -38,6 +42,10 @@ export function Sidebar({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
@@ -90,6 +98,43 @@ export function Sidebar({
     navigate(`/?sessionId=${encodeURIComponent(sessionId)}`);
     onClose();
   };
+
+  const handleRename = useCallback(async (sessionId: string) => {
+    const trimmed = editTitle.trim();
+    if (!trimmed || !token) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      const res = await fetch(getChatSessionRenameUrl(sessionId), {
+        method: "PUT",
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (res.ok) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.sessionId === sessionId ? { ...c, customTitle: trimmed } : c
+          )
+        );
+      }
+    } catch {
+      // 静默失败
+    }
+    setEditingId(null);
+  }, [editTitle, token]);
+
+  // 点击外部关闭用户菜单
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [userMenuOpen]);
 
   const userInitial = user?.nickname?.charAt(0)?.toUpperCase() || "U";
   const userDisplayName =
@@ -175,16 +220,49 @@ export function Sidebar({
         {!loading && conversations.length > 0 && (
           <div className="space-y-1">
             {conversations.map((conv) => (
-              <button
+              <div
                 key={conv.sessionId}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectSession(conv.sessionId)}
-                className="w-full text-left rounded-lg px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSelectSession(conv.sessionId);
+                }}
+                className="group w-full text-left rounded-lg px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                <div className="font-medium text-slate-700 dark:text-slate-200 truncate">
-                  {conv.customTitle ||
-                    conv.lastMessagePreview ||
-                    conv.sessionId.substring(0, 8)}
+                <div className="flex items-center gap-1">
+                  <div className="font-medium text-slate-700 dark:text-slate-200 truncate flex-1">
+                    {editingId === conv.sessionId ? (
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") handleRename(conv.sessionId);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        onBlur={() => handleRename(conv.sessionId)}
+                        autoFocus
+                        className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
+                      />
+                    ) : (
+                      conv.customTitle || conv.lastMessagePreview || conv.sessionId.substring(0, 8)
+                    )}
+                  </div>
+                  {editingId !== conv.sessionId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingId(conv.sessionId);
+                        setEditTitle(conv.customTitle || conv.lastMessagePreview || "");
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity shrink-0"
+                    >
+                      ✎
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 text-slate-400 dark:text-slate-500">
                   <span>
@@ -192,15 +270,58 @@ export function Sidebar({
                   </span>
                   <span>{conv.messageCount} 条</span>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
       </div>
 
       {/* 底部用户信息 */}
-      <div className="p-4 border-t panel-surface">
-        <div className="flex items-center gap-3">
+      <div className="p-4 border-t panel-surface relative" ref={userMenuRef}>
+        {/* 弹出菜单 */}
+        {userMenuOpen && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-lg border panel-surface shadow-lg py-1 z-10">
+            <button
+              type="button"
+              onClick={() => {
+                navigate("/skills");
+                setUserMenuOpen(false);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              ⚡ 技能管理
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false);
+                onOpenSettings?.();
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              ⚙ 设置
+            </button>
+            <div className="border-t my-1" />
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false);
+                logout();
+              }}
+              className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              退出登录
+            </button>
+          </div>
+        )}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setUserMenuOpen(v => !v)}
+          onKeyDown={(e) => { if (e.key === "Enter") setUserMenuOpen(v => !v); }}
+          className="flex items-center gap-3 cursor-pointer rounded-lg p-1 -m-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
           <div
             className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold shrink-0"
             style={{ background: "var(--accent)" }}
@@ -212,13 +333,9 @@ export function Sidebar({
               {userDisplayName}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="text-xs text-slate-500 hover:text-red-500 transition-colors shrink-0"
-          >
-            退出
-          </button>
+          <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+          </svg>
         </div>
       </div>
     </>
@@ -228,7 +345,7 @@ export function Sidebar({
     <>
       {/* 桌面端固定 Sidebar */}
       <aside
-        className="panel-surface border-r hidden lg:flex flex-col shrink-0"
+        className={`panel-surface border-r ${desktopVisible ? 'hidden lg:flex' : 'hidden'} flex-col shrink-0`}
         style={{ width: "var(--sidebar-width)" }}
       >
         {sidebarContent}

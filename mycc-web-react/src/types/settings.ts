@@ -1,4 +1,4 @@
-export type Theme = "light" | "dark";
+export type Theme = "light" | "dark" | "system";
 export type EnterBehavior = "send" | "newline";
 export type FontSize = "sm" | "md" | "lg";
 
@@ -9,6 +9,7 @@ export interface AppSettings {
   autoExpandThinking: boolean;
   fontSize: FontSize;
   profileNickname: string;
+  sidebarDefaultOpen: boolean;
   version: number;
 }
 
@@ -25,6 +26,9 @@ export interface SettingsContextType {
   autoExpandThinking: boolean;
   fontSize: FontSize;
   profileNickname: string;
+  sidebarDefaultOpen: boolean;
+  resolvedTheme: "light" | "dark";
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   toggleEnterBehavior: () => void;
   toggleShowToolCalls: () => void;
@@ -36,14 +40,15 @@ export interface SettingsContextType {
 
 // Default settings
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "light",
+  theme: "system",
   enterBehavior: "send",
   showToolCalls: true,
   autoExpandThinking: false,
   fontSize: "md",
   profileNickname: "",
-  version: 2,
+  sidebarDefaultOpen: true,
+  version: 3,
 };
 
 // Current settings version for migration
-export const CURRENT_SETTINGS_VERSION = 2;
+export const CURRENT_SETTINGS_VERSION = 3;
