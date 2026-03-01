@@ -211,7 +211,7 @@ export class RemoteSkillStore {
 
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       if (!catalogDir) {
-        throw new SkillsError(503, '未找到技能目录，已尝试自动初始化但失败');
+        throw new SkillsError(404, '未找到技能目录，请确认用户 workspace 已初始化');
       }
 
       const sourceDir = `${catalogDir}/${skillId}`;
