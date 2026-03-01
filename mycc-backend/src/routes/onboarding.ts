@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { findUserById, markUserInitialized } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
-import { sanitizeLinuxUsername } from '../utils/validation.js';
+import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -38,6 +38,7 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
       const workspaceDir = `/home/${linuxUser}/workspace`;
       const claudeMdPath = `/home/${linuxUser}/workspace/CLAUDE.md`;
+      const templateDir = '/opt/mycc/templates/user-workspace';
 
       // 使用 node -e 做文件替换，避免 shell 插值注入风险
       // 将用户输入 Base64 编码后传入，在 node 内部解码并做纯字符串替换
@@ -65,13 +66,34 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
           `sudo grep -q "{{ASSISTANT_NAME}}" "${claudeMdPath}"`,
           `sudo grep -q "{{OWNER_NAME}}" "${claudeMdPath}"`,
         ].join(' && ');
-        const preflight = await sshPool.exec(connection, preflightCmd);
+
+        let preflight = await sshPool.exec(connection, preflightCmd);
         if (preflight.exitCode !== 0) {
-          console.error(`❌ Onboarding 目录或模板异常 userId=${request.user.userId} linuxUser=${linuxUser} path=${claudeMdPath}`);
-          return reply.status(500).send({
-            success: false,
-            error: '初始化目录或模板异常，请联系管理员',
-          });
+          // 尝试一次自愈：补齐 workspace 和模板，再次校验。
+          const safeNickname = (user.nickname || '用户').replace(/[/&\\]/g, '\\$&');
+          const repairCmd = [
+            `id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)}`,
+            `sudo mkdir -p "${workspaceDir}"`,
+            `sudo test -d "${templateDir}"`,
+            `sudo cp -rn "${templateDir}/." "${workspaceDir}/"`,
+            `sudo cp "${templateDir}/CLAUDE.md" "${claudeMdPath}"`,
+            `sudo find "${workspaceDir}" -type f \\( -name '*.md' -o -name '*.json' \\) -exec sed -i 's/{{USERNAME}}/${safeNickname}/g' {} +`,
+            `sudo chown -R ${escapeShellArg(linuxUser)}:mycc /home/${escapeShellArg(linuxUser)}`,
+          ].join(' && ');
+
+          const repaired = await sshPool.exec(connection, repairCmd);
+          if (repaired.exitCode !== 0) {
+            console.error(`❌ Onboarding 自愈失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${repaired.stderr}`);
+          }
+
+          preflight = await sshPool.exec(connection, preflightCmd);
+          if (preflight.exitCode !== 0) {
+            console.error(`❌ Onboarding 目录或模板异常 userId=${request.user.userId} linuxUser=${linuxUser} path=${claudeMdPath}`);
+            return reply.status(500).send({
+              success: false,
+              error: '初始化目录或模板异常，请联系管理员',
+            });
+          }
         }
 
         const cmd = `sudo node -e '${nodeScript}'`;
