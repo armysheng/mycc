@@ -10,6 +10,7 @@ interface SidebarProps {
   desktopVisible?: boolean;
   isOpen: boolean;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 function formatTime(dateStr: string): string {
@@ -32,6 +33,7 @@ export function Sidebar({
   desktopVisible = true,
   isOpen,
   onClose,
+  onOpenSettings,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { token, user, logout } = useAuth();
@@ -294,9 +296,7 @@ export function Sidebar({
               type="button"
               onClick={() => {
                 setUserMenuOpen(false);
-                // 触发设置弹窗 — 通过点击 header 中的设置按钮
-                const settingsBtn = document.querySelector('[aria-label="Settings"]') as HTMLButtonElement;
-                settingsBtn?.click();
+                onOpenSettings?.();
               }}
               className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >

@@ -522,6 +522,7 @@ export function ChatPage() {
         desktopVisible={isDesktopSidebarVisible}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
