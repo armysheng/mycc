@@ -292,7 +292,7 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={isLoading && currentRequestId ? "正在处理中..." : "输入你的问题，Enter 发送"}
+          placeholder={isLoading && currentRequestId ? "正在处理中..." : enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送"}
           rows={1}
           style={{ maxHeight: `${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px` }}
           className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"

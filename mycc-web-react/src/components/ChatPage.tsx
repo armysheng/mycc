@@ -410,6 +410,10 @@ export function ChatPage() {
 
   const handleClearChat = useCallback(() => {
     if (!window.confirm("确定清空当前会话？")) return;
+    // 先中断进行中的流式请求，防止清空后又冒出新消息
+    if (isLoading && currentRequestId) {
+      abortRequest(currentRequestId, isLoading, resetRequestState);
+    }
     // 直接重置聊天 state，不依赖 URL 变化
     setMessages([]);
     setCurrentSessionId(null);
@@ -420,6 +424,7 @@ export function ChatPage() {
     // 同时清 URL query（确保 sessionId 参数被移除）
     navigate({ search: "" });
   }, [
+    isLoading, currentRequestId, abortRequest, resetRequestState,
     setMessages, setCurrentSessionId, setHasShownInitMessage,
     setHasReceivedInit, setCurrentAssistantMessage, clearInput, navigate,
   ]);
