@@ -12,14 +12,14 @@
 
 ## 2. 单一事实源（Single Source of Truth）
 
-- 任务状态：`agent-kanban/boards/mycc/board.yaml`
+- 任务状态：GitHub PR / Issue 线程（公共可见）
 - 设计与计划：`docs/plans/*`
 - 回归与验收：`docs/testing/regression-smoke.md`
 - 团队运行细则：`docs/process/team-operating-model.md`
 - 新成员入场：`docs/process/new-member-onboarding.md`
 - 交接模板：`docs/process/handoff-template.md`
 
-规则：口头结论不算完成，必须同步到看板或文档。
+规则：口头结论不算完成，必须同步到 PR/Issue 或文档。
 
 ## 3. 分支与 PR 规则
 
@@ -34,7 +34,7 @@
 ## 4. 文件所有权与冲突处理
 
 - 任务 owner 对目标文件有写优先权。
-- 他人修改同文件前，必须在看板创建协作子任务并通知 owner。
+- 他人修改同文件前，必须在 PR/Issue 留痕并通知 owner。
 - 冲突由 `codex` 裁决：
   - 保留哪条实现
   - 回退哪些重复改动
@@ -71,7 +71,7 @@
 ## 8. 例外机制
 
 - 紧急修复可先合入，但必须在 24 小时内补：
-  - 看板记录
+  - PR/Issue 记录
   - 变更说明
   - 回归结果
 - 发现重复开发必须立即停工，由 `codex` 出具保留/回退方案。

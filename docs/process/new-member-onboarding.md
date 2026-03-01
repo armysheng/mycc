@@ -30,7 +30,7 @@ git worktree add ../mycc_andy -b codex/andy-<topic> origin/main
 
 ## 4. 开发前确认
 
-1. 任务已在看板登记并指定 owner。
+1. 任务已在 GitHub PR/Issue 或 `docs/plans/*` 登记并指定 owner。
 2. 验收标准已写清（至少包含 3 条可验证断言）。
 3. 影响范围已确认（后端/前端/脚本/文档）。
 
