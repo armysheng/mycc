@@ -7,6 +7,7 @@ import { useAuth } from "../../contexts/AuthContext";
 interface SidebarProps {
   onNewChat: () => void;
   currentPathLabel?: string;
+  desktopVisible?: boolean;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -28,6 +29,7 @@ function formatTime(dateStr: string): string {
 
 export function Sidebar({
   onNewChat,
+  desktopVisible = true,
   isOpen,
   onClose,
 }: SidebarProps) {
@@ -228,7 +230,7 @@ export function Sidebar({
     <>
       {/* 桌面端固定 Sidebar */}
       <aside
-        className="panel-surface border-r hidden lg:flex flex-col shrink-0"
+        className={`panel-surface border-r ${desktopVisible ? 'hidden lg:flex' : 'hidden'} flex-col shrink-0`}
         style={{ width: "var(--sidebar-width)" }}
       >
         {sidebarContent}

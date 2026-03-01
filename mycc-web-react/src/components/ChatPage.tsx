@@ -12,6 +12,7 @@ import { usePermissions } from "../hooks/chat/usePermissions";
 import { usePermissionMode } from "../hooks/chat/usePermissionMode";
 import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
+import { useSettings } from "../hooks/useSettings";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
 import { HistoryButton } from "./chat/HistoryButton";
@@ -31,7 +32,11 @@ export function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { sidebarDefaultOpen } = useSettings();
+  // 运行时状态：用户可随时 toggle，不写回设置
+  const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] = useState(sidebarDefaultOpen);
+  // 移动端抽屉：始终默认关闭
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [slashSkills, setSlashSkills] = useState<
     Array<{
       id: string;
@@ -497,8 +502,9 @@ export function ChatPage() {
       <Sidebar
         onNewChat={handleNewChat}
         currentPathLabel={workingDirectory}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
+        desktopVisible={isDesktopSidebarVisible}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
       />
 
       <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
@@ -573,9 +579,19 @@ export function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* 桌面端侧栏 toggle（仅 lg 以上显示） */}
+            <button
+              onClick={() => setIsDesktopSidebarVisible(v => !v)}
+              className="hidden lg:inline-flex p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label={isDesktopSidebarVisible ? "收起侧栏" : "展开侧栏"}
+            >
+              <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
             {/* 移动端汉堡按钮 */}
             <button
-              onClick={() => setIsSidebarOpen(true)}
+              onClick={() => setIsMobileSidebarOpen(true)}
               className="lg:hidden p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="打开菜单"
             >

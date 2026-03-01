@@ -104,6 +104,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       autoExpandThinking: settings.autoExpandThinking,
       fontSize: settings.fontSize,
       profileNickname: settings.profileNickname,
+      sidebarDefaultOpen: settings.sidebarDefaultOpen,
       setTheme,
       toggleTheme,
       toggleEnterBehavior,

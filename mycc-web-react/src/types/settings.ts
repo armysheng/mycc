@@ -9,6 +9,7 @@ export interface AppSettings {
   autoExpandThinking: boolean;
   fontSize: FontSize;
   profileNickname: string;
+  sidebarDefaultOpen: boolean;
   version: number;
 }
 
@@ -25,6 +26,7 @@ export interface SettingsContextType {
   autoExpandThinking: boolean;
   fontSize: FontSize;
   profileNickname: string;
+  sidebarDefaultOpen: boolean;
   resolvedTheme: "light" | "dark";
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoExpandThinking: false,
   fontSize: "md",
   profileNickname: "",
+  sidebarDefaultOpen: true,
   version: 3,
 };
 

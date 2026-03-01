@@ -75,12 +75,14 @@ export function GeneralSettings() {
     autoExpandThinking,
     fontSize,
     profileNickname,
+    sidebarDefaultOpen,
     setTheme,
     toggleEnterBehavior,
     toggleShowToolCalls,
     toggleAutoExpandThinking,
     setFontSize,
     setProfileNickname,
+    updateSettings,
   } = useSettings();
   const { user } = useAuth();
 
@@ -214,6 +216,13 @@ export function GeneralSettings() {
               ))}
             </div>
           </div>
+
+          <ToggleRow
+            title="侧栏默认展开"
+            description="控制页面加载时桌面端侧栏是否默认展开。移动端始终默认收起。"
+            checked={sidebarDefaultOpen}
+            onToggle={() => updateSettings({ sidebarDefaultOpen: !sidebarDefaultOpen })}
+          />
         </div>
       </section>
 
