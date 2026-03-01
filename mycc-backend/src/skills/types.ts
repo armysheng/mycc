@@ -13,6 +13,24 @@ export interface SkillInfo {
   legacy: boolean;
   enabled: boolean;
   upgradable: boolean;
+  examplePrompt?: string;
+}
+
+export interface RegistrySkillEntry {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  triggers: string[];
+  source: 'registry';
+  defaultInstall: boolean;
+  examplePrompt?: string;
+}
+
+export interface SkillRegistry {
+  version: number;
+  skills: RegistrySkillEntry[];
 }
 
 export interface SkillsListResult {
@@ -32,6 +50,7 @@ export interface SkillActionResult {
   success: boolean;
   enabled?: boolean;
   version?: string;
+  uninstalled?: boolean;
 }
 
 export interface SkillsContext {
