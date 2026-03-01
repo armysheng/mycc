@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
 import { getChatSessionsUrl, getChatSessionRenameUrl, getAuthHeaders } from "../../config/api";
@@ -42,6 +42,8 @@ export function Sidebar({
   const [dataLoaded, setDataLoaded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
@@ -119,6 +121,18 @@ export function Sidebar({
     }
     setEditingId(null);
   }, [editTitle, token]);
+
+  // 点击外部关闭用户菜单
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [userMenuOpen]);
 
   const userInitial = user?.nickname?.charAt(0)?.toUpperCase() || "U";
   const userDisplayName =
@@ -261,8 +275,53 @@ export function Sidebar({
       </div>
 
       {/* 底部用户信息 */}
-      <div className="p-4 border-t panel-surface">
-        <div className="flex items-center gap-3">
+      <div className="p-4 border-t panel-surface relative" ref={userMenuRef}>
+        {/* 弹出菜单 */}
+        {userMenuOpen && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-lg border panel-surface shadow-lg py-1 z-10">
+            <button
+              type="button"
+              onClick={() => {
+                navigate("/skills");
+                setUserMenuOpen(false);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              ⚡ 技能管理
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false);
+                // 触发设置弹窗 — 通过点击 header 中的设置按钮
+                const settingsBtn = document.querySelector('[aria-label="Settings"]') as HTMLButtonElement;
+                settingsBtn?.click();
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              ⚙ 设置
+            </button>
+            <div className="border-t my-1" />
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false);
+                logout();
+              }}
+              className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              退出登录
+            </button>
+          </div>
+        )}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setUserMenuOpen(v => !v)}
+          onKeyDown={(e) => { if (e.key === "Enter") setUserMenuOpen(v => !v); }}
+          className="flex items-center gap-3 cursor-pointer rounded-lg p-1 -m-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
           <div
             className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold shrink-0"
             style={{ background: "var(--accent)" }}
@@ -274,13 +333,9 @@ export function Sidebar({
               {userDisplayName}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="text-xs text-slate-500 hover:text-red-500 transition-colors shrink-0"
-          >
-            退出
-          </button>
+          <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+          </svg>
         </div>
       </div>
     </>
