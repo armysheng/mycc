@@ -29,6 +29,21 @@ function registryEntryToSkillInfo(entry: RegistrySkillEntry): SkillInfo {
   };
 }
 
+function buildRegistrySkillMarkdown(entry: RegistrySkillEntry): string {
+  const trigger = entry.triggers[0] || `/${entry.id}`;
+  return `---
+name: ${entry.id}
+description: ${entry.description}
+version: 1.0.0
+source: mycc-registry
+triggers:
+  - ${trigger}
+---
+
+你是 ${entry.id} 助手。${entry.description}
+`;
+}
+
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
 
@@ -209,7 +224,10 @@ export class RemoteSkillStore {
         return normalizeVersion(parsed.data.version).version;
       }
 
-      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
+      let catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
+      if (!catalogDir) {
+        catalogDir = await this.ensureCatalogForInstall(runAsUser, linuxUser);
+      }
       if (!catalogDir) {
         throw new SkillsError(404, '未找到技能目录，请确认用户 workspace 已初始化');
       }
@@ -447,6 +465,52 @@ export class RemoteSkillStore {
       path,
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
+  }
+
+  private async ensureCatalogForInstall(execAsUser: ExecFn, linuxUser: string): Promise<string | null> {
+    const catalogDir = userCatalogSeedDir(linuxUser);
+    const skills = loadRegistry().skills.map((entry) => ({
+      id: entry.id,
+      markdown: buildRegistrySkillMarkdown(entry),
+    }));
+    const skillsB64 = Buffer.from(JSON.stringify(skills), 'utf8').toString('base64');
+
+    const script = `
+CATALOG=${escapeShellArg(catalogDir)}
+SKILLS_B64=${escapeShellArg(skillsB64)}
+export CATALOG SKILLS_B64
+
+mkdir -p "$CATALOG"
+
+node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const catalog = process.env.CATALOG;
+const skills = JSON.parse(Buffer.from(process.env.SKILLS_B64, 'base64').toString('utf8'));
+
+for (const skill of skills) {
+  const dir = path.join(catalog, skill.id);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'SKILL.md');
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, skill.markdown, 'utf8');
+  }
+}
+
+console.log(catalog);
+NODE
+`;
+
+    const result = await execAsUser(script);
+    if (result.exitCode !== 0) {
+      return null;
+    }
+    const out = result.stdout.trim();
+    const generatedPath = out ? out.split('\n').pop() || null : null;
+    if (generatedPath) {
+      this.cacheCatalogPath(linuxUser, generatedPath);
+    }
+    return generatedPath;
   }
 
   private async removeFromManifestAndLock(
