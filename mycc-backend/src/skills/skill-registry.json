@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "id": "tell-me",
+      "name": "通知与摘要助手",
+      "description": "整理摘要并发送通知到飞书群",
+      "icon": "💬",
+      "category": "工具",
+      "triggers": ["/tell-me"],
+      "source": "registry",
+      "defaultInstall": true,
+      "examplePrompt": "帮我总结今天的对话要点"
+    },
+    {
+      "id": "scheduler",
+      "name": "自动化任务编排",
+      "description": "帮助创建、审查和优化自动化任务",
+      "icon": "⏰",
+      "category": "工具",
+      "triggers": ["/scheduler"],
+      "source": "registry",
+      "defaultInstall": true,
+      "examplePrompt": "帮我创建一个每天早上 9 点的提醒"
+    },
+    {
+      "id": "cc-usage",
+      "name": "用量分析",
+      "description": "分析会话成本与 token 使用情况",
+      "icon": "📊",
+      "category": "工具",
+      "triggers": ["/cc-usage"],
+      "source": "registry",
+      "defaultInstall": true,
+      "examplePrompt": "看看今天的 token 消耗"
+    },
+    {
+      "id": "mycc-regression",
+      "name": "回归检查",
+      "description": "执行并输出可复现的回归检查清单",
+      "icon": "🔄",
+      "category": "开发",
+      "triggers": ["/mycc-regression"],
+      "source": "registry",
+      "defaultInstall": true,
+      "examplePrompt": "跑一下回归测试"
+    },
+    {
+      "id": "read-gzh",
+      "name": "读公众号",
+      "description": "读取微信公众号文章并总结",
+      "icon": "📖",
+      "category": "工具",
+      "triggers": ["/read-gzh"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "帮我读一下这篇公众号文章"
+    },
+    {
+      "id": "dashboard",
+      "name": "能力看板",
+      "description": "可视化查看 cc 能力看板",
+      "icon": "📋",
+      "category": "工具",
+      "triggers": ["/dashboard"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "看看能力看板"
+    },
+    {
+      "id": "skill-creator",
+      "name": "创建技能",
+      "description": "创建新的 Claude Code Skill",
+      "icon": "🔧",
+      "category": "开发",
+      "triggers": ["/skill-creator"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "帮我创建一个新技能"
+    },
+    {
+      "id": "code-review",
+      "name": "代码审查",
+      "description": "审查代码质量、风格和潜在问题",
+      "icon": "🔍",
+      "category": "开发",
+      "triggers": ["/code-review"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "帮我审查一下最近的代码改动"
+    },
+    {
+      "id": "docs-writer",
+      "name": "文档写作",
+      "description": "协助撰写技术文档和说明",
+      "icon": "📝",
+      "category": "工具",
+      "triggers": ["/docs-writer"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "帮我写一份 API 文档"
+    },
+    {
+      "id": "web-summarize",
+      "name": "网页摘要",
+      "description": "抓取网页内容并生成摘要",
+      "icon": "🌐",
+      "category": "工具",
+      "triggers": ["/web-summarize"],
+      "source": "registry",
+      "defaultInstall": false,
+      "examplePrompt": "帮我总结一下这个网页"
+    }
+  ]
+}
