@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import type { AppSettings, SettingsContextType } from "../types/settings";
+import type { AppSettings, SettingsContextType, Theme } from "../types/settings";
 import { getSettings, setSettings } from "../utils/storage";
 import { SettingsContext } from "./SettingsContextTypes";
 
@@ -8,6 +8,22 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     getSettings(),
   );
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Track system theme preference
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">(() =>
+    window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  );
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setSystemTheme(e.matches ? "dark" : "light");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Compute resolved theme
+  const resolvedTheme = settings.theme === "system" ? systemTheme : settings.theme;
 
   // Initialize settings on client side (handles migration automatically)
   useEffect(() => {
@@ -22,7 +38,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     const root = window.document.documentElement;
 
-    if (settings.theme === "dark") {
+    if (resolvedTheme === "dark") {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
@@ -30,16 +46,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     // Save settings to storage
     setSettings(settings);
-  }, [settings, isInitialized]);
+  }, [settings, resolvedTheme, isInitialized]);
 
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettingsState((prev) => ({ ...prev, ...updates }));
   }, []);
 
+  const setTheme = useCallback((theme: Theme) => {
+    updateSettings({ theme });
+  }, [updateSettings]);
+
   const toggleTheme = useCallback(() => {
-    updateSettings({
-      theme: settings.theme === "light" ? "dark" : "light",
-    });
+    // Three-state cycle: light → dark → system
+    const next: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
+    updateSettings({ theme: next[settings.theme] });
   }, [settings.theme, updateSettings]);
 
   const toggleEnterBehavior = useCallback(() => {
@@ -78,11 +98,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     (): SettingsContextType => ({
       settings,
       theme: settings.theme,
+      resolvedTheme,
       enterBehavior: settings.enterBehavior,
       showToolCalls: settings.showToolCalls,
       autoExpandThinking: settings.autoExpandThinking,
       fontSize: settings.fontSize,
       profileNickname: settings.profileNickname,
+      setTheme,
       toggleTheme,
       toggleEnterBehavior,
       toggleShowToolCalls,
@@ -93,6 +115,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       settings,
+      resolvedTheme,
+      setTheme,
       toggleTheme,
       toggleEnterBehavior,
       toggleShowToolCalls,
