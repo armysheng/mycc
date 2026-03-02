@@ -69,11 +69,15 @@ jobs:
 
           cd "${PROJECT_DIR}"
 
-          if [ -n "$(git status --porcelain)" ]; then
+          # 清理历史部署产生的临时 env 备份，避免误判为脏工作树
+          find mycc-backend -maxdepth 1 -type f -name '.env.bak-*' -delete 2>/dev/null || true
+
+          DIRTY_STATUS="$(git status --porcelain --untracked-files=all | grep -vE '^\?\? mycc-backend/\.env\.bak-' || true)"
+          if [ -n "${DIRTY_STATUS}" ]; then
             TS="$(date +%Y%m%d-%H%M%S)"
             BACKUP_DIR="${HOME}/deploy-backups"
             mkdir -p "${BACKUP_DIR}"
-            git status --short | tee "${BACKUP_DIR}/dirty-${TS}.status"
+            printf '%s\n' "${DIRTY_STATUS}" | tee "${BACKUP_DIR}/dirty-${TS}.status"
             git diff > "${BACKUP_DIR}/dirty-${TS}.patch" || true
             echo "ERROR: remote working tree is dirty, deploy aborted."
             echo "Backup: ${BACKUP_DIR}/dirty-${TS}.patch"
