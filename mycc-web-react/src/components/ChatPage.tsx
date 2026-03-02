@@ -166,68 +166,92 @@ export function ChatPage() {
       startRequest();
 
       try {
-        const response = await fetch(getChatUrl(), {
-          method: "POST",
-          headers: getAuthHeaders(token),
-          body: JSON.stringify({
-            message: content,
-            requestId,
-            ...(currentSessionId ? { sessionId: currentSessionId } : {}),
-            allowedTools: tools || allowedTools,
-            ...(workingDirectory ? { workingDirectory } : {}),
-            permissionMode: overridePermissionMode || permissionMode,
-          } as ChatRequest),
-        });
-
-        if (!response.ok) {
-          const parsed = await parseApiErrorResponse(response);
-          throw new Error(parsed.message);
-        }
-
-        if (!response.body) throw new Error("No response body");
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        // Local state for this streaming session
         let localHasReceivedInit = false;
         let shouldAbort = false;
+        let sessionIdForRequest = currentSessionId || undefined;
+        let streamCompleted = false;
 
-        const streamingContext: StreamingContext = {
-          currentAssistantMessage,
-          setCurrentAssistantMessage,
-          addMessage,
-          updateLastMessage,
-          onSessionId: setCurrentSessionId,
-          shouldShowInitMessage: () => !hasShownInitMessage,
-          onInitMessageShown: () => setHasShownInitMessage(true),
-          get hasReceivedInit() {
-            return localHasReceivedInit;
-          },
-          setHasReceivedInit: (received: boolean) => {
-            localHasReceivedInit = received;
-            setHasReceivedInit(received);
-          },
-          onPermissionError: handlePermissionError,
-          onAbortRequest: async () => {
-            shouldAbort = true;
-            await createAbortHandler(requestId)();
-          },
-        };
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const response = await fetch(getChatUrl(), {
+            method: "POST",
+            headers: getAuthHeaders(token),
+            body: JSON.stringify({
+              message: content,
+              requestId,
+              ...(sessionIdForRequest ? { sessionId: sessionIdForRequest } : {}),
+              allowedTools: tools || allowedTools,
+              ...(workingDirectory ? { workingDirectory } : {}),
+              permissionMode: overridePermissionMode || permissionMode,
+            } as ChatRequest),
+          });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done || shouldAbort) break;
+          if (!response.ok) {
+            const parsed = await parseApiErrorResponse(response);
+            const sessionDenied =
+              parsed.status === 403 &&
+              parsed.backendError.includes("会话") &&
+              Boolean(sessionIdForRequest) &&
+              attempt === 0;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n").filter((line) => line.trim());
+            if (sessionDenied) {
+              // 旧会话跨账号/权限变化时自动切到新会话重试一次，减少用户手动刷新成本
+              sessionIdForRequest = undefined;
+              setCurrentSessionId(null);
+              navigate({ search: "" });
+              continue;
+            }
 
-          for (const line of lines) {
-            if (shouldAbort) break;
-            processStreamLine(line, streamingContext);
+            throw new Error(parsed.message);
           }
 
-          if (shouldAbort) break;
+          if (!response.body) throw new Error("No response body");
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+
+          const streamingContext: StreamingContext = {
+            currentAssistantMessage,
+            setCurrentAssistantMessage,
+            addMessage,
+            updateLastMessage,
+            onSessionId: setCurrentSessionId,
+            shouldShowInitMessage: () => !hasShownInitMessage,
+            onInitMessageShown: () => setHasShownInitMessage(true),
+            get hasReceivedInit() {
+              return localHasReceivedInit;
+            },
+            setHasReceivedInit: (received: boolean) => {
+              localHasReceivedInit = received;
+              setHasReceivedInit(received);
+            },
+            onPermissionError: handlePermissionError,
+            onAbortRequest: async () => {
+              shouldAbort = true;
+              await createAbortHandler(requestId)();
+            },
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done || shouldAbort) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split("\n").filter((line) => line.trim());
+
+            for (const line of lines) {
+              if (shouldAbort) break;
+              processStreamLine(line, streamingContext);
+            }
+
+            if (shouldAbort) break;
+          }
+
+          streamCompleted = true;
+          break;
+        }
+
+        if (!streamCompleted) {
+          throw new Error("发送失败，请稍后重试。");
         }
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -255,6 +279,7 @@ export function ChatPage() {
       workingDirectory,
       permissionMode,
       token,
+      navigate,
       generateRequestId,
       clearInput,
       startRequest,
