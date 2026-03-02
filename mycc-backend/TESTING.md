@@ -140,6 +140,30 @@ curl -X POST http://localhost:8080/api/chat/sessions/SESSION_ID/rename \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"newTitle": "Hello World 示例"}'
+
+# 查看文件化 identity/soul 状态
+curl http://localhost:8080/api/chat/identity \
+  -H "Authorization: Bearer $TOKEN"
+
+# 写入长期记忆（MEMORY.md）
+curl -X PUT http://localhost:8080/api/chat/memory \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"偏好：先给结论，再给细节。"}'
+
+# 读取长期记忆
+curl http://localhost:8080/api/chat/memory \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### 场景 2.1: Session Soul 一键 E2E
+
+```bash
+cd mycc-backend
+./scripts/e2e-session-soul.sh
+
+# 如需包含真实 chat 主会话归并校验
+RUN_CHAT_E2E=1 ./scripts/e2e-session-soul.sh
 ```
 
 ### 场景 3: 计费和额度
