@@ -191,6 +191,7 @@ export function SkillsPage() {
   const callSkillAction = useCallback(
     async (skillId: string, action: "install" | "upgrade" | "enable" | "disable" | "uninstall") => {
       if (!token) return;
+      if (action === "uninstall" && !window.confirm("确定要卸载该技能吗？")) return;
       setProcessingId(skillId);
       setError(null);
       const urlMap = {
@@ -369,6 +370,14 @@ export function SkillsPage() {
                           启用
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => callSkillAction(skill.id, "uninstall")}
+                        disabled={processingId === skill.id}
+                        className="px-3 py-1.5 rounded-lg text-sm border text-red-600 border-red-200 dark:text-red-400 dark:border-red-800"
+                      >
+                        卸载
+                      </button>
                     </div>
                   </article>
                 ))}
