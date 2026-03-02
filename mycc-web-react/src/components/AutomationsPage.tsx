@@ -21,8 +21,8 @@ interface AutomationTrigger {
 }
 
 interface AutomationExecution {
-  type: "skill";
-  skill: string;
+  type: "prompt" | "skill";
+  skill?: string;
   prompt: string;
   runCount: number;
   lastRunAt: string | null;
@@ -53,7 +53,7 @@ interface CreateTemplate {
   label: string;
   name: string;
   cron: string;
-  skill: string;
+  skill?: string;
   description: string;
   prompt: string;
 }
@@ -74,7 +74,6 @@ const CREATE_TEMPLATES: CreateTemplate[] = [
     label: "每日简报",
     name: "每日简报",
     cron: "09:00",
-    skill: "/tell-me",
     description: "每天自动生成工作简报",
     prompt: "请总结昨天完成项、今天计划和风险提醒。",
   },
@@ -83,7 +82,6 @@ const CREATE_TEMPLATES: CreateTemplate[] = [
     label: "每周复盘",
     name: "每周复盘",
     cron: "周五 18:30",
-    skill: "/tell-me",
     description: "每周五生成本周复盘摘要",
     prompt: "请回顾本周目标达成情况，并给出下周建议。",
   },
@@ -116,7 +114,7 @@ function buildDraft(templateId = CREATE_TEMPLATES[0].id): CreateDraft {
     templateId: template.id,
     name: template.name,
     cron: template.cron,
-    skill: template.skill,
+    skill: template.skill || "",
     description: template.description,
     prompt: template.prompt,
     enabled: true,
@@ -184,7 +182,7 @@ export function AutomationsPage() {
     const keyword = query.trim().toLowerCase();
     if (!keyword) return items;
     return items.filter((item) =>
-      [item.name, item.scheduleText, item.execution?.skill, item.description]
+      [item.name, item.scheduleText, item.execution?.skill, item.execution?.prompt, item.description]
         .join(" ")
         .toLowerCase()
         .includes(keyword),
@@ -212,6 +210,7 @@ export function AutomationsPage() {
     setSubmittingCreate(true);
     setError(null);
     try {
+      const skill = createDraft.skill.trim();
       await apiFetch(getAutomationsUrl(), {
         method: "POST",
         body: JSON.stringify({
@@ -224,8 +223,8 @@ export function AutomationsPage() {
             timezone: "Asia/Shanghai",
           },
           execution: {
-            type: "skill",
-            skill: createDraft.skill.trim() || "-",
+            type: skill ? "skill" : "prompt",
+            ...(skill ? { skill } : {}),
             prompt: createDraft.prompt.trim(),
           },
           delivery: {
@@ -281,7 +280,7 @@ export function AutomationsPage() {
           <header className="flex flex-wrap items-start justify-between gap-3 mb-6">
             <div>
               <h1 className="text-4xl font-semibold tracking-tight">自动化</h1>
-              <p className="text-slate-500 mt-1">OpenClaw V1：模板创建、状态控制、立即运行</p>
+              <p className="text-slate-500 mt-1">模板创建、状态控制、立即运行</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -306,7 +305,7 @@ export function AutomationsPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索任务名、计划、skill 或描述..."
+              placeholder="搜索任务名、计划或描述..."
               className="w-full rounded-xl border px-3 py-2 panel-surface outline-none focus:ring-2 focus:ring-[var(--accent)]/35"
             />
           </div>
@@ -348,7 +347,7 @@ export function AutomationsPage() {
                   <div className="mt-2 text-xs text-slate-500 space-y-1">
                     <div>计划: {item.scheduleText}</div>
                     <div>触发: {item.trigger?.cron || "手动"}</div>
-                    <div>技能: {item.execution?.skill || "-"}</div>
+                    <div>执行入口: {item.execution?.skill || "默认执行"}</div>
                     <div>启用: {item.enabled ? "是" : "否"}</div>
                     <div>执行次数: {item.execution?.runCount ?? 0}</div>
                     <div>最近执行: {formatTime(item.execution?.lastRunAt ?? null)}</div>
@@ -437,7 +436,7 @@ export function AutomationsPage() {
               </label>
 
               <label className="text-sm">
-                <div className="mb-1 text-slate-500">执行 skill</div>
+                <div className="mb-1 text-slate-500">执行入口（可选）</div>
                 <input
                   value={createDraft.skill}
                   onChange={(e) => setCreateDraft((prev) => ({ ...prev, skill: e.target.value }))}

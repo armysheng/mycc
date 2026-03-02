@@ -180,6 +180,16 @@ export function Sidebar({
           >
             ⚡ 技能
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate("/automations");
+              onClose();
+            }}
+            className="flex-1 px-2 py-1.5 text-xs rounded-md border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            ⏱ 自动化
+          </button>
         </div>
       </div>
 

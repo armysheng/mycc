@@ -25,6 +25,14 @@ interface ParsedLegacyTasks {
   invalidRows: string[];
 }
 
+interface BuiltinTemplate {
+  name: string;
+  cron: string;
+  description: string;
+  prompt: string;
+  enabled: boolean;
+}
+
 const DAILY_RE = /^\d{1,2}:\d{2}$/;
 const WEEKLY_RE = /^周[一二三四五六日]\s*\d{1,2}:\d{2}$/;
 const ONCE_RE = /^\d{4}-\d{2}-\d{2}(?:\s+|T)\d{1,2}:\d{2}$/;
@@ -56,7 +64,16 @@ function toSafeCellText(input: string): string {
 
 function normalizeSkill(skill: string): string {
   const trimmed = skill.trim();
-  return trimmed || '-';
+  if (!trimmed || trimmed === '-') return '';
+  return trimmed;
+}
+
+function toDisplaySkill(skill?: string): string {
+  return normalizeSkill(skill || '') || '-';
+}
+
+function hasSkill(skill?: string): boolean {
+  return Boolean(normalizeSkill(skill || ''));
 }
 
 function normalizeCron(cron?: string): string {
@@ -93,6 +110,13 @@ function ensureBoolean(input: unknown, fallback = true): boolean {
   return typeof input === 'boolean' ? input : fallback;
 }
 
+function normalizeExecutionType(rawType: unknown, skill?: string): 'prompt' | 'skill' {
+  const type = ensureString(rawType).trim();
+  if (type === 'prompt') return 'prompt';
+  if (type === 'skill') return hasSkill(skill) ? 'skill' : 'prompt';
+  return hasSkill(skill) ? 'skill' : 'prompt';
+}
+
 function normalizeRecord(input: unknown, index: number): AutomationRecord {
   const row = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
   const now = new Date().toISOString();
@@ -114,9 +138,11 @@ function normalizeRecord(input: unknown, index: number): AutomationRecord {
     : (enabled ? 'healthy' : 'paused');
   const triggerTypeRaw = ensureString(trigger.type, 'cron');
   const triggerType = (triggerTypeRaw === 'cron' || triggerTypeRaw === 'manual') ? triggerTypeRaw : 'cron';
-  const executionType = ensureString(execution.type, 'skill') === 'skill' ? 'skill' : 'skill';
+  const executionSkill = normalizeSkill(ensureString(execution.skill));
+  const executionType = normalizeExecutionType(execution.type, executionSkill);
   const lastRunStatusRaw = ensureString(execution.lastRunStatus);
   const lastRunStatus = (lastRunStatusRaw === 'success' || lastRunStatusRaw === 'failed') ? lastRunStatusRaw : null;
+  const normalizedExecutionSkill = executionType === 'skill' ? executionSkill : '';
 
   return {
     id: ensureString(row.id) || `restored-${index + 1}`,
@@ -131,7 +157,7 @@ function normalizeRecord(input: unknown, index: number): AutomationRecord {
     },
     execution: {
       type: executionType,
-      skill: normalizeSkill(ensureString(execution.skill, '-')),
+      skill: normalizedExecutionSkill || undefined,
       prompt: ensureString(execution.prompt),
       runCount: Number.isFinite(execution.runCount) ? Number(execution.runCount) : 0,
       lastRunAt: ensureString(execution.lastRunAt) || null,
@@ -146,6 +172,30 @@ function normalizeRecord(input: unknown, index: number): AutomationRecord {
     updatedAt: ensureString(row.updatedAt) || now,
   };
 }
+
+const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
+  {
+    name: '每日简报',
+    cron: '09:00',
+    description: '每天自动生成工作简报',
+    prompt: '请总结昨天完成项、今天计划和风险提醒。',
+    enabled: true,
+  },
+  {
+    name: '每周复盘',
+    cron: '周五 18:30',
+    description: '每周五生成本周复盘摘要',
+    prompt: '请回顾本周目标达成情况，并给出下周建议。',
+    enabled: false,
+  },
+  {
+    name: '系统健康巡检',
+    cron: '每2小时',
+    description: '巡检核心链路并输出状态',
+    prompt: '执行健康检查并输出异常项、影响范围和建议动作。',
+    enabled: false,
+  },
+];
 
 function parseAutomationDocument(content: string): AutomationRecord[] {
   if (!content.trim()) return [];
@@ -225,6 +275,8 @@ function parseTasksMdDetailed(content: string): ParsedLegacyTasks {
 
 function legacyTaskToRecord(task: LegacyTask, index: number): AutomationRecord {
   const now = new Date().toISOString();
+  const skill = normalizeSkill(task.skill);
+  const executionType = skill ? 'skill' : 'prompt';
   return {
     id: `legacy-${slugify(task.name || 'task')}-${index + 1}`,
     name: task.name || `历史任务 ${index + 1}`,
@@ -237,8 +289,8 @@ function legacyTaskToRecord(task: LegacyTask, index: number): AutomationRecord {
       timezone: 'Asia/Shanghai',
     },
     execution: {
-      type: 'skill',
-      skill: normalizeSkill(task.skill),
+      type: executionType,
+      skill: executionType === 'skill' ? skill : undefined,
       prompt: task.description || task.name,
       runCount: 0,
       lastRunAt: null,
@@ -254,6 +306,36 @@ function legacyTaskToRecord(task: LegacyTask, index: number): AutomationRecord {
   };
 }
 
+function buildBuiltinRecords(): AutomationRecord[] {
+  const now = new Date().toISOString();
+  return BUILTIN_TEMPLATES.map((template, index) => normalizeRecord({
+    id: createAutomationId(template.name),
+    name: template.name,
+    description: template.description,
+    status: template.enabled ? 'healthy' : 'paused',
+    enabled: template.enabled,
+    trigger: {
+      type: 'cron',
+      cron: template.cron,
+      timezone: 'Asia/Shanghai',
+    },
+    execution: {
+      type: 'prompt',
+      prompt: template.prompt,
+      runCount: 0,
+      lastRunAt: null,
+      lastRunStatus: null,
+      lastError: null,
+    },
+    delivery: {
+      type: 'inbox',
+      enabled: true,
+    },
+    createdAt: now,
+    updatedAt: now,
+  }, index));
+}
+
 function tasksRows(records: AutomationRecord[]): { daily: string[]; weekly: string[]; interval: string[]; once: string[] } {
   const rows = {
     daily: [] as string[],
@@ -267,7 +349,7 @@ function tasksRows(records: AutomationRecord[]): { daily: string[]; weekly: stri
     const cron = normalizeCron(record.trigger.cron);
     if (!cron) continue;
 
-    const skill = toSafeCellText(record.execution.skill || '-');
+    const skill = toSafeCellText(toDisplaySkill(record.execution.skill));
     const desc = toSafeCellText(record.description || record.execution.prompt || '-');
     const name = toSafeCellText(record.name);
     const row = `| ${cron} | ${name} | ${skill} | ${desc} |`;
@@ -382,6 +464,15 @@ NODE
       : { tasks: [], invalidRows: [] };
     const legacyTasks = parsedLegacy.tasks;
 
+    if (!tasksContent.trim()) {
+      const seeded = buildBuiltinRecords();
+      await this.persistRecords(seeded);
+      return {
+        records: seeded,
+        migratedFromTasks: false,
+      };
+    }
+
     if (parsedLegacy.invalidRows.length > 0) {
       const sample = parsedLegacy.invalidRows.slice(0, 2).join(' ; ');
       throw new AutomationStoreError(500, `legacy tasks.md 存在无法识别的任务时间行，已阻止自动迁移以避免数据丢失: ${sample}`);
@@ -445,6 +536,9 @@ NODE
     const { records } = await this.loadRecords();
     const now = new Date().toISOString();
     const enabled = input.enabled ?? true;
+    const inputSkill = normalizeSkill(input.execution.skill || '');
+    const requestedType = input.execution.type || (hasSkill(inputSkill) ? 'skill' : 'prompt');
+    const executionType = requestedType === 'skill' && hasSkill(inputSkill) ? 'skill' : 'prompt';
     const record: AutomationRecord = normalizeRecord({
       id: createAutomationId(input.name),
       name: input.name,
@@ -457,8 +551,8 @@ NODE
         timezone: input.trigger.timezone || 'Asia/Shanghai',
       },
       execution: {
-        type: 'skill',
-        skill: normalizeSkill(input.execution.skill || '-'),
+        type: executionType,
+        skill: executionType === 'skill' ? inputSkill : undefined,
         prompt: input.execution.prompt || '',
         runCount: 0,
         lastRunAt: null,
@@ -492,6 +586,13 @@ NODE
       throw new AutomationStoreError(400, 'cron 触发任务的 trigger.cron 不能为空');
     }
 
+    const nextSkill = patch.execution?.skill !== undefined
+      ? normalizeSkill(patch.execution.skill || '')
+      : normalizeSkill(current.execution.skill || '');
+    const nextTypeCandidate = patch.execution?.type
+      ?? (patch.execution?.skill !== undefined ? (hasSkill(nextSkill) ? 'skill' : 'prompt') : current.execution.type);
+    const nextExecutionType = nextTypeCandidate === 'skill' && hasSkill(nextSkill) ? 'skill' : 'prompt';
+
     const next: AutomationRecord = normalizeRecord({
       ...current,
       name: patch.name ?? current.name,
@@ -506,6 +607,8 @@ NODE
       execution: {
         ...current.execution,
         ...patch.execution,
+        type: nextExecutionType,
+        skill: nextExecutionType === 'skill' ? nextSkill : undefined,
       },
       delivery: {
         ...current.delivery,
@@ -571,7 +674,7 @@ NODE
 
     records[index] = next;
     await this.persistRecords(records);
-    console.info(`[automations] run once user=${this.linuxUser} id=${next.id} skill=${next.execution.skill} status=${runStatus}`);
+    console.info(`[automations] run once user=${this.linuxUser} id=${next.id} skill=${toDisplaySkill(next.execution.skill)} status=${runStatus}`);
 
     if (runStatus === 'failed') {
       throw new AutomationStoreError(500, `立即运行失败: ${runError || '未知错误'}`);
@@ -588,7 +691,7 @@ NODE
 
   private buildRunMessage(record: AutomationRecord): string {
     const skillRaw = (record.execution.skill || '').trim();
-    const skillPrefix = skillRaw && skillRaw !== '-'
+    const skillPrefix = record.execution.type === 'skill' && skillRaw && skillRaw !== '-'
       ? (skillRaw.startsWith('/') ? skillRaw : `/${skillRaw}`)
       : '';
     const content = (record.execution.prompt || record.description || record.name || '').trim();
