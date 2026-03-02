@@ -9,4 +9,5 @@ export function createSkillsService(): ISkillsService {
 export * from './types.js';
 export * from './contracts.js';
 export * from './errors.js';
+export * from './skill-registry.js';
 

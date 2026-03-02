@@ -47,6 +47,20 @@ export async function skillsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.get('/api/skills/market', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    const skills = skillsService.getMarketSkills();
+    return reply.send({
+      success: true,
+      data: { skills, total: skills.length },
+    });
+  });
+
   fastify.get('/api/skills/search', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -195,32 +209,6 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: err instanceof Error ? err.message : '禁用技能失败',
-      });
-    }
-  });
-
-  fastify.post('/api/skills/:skillId/uninstall', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const { skillId } = request.params as { skillId: string };
-      const user = await withUser(request.user.userId);
-      const data = await skillsService.uninstallSkill({
-        userId: request.user.userId,
-        linuxUser: user.linux_user,
-      }, skillId);
-      return reply.send({ success: true, data });
-    } catch (err) {
-      if (err instanceof SkillsError) {
-        return reply.status(err.statusCode).send({ success: false, error: err.message });
-      }
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '卸载技能失败',
       });
     }
   });

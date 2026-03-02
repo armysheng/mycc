@@ -13,24 +13,6 @@ export interface SkillInfo {
   legacy: boolean;
   enabled: boolean;
   upgradable: boolean;
-  examplePrompt?: string;
-}
-
-export interface RegistrySkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  category: string;
-  triggers: string[];
-  source: 'registry';
-  defaultInstall: boolean;
-  examplePrompt?: string;
-}
-
-export interface SkillRegistry {
-  version: number;
-  skills: RegistrySkillEntry[];
 }
 
 export interface SkillsListResult {
@@ -50,10 +32,36 @@ export interface SkillActionResult {
   success: boolean;
   enabled?: boolean;
   version?: string;
-  uninstalled?: boolean;
 }
 
 export interface SkillsContext {
   userId: number;
   linuxUser: string;
+}
+
+export type ReadinessLevel = 'L1' | 'L2' | 'L3';
+export type RiskLevel = 'low' | 'medium' | 'high';
+export type SkillCategory =
+  | 'builtin'
+  | 'productivity'
+  | 'content'
+  | 'learning'
+  | 'lifestyle'
+  | 'devtools'
+  | 'research';
+
+export interface SkillDefinition {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  icon: string;
+  category: SkillCategory;
+  builtin: boolean;
+  readiness: ReadinessLevel;
+  deps: string[];
+  riskLevel: RiskLevel;
+  defaultEnabled: boolean;
+  owner: string;
+  mdPath: string;
 }
