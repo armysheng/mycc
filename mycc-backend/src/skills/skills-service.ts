@@ -1,8 +1,9 @@
 import { validateLinuxUsername } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
+import { getMarketSkills as registryMarketSkills } from './skill-registry.js';
 import type { ISkillsService } from './contracts.js';
-import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo } from './types.js';
+import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition } from './types.js';
 
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
@@ -12,6 +13,10 @@ export class SkillsService implements ISkillsService {
   private static listInFlight = new Map<string, Promise<SkillsListResult>>();
 
   constructor(private readonly store: RemoteSkillStore) {}
+
+  getMarketSkills(): SkillDefinition[] {
+    return registryMarketSkills();
+  }
 
   async listSkills(context: SkillsContext): Promise<SkillsListResult> {
     this.validateContext(context);

@@ -1,6 +1,7 @@
-import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo } from './types.js';
+import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition } from './types.js';
 
 export interface ISkillsService {
+  getMarketSkills(): SkillDefinition[];
   listSkills(context: SkillsContext): Promise<SkillsListResult>;
   searchSkills(context: SkillsContext, query: string): Promise<SkillInfo[]>;
   installSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult>;

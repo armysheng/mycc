@@ -10,6 +10,10 @@ import { onboardingRoutes } from './routes/onboarding.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
+import { validateRegistry } from './skills/skill-registry.js';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 // 加载环境变量
 dotenv.config();
@@ -95,6 +99,20 @@ async function start() {
       throw new Error('SSH 连接测试失败');
     }
     console.log('✅ VPS 连接测试成功');
+
+    // 技能注册表一致性校验
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const catalogPath = process.env.SKILLS_CATALOG_DIR || path.join(__dirname, 'skills', 'catalog');
+    const missing = validateRegistry(catalogPath);
+    if (missing.length > 0) {
+      console.warn(`[SkillRegistry] ${missing.length} 个 SKILL.md 文件缺失:`);
+      for (const m of missing) console.warn(`  ${m}`);
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[SkillRegistry] 生产环境不允许缺失，退出');
+        process.exit(1);
+      }
+    }
 
     // 启动服务器
     await fastify.listen({ port: PORT, host: HOST });

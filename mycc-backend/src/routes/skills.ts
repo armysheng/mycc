@@ -47,6 +47,20 @@ export async function skillsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.get('/api/skills/market', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    const skills = skillsService.getMarketSkills();
+    return reply.send({
+      success: true,
+      data: { skills, total: skills.length },
+    });
+  });
+
   fastify.get('/api/skills/search', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {

@@ -2,62 +2,12 @@ import matter from 'gray-matter';
 import { getSSHPool } from '../ssh/pool.js';
 import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
-import type { SkillInfo, RegistrySkillEntry } from './types.js';
-import { SKILL_REGISTRY } from './skill-registry.js';
-
-function loadRegistry() {
-  return SKILL_REGISTRY;
-}
-
-function registryEntryToSkillInfo(entry: RegistrySkillEntry): SkillInfo {
-  return {
-    id: entry.id,
-    name: entry.name,
-    description: entry.description,
-    trigger: entry.triggers[0] || `/${entry.id}`,
-    icon: entry.icon,
-    status: 'available',
-    installed: false,
-    version: '1.0.0',
-    installedVersion: null,
-    latestVersion: '1.0.0',
-    source: entry.source,
-    legacy: false,
-    enabled: false,
-    upgradable: false,
-    examplePrompt: entry.examplePrompt,
-  };
-}
-
-function buildRegistrySkillMarkdown(entry: RegistrySkillEntry): string {
-  const trigger = entry.triggers[0] || `/${entry.id}`;
-  return `---
-name: ${entry.id}
-description: ${entry.description}
-version: 1.0.0
-source: mycc-registry
-triggers:
-  - ${trigger}
----
-
-你是 ${entry.id} 助手。${entry.description}
-`;
-}
+import type { SkillInfo } from './types.js';
+import { ClawHubAdapter } from './clawhub-adapter.js';
+import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuiltinSkills } from './skill-registry.js';
 
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
-
-const ICON_MAP: Record<string, string> = {
-  'cc-usage': '📊',
-  'mycc': '📱',
-  'read-gzh': '📖',
-  'tell-me': '💬',
-  'scheduler': '⏰',
-  'setup': '🛠',
-  'dashboard': '📋',
-  'skill-creator': '🔧',
-  'mycc-regression': '🔄',
-};
 
 function isValidSkillId(skillId: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(skillId);
@@ -81,13 +31,14 @@ function toSkillInfo(
   const versionMeta = normalizeVersion(parsed.data.version);
   const latestVersion = versionMeta.version;
   const currentVersion = status === 'installed' ? (installedVersion || latestVersion) : latestVersion;
+  const registryEntry = getSkillById(skillId);
 
   return {
     id: skillId,
-    name: (parsed.data.name as string) || skillId,
-    description: (parsed.data.description as string) || '',
-    trigger: `/${skillId}`,
-    icon: ICON_MAP[skillId] || '⚡',
+    name: registryEntry?.name || (parsed.data.name as string) || skillId,
+    description: registryEntry?.description || (parsed.data.description as string) || '',
+    trigger: registryEntry?.trigger || `/${skillId}`,
+    icon: getIconForSkill(skillId),
     status,
     installed: status === 'installed',
     version: currentVersion,
@@ -122,50 +73,60 @@ function runAsLinuxUserCommand(linuxUser: string, command: string): string {
 
 export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
+  private clawhubAdapter = new ClawHubAdapter();
 
   async listSkillInfos(linuxUser: string): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
     const sshPool = getSSHPool();
     const connection = await sshPool.acquire();
 
     try {
+      const run: ExecFn = (command) => sshPool.exec(connection, command);
       const runAsUser: ExecFn = (command) =>
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
       const installedDir = userSkillsDir(linuxUser);
+      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       const manifest = await this.readManifest(runAsUser, linuxUser);
 
-      // 1. Load registry as base
-      const registry = loadRegistry();
-      const map = new Map<string, SkillInfo>();
-
-      for (const entry of registry.skills) {
-        map.set(entry.id, registryEntryToSkillInfo(entry));
-      }
-
-      // 2. Merge installed skills from user directory
       const installedResult = await runAsUser(
         `find ${escapeShellArg(installedDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
       );
+      const availableResult = catalogDir
+        ? await run(
+            `find ${escapeShellArg(catalogDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
+          )
+        : { stdout: '', stderr: '', exitCode: 0 };
+
       const installedPaths = installedResult.stdout.trim().split('\n').filter(Boolean);
+      const availablePaths = availableResult.stdout.trim().split('\n').filter(Boolean);
+      const map = new Map<string, SkillInfo>();
+
+      for (const path of availablePaths) {
+        const skill = await this.readSkillInfo(run, path, 'catalog', 'available');
+        if (skill) {
+          map.set(skill.id, skill);
+        }
+      }
 
       for (const path of installedPaths) {
         const skill = await this.readSkillInfo(runAsUser, path, 'user', 'installed');
         if (skill) {
-          const registryEntry = map.get(skill.id);
-          const disabled = Boolean(manifest?.skills?.[skill.id]?.disabled);
-
-          if (registryEntry) {
-            // Registry has + installed: merge with registry metadata
+          const existed = map.get(skill.id);
+          if (existed) {
+            const installedVersion = skill.version;
+            const latestVersion = existed.latestVersion || installedVersion;
+            const disabled = Boolean(manifest?.skills?.[skill.id]?.disabled);
             map.set(skill.id, {
-              ...registryEntry,
+              ...existed,
               status: disabled ? 'disabled' : 'installed',
               installed: true,
-              installedVersion: skill.version,
-              version: skill.version,
+              installedVersion,
+              version: installedVersion,
               enabled: !disabled,
-              upgradable: false,
+              upgradable: installedVersion !== latestVersion,
+              legacy: existed.legacy && skill.legacy,
             });
           } else {
-            // Registry missing + installed: visible in installed only
+            const disabled = Boolean(manifest?.skills?.[skill.id]?.disabled);
             skill.status = disabled ? 'disabled' : 'installed';
             skill.enabled = !disabled;
             skill.upgradable = false;
@@ -174,14 +135,50 @@ export class RemoteSkillStore {
         }
       }
 
-      // NO ClawHub merge — external sources bypassed
+      // 合并 ClawHub 技能（如果可用）
+      try {
+        const clawhubSkills = await this.clawhubAdapter.listAvailableSkills(linuxUser);
+        for (const skill of clawhubSkills) {
+          if (!map.has(skill.id)) {
+            map.set(skill.id, skill);
+          }
+        }
+      } catch (error) {
+        console.warn('[RemoteSkillStore] ClawHub 技能加载失败:', error);
+        // 不阻断主流程，继续返回其他技能
+      }
+
+      // 合并 registry 中的市场技能
+      for (const def of getMarketSkills()) {
+        if (!map.has(def.id)) {
+          map.set(def.id, {
+            id: def.id,
+            name: def.name,
+            description: def.description,
+            trigger: def.trigger,
+            icon: def.icon,
+            status: 'available',
+            installed: false,
+            version: '1.0.0',
+            installedVersion: null,
+            latestVersion: '1.0.0',
+            source: 'catalog',
+            legacy: false,
+            enabled: false,
+            upgradable: false,
+          });
+        }
+      }
 
       const skills = Array.from(map.values()).sort((a, b) => {
         if (a.installed !== b.installed) return a.installed ? -1 : 1;
         return a.id.localeCompare(b.id);
       });
 
-      return { skills, catalogAvailable: true };
+      return {
+        skills,
+        catalogAvailable: Boolean(catalogDir),
+      };
     } finally {
       sshPool.release(connection);
     }
@@ -192,13 +189,45 @@ export class RemoteSkillStore {
       throw new SkillsError(400, '搜索关键词至少需要 2 个字符');
     }
 
-    const q = query.trim().toLowerCase();
+    const q = query.toLowerCase();
 
-    // Get all skills (registry + installed) then filter
-    const { skills } = await this.listSkillInfos(linuxUser);
-    return skills.filter((s) =>
-      [s.id, s.name, s.description, s.trigger].join(' ').toLowerCase().includes(q)
-    );
+    // 先搜 registry
+    const registryResults: SkillInfo[] = SKILL_REGISTRY
+      .filter(s => s.readiness === 'L1')
+      .filter(s =>
+        s.id.includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.trigger.includes(q)
+      )
+      .map(def => ({
+        id: def.id,
+        name: def.name,
+        description: def.description,
+        trigger: def.trigger,
+        icon: def.icon,
+        status: 'available' as const,
+        installed: false,
+        version: '1.0.0',
+        installedVersion: null,
+        latestVersion: '1.0.0',
+        source: 'catalog',
+        legacy: false,
+        enabled: false,
+        upgradable: false,
+      }));
+
+    if (registryResults.length > 0) {
+      return registryResults;
+    }
+
+    // fallback: 搜 ClawHub
+    try {
+      return await this.clawhubAdapter.searchSkills(linuxUser, query);
+    } catch (error) {
+      console.error('[RemoteSkillStore] 搜索失败:', error);
+      throw new SkillsError(500, '搜索技能失败');
+    }
   }
 
   async installSkill(linuxUser: string, skillId: string): Promise<string> {
@@ -214,22 +243,35 @@ export class RemoteSkillStore {
       const runAsUser: ExecFn = (command) =>
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
 
+      // 先检查是否是 ClawHub 技能
       const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
       const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
 
-      if (targetCheck.stdout.trim()) {
-        // Already installed, return current version
-        const catSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
-        const parsed = matter(catSkill.stdout || '');
-        return normalizeVersion(parsed.data.version).version;
+      if (!targetCheck.stdout.trim()) {
+        // 技能未安装，尝试从 ClawHub 安装
+        try {
+          const version = await this.clawhubAdapter.installSkill(linuxUser, skillId);
+
+          // 更新 manifest 和 lock
+          await this.updateManifestAndLock(runAsUser, linuxUser, {
+            skillId,
+            version,
+            source: 'clawhub',
+            installedPath: targetDir,
+            disabled: false,
+          });
+
+          return version;
+        } catch (clawhubError) {
+          console.warn(`[RemoteSkillStore] ClawHub 安装失败，尝试本地 catalog:`, clawhubError);
+          // 回退到本地 catalog 安装
+        }
       }
 
-      let catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
+      // 本地 catalog 安装逻辑（原有逻辑）
+      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       if (!catalogDir) {
-        catalogDir = await this.ensureCatalogForInstall(runAsUser, linuxUser);
-      }
-      if (!catalogDir) {
-        throw new SkillsError(404, '未找到技能目录，请确认用户 workspace 已初始化');
+        throw new SkillsError(503, '未找到技能目录，已尝试自动初始化但失败');
       }
 
       const sourceDir = `${catalogDir}/${skillId}`;
@@ -285,8 +327,32 @@ export class RemoteSkillStore {
         throw new SkillsError(404, '技能未安装，无法升级');
       }
 
+      // 读取当前技能的 source
       const manifest = await this.readManifest(runAsUser, linuxUser);
+      const currentSource = manifest?.skills?.[skillId]?.source;
 
+      // 如果是 ClawHub 技能，使用 ClawHub 升级
+      if (currentSource === 'clawhub') {
+        try {
+          const version = await this.clawhubAdapter.upgradeSkill(linuxUser, skillId);
+          const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
+
+          await this.updateManifestAndLock(runAsUser, linuxUser, {
+            skillId,
+            version,
+            source: 'clawhub',
+            installedPath: targetDir,
+            disabled,
+          });
+
+          return version;
+        } catch (clawhubError) {
+          console.warn(`[RemoteSkillStore] ClawHub 升级失败:`, clawhubError);
+          throw new SkillsError(500, `升级失败: ${clawhubError instanceof Error ? clawhubError.message : String(clawhubError)}`);
+        }
+      }
+
+      // 本地 catalog 升级逻辑（原有逻辑）
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       if (!catalogDir) {
         throw new SkillsError(503, '未找到技能目录，无法升级');
@@ -456,8 +522,11 @@ export class RemoteSkillStore {
       return userCatalog;
     }
 
-    // No catalog found — do not bootstrap implicitly
-    return null;
+    const bootstrapped = await this.bootstrapCatalog(execAsUser, linuxUser);
+    if (bootstrapped) {
+      this.cacheCatalogPath(linuxUser, bootstrapped);
+    }
+    return bootstrapped;
   }
 
   private cacheCatalogPath(linuxUser: string, path: string): void {
@@ -467,96 +536,50 @@ export class RemoteSkillStore {
     });
   }
 
-  private async ensureCatalogForInstall(execAsUser: ExecFn, linuxUser: string): Promise<string | null> {
+  private async bootstrapCatalog(exec: ExecFn, linuxUser: string): Promise<string | null> {
     const catalogDir = userCatalogSeedDir(linuxUser);
-    const skills = loadRegistry().skills.map((entry) => ({
-      id: entry.id,
-      markdown: buildRegistrySkillMarkdown(entry),
-    }));
-    const skillsB64 = Buffer.from(JSON.stringify(skills), 'utf8').toString('base64');
+    const seedFrom = userSkillsDir(linuxUser);
+    const builtinSkills = getBuiltinSkills();
+    const mkdirList = builtinSkills.map(s => `"$CATALOG/${s.id}"`).join(' ');
 
-    const script = `
+    const skillFiles = builtinSkills.map(s => {
+      const escaped = s.description.replace(/'/g, "'\\''");
+      return `cat > "$CATALOG/${s.id}/SKILL.md" <<'SKILL'
+---
+name: ${s.name}
+description: ${s.description}
+version: 1.0.0
+source: mycc-builtin
+triggers:
+  - ${s.trigger}
+---
+
+${s.description}
+SKILL`;
+    }).join('\n');
+
+    const command = `
+set -e
 CATALOG=${escapeShellArg(catalogDir)}
-SKILLS_B64=${escapeShellArg(skillsB64)}
-export CATALOG SKILLS_B64
-
+SEED=${escapeShellArg(seedFrom)}
 mkdir -p "$CATALOG"
-
-node <<'NODE'
-const fs = require('fs');
-const path = require('path');
-const catalog = process.env.CATALOG;
-const skills = JSON.parse(Buffer.from(process.env.SKILLS_B64, 'base64').toString('utf8'));
-
-for (const skill of skills) {
-  const dir = path.join(catalog, skill.id);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'SKILL.md');
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, skill.markdown, 'utf8');
-  }
-}
-
-console.log(catalog);
-NODE
+if [ "$(ls -A "$CATALOG" 2>/dev/null || true)" != "" ]; then
+  echo "$CATALOG"
+  exit 0
+fi
+if [ -d "$SEED" ] && [ "$(find "$SEED" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -gt 0 ]; then
+  cp -a "$SEED/." "$CATALOG"/
+  echo "$CATALOG"
+  exit 0
+fi
+mkdir -p ${mkdirList}
+${skillFiles}
+echo "$CATALOG"
+exit 0
 `;
-
-    const result = await execAsUser(script);
-    if (result.exitCode !== 0) {
-      return null;
-    }
+    const result = await exec(command);
     const out = result.stdout.trim();
-    const generatedPath = out ? out.split('\n').pop() || null : null;
-    if (generatedPath) {
-      this.cacheCatalogPath(linuxUser, generatedPath);
-    }
-    return generatedPath;
-  }
-
-  private async removeFromManifestAndLock(
-    exec: ExecFn,
-    linuxUser: string,
-    skillId: string
-  ): Promise<void> {
-    const manifest = skillsManifestPath(linuxUser);
-    const lock = skillsLockPath(linuxUser);
-
-    const script = `
-MANIFEST=${escapeShellArg(manifest)}
-LOCK=${escapeShellArg(lock)}
-SKILL_ID=${escapeShellArg(skillId)}
-export MANIFEST LOCK SKILL_ID
-
-node <<'NODE'
-const fs = require('fs');
-const readJson = (p, fallback) => {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
-};
-
-const manifestPath = process.env.MANIFEST;
-const lockPath = process.env.LOCK;
-const id = process.env.SKILL_ID;
-
-const manifest = readJson(manifestPath, { version: 1, skills: {} });
-if (manifest.skills && manifest.skills[id]) {
-  delete manifest.skills[id];
-  manifest.updatedAt = new Date().toISOString();
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-}
-
-const lock = readJson(lockPath, { version: 1, skills: {} });
-if (lock.skills && lock.skills[id]) {
-  delete lock.skills[id];
-  lock.generatedAt = new Date().toISOString();
-  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2));
-}
-NODE
-`;
-
-    const result = await exec(script);
-    if (result.exitCode !== 0) {
-      throw new SkillsError(500, result.stderr || '清理技能状态失败');
-    }
+    return out ? out.split('\n').pop() || null : null;
   }
 
   private async updateManifestAndLock(
@@ -644,6 +667,52 @@ NODE
       return JSON.parse(result.stdout);
     } catch {
       return null;
+    }
+  }
+
+  private async removeFromManifestAndLock(
+    exec: ExecFn,
+    linuxUser: string,
+    skillId: string
+  ): Promise<void> {
+    const manifest = skillsManifestPath(linuxUser);
+    const lock = skillsLockPath(linuxUser);
+
+    const script = `
+MANIFEST=${escapeShellArg(manifest)}
+LOCK=${escapeShellArg(lock)}
+SKILL_ID=${escapeShellArg(skillId)}
+export MANIFEST LOCK SKILL_ID
+
+node <<'NODE'
+const fs = require('fs');
+const readJson = (p, fallback) => {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
+};
+
+const manifestPath = process.env.MANIFEST;
+const lockPath = process.env.LOCK;
+const id = process.env.SKILL_ID;
+
+const manifest = readJson(manifestPath, { version: 1, skills: {} });
+if (manifest.skills && manifest.skills[id]) {
+  delete manifest.skills[id];
+  manifest.updatedAt = new Date().toISOString();
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
+const lock = readJson(lockPath, { version: 1, skills: {} });
+if (lock.skills && lock.skills[id]) {
+  delete lock.skills[id];
+  lock.generatedAt = new Date().toISOString();
+  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2));
+}
+NODE
+`;
+
+    const result = await exec(script);
+    if (result.exitCode !== 0) {
+      throw new SkillsError(500, result.stderr || '清理技能状态文件失败');
     }
   }
 }
