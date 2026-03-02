@@ -51,6 +51,8 @@ export type SkillCategory =
   | 'devtools'
   | 'research';
 
+export type OriginType = 'official' | 'community' | 'internal-verified';
+
 export interface SkillDefinition {
   id: string;
   name: string;
@@ -65,4 +67,12 @@ export interface SkillDefinition {
   defaultEnabled: boolean;
   owner: string;
   mdPath: string;
+  /** 可访问的源码路径或官方仓库链接（internal-verified 可为空） */
+  source_url: string;
+  /** 来源类型：official=官方 1:1 / community=有外部出处非同名 / internal-verified=原创 */
+  origin_type: OriginType;
+  /** 验证方式说明（不超过 3 行） */
+  validation_note: string;
+  /** 最后验证日期 YYYY-MM-DD */
+  last_verified_at: string;
 }

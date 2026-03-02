@@ -90,3 +90,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Validate skill provenance metadata
+        run: npx tsx scripts/validate-skill-provenance.ts

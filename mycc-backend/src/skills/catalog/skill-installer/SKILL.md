@@ -1,22 +1,58 @@
 ---
 name: skill-installer
-description: 从策展仓库浏览和安装社区技能
-version: 1.0.0
-source: mycc-builtin
-triggers:
-  - /skill-installer
+description: Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos).
+metadata:
+  short-description: Install curated skills from openai/skills or other repos
 ---
 
-## Overview
+# Skill Installer
 
-skill-installer 是 CC 的技能商店入口。通过它，你可以浏览社区策展仓库中的各种技能，预览技能功能说明和使用示例，一键安装到你的 CC 中。已安装的技能也可以通过它进行更新和卸载。
+Helps install skills. By default these are from https://github.com/openai/skills/tree/main/skills/.curated, but users can also provide other locations. Experimental skills live in https://github.com/openai/skills/tree/main/skills/.experimental and can be installed the same way.
 
-策展仓库收录了社区贡献的各类实用技能，涵盖内容创作、数据处理、效率工具、开发辅助等多个分类。每个技能都经过审核，确保质量和安全性。你可以按分类浏览，也可以用关键词搜索特定功能的技能。
+Use the helper scripts based on the task:
+- List skills when the user asks what is available, or if the user uses this skill without specifying what to do. Default listing is `.curated`, but you can pass `--path skills/.experimental` when they ask about experimental skills.
+- Install from the curated list when the user provides a skill name.
+- Install from another repo when the user provides a GitHub repo/path (including private repos).
 
-安装技能就像安装 App 一样简单：搜索、预览、安装，立即可用。CC 会自动处理依赖和配置，安装完成后新技能的触发命令会即刻生效。定期检查更新可以获取技能的最新功能和修复。
+Install skills with the helper scripts.
 
-## 示例
+## Communication
 
-> 有什么推荐的技能
-> 安装小红书文案技能
-> 更新所有已安装的技能
+When listing skills, output approximately as follows, depending on the context of the user's request. If they ask about experimental skills, list from `.experimental` instead of `.curated` and label the source accordingly:
+"""
+Skills from {repo}:
+1. skill-1
+2. skill-2 (already installed)
+3. ...
+Which ones would you like installed?
+"""
+
+After installing a skill, tell the user: "Restart Codex to pick up new skills."
+
+## Scripts
+
+All of these scripts use network, so when running in the sandbox, request escalation when running them.
+
+- `scripts/list-skills.py` (prints skills list with installed annotations)
+- `scripts/list-skills.py --format json`
+- Example (experimental list): `scripts/list-skills.py --path skills/.experimental`
+- `scripts/install-skill-from-github.py --repo <owner>/<repo> --path <path/to/skill> [<path/to/skill> ...]`
+- `scripts/install-skill-from-github.py --url https://github.com/<owner>/<repo>/tree/<ref>/<path>`
+- Example (experimental skill): `scripts/install-skill-from-github.py --repo openai/skills --path skills/.experimental/<skill-name>`
+
+## Behavior and Options
+
+- Defaults to direct download for public GitHub repos.
+- If download fails with auth/permission errors, falls back to git sparse checkout.
+- Aborts if the destination skill directory already exists.
+- Installs into `$CODEX_HOME/skills/<skill-name>` (defaults to `~/.codex/skills`).
+- Multiple `--path` values install multiple skills in one run, each named from the path basename unless `--name` is supplied.
+- Options: `--ref <ref>` (default `main`), `--dest <path>`, `--method auto|download|git`.
+
+## Notes
+
+- Curated listing is fetched from `https://github.com/openai/skills/tree/main/skills/.curated` via the GitHub API. If it is unavailable, explain the error and exit.
+- Private GitHub repos can be accessed via existing git credentials or optional `GITHUB_TOKEN`/`GH_TOKEN` for download.
+- Git fallback tries HTTPS first, then SSH.
+- The skills at https://github.com/openai/skills/tree/main/skills/.system are preinstalled, so no need to help users install those. If they ask, just explain this. If they insist, you can download and overwrite.
+- Installed annotations come from `$CODEX_HOME/skills`.
