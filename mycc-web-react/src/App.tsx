@@ -4,6 +4,7 @@ import { ChatPage } from "./components/ChatPage";
 import { LoginPage } from "./components/LoginPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { AutomationsPage } from "./components/AutomationsPage";
+import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
 import { isDevelopment } from "./utils/environment";
@@ -18,7 +19,7 @@ const DemoPage = isDevelopment()
   : null;
 
 function App() {
-  const { user, isLoading } = useAuth();
+  const { user, refreshUser, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -35,6 +36,12 @@ function App() {
   return (
     <SettingsProvider>
       <Router>
+        {user.is_initialized === false && (
+          <OnboardingOverlay
+            onComplete={refreshUser}
+            userNickname={user.nickname}
+          />
+        )}
         <Routes>
           {/* 多用户模式：直接进入聊天界面 */}
           <Route path="/" element={<ChatPage />} />
