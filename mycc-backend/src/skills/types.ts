@@ -32,6 +32,7 @@ export interface SkillActionResult {
   success: boolean;
   enabled?: boolean;
   version?: string;
+  uninstalled?: boolean;
 }
 
 export interface SkillsContext {

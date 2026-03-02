@@ -61,9 +61,18 @@ export const getSkillDisableUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${skillId}/disable`;
 };
 
+export const getSkillUninstallUrl = (skillId: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/uninstall`;
+};
+
 // Helper function to get automations URL
 export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;
+};
+
+// Helper function to get session messages URL
+export const getChatSessionMessagesUrl = (sessionId: string) => {
+  return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/messages`;
 };
 
 // Helper function to get rename session URL

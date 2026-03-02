@@ -436,6 +436,30 @@ export class RemoteSkillStore {
     }
   }
 
+  async uninstallSkill(linuxUser: string, skillId: string): Promise<void> {
+    if (!isValidSkillId(skillId)) {
+      throw new SkillsError(400, '无效的 skillId');
+    }
+
+    const sshPool = getSSHPool();
+    const connection = await sshPool.acquire();
+
+    try {
+      const runAsUser: ExecFn = (command) =>
+        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+
+      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
+
+      // Delete skill directory (idempotent)
+      await runAsUser(`rm -rf ${escapeShellArg(targetDir)}`);
+
+      // Remove from manifest and lock
+      await this.removeFromManifestAndLock(runAsUser, linuxUser, skillId);
+    } finally {
+      sshPool.release(connection);
+    }
+  }
+
   private async readSkillInfo(
     exec: ExecFn,
     skillFilePath: string,
@@ -643,6 +667,52 @@ NODE
       return JSON.parse(result.stdout);
     } catch {
       return null;
+    }
+  }
+
+  private async removeFromManifestAndLock(
+    exec: ExecFn,
+    linuxUser: string,
+    skillId: string
+  ): Promise<void> {
+    const manifest = skillsManifestPath(linuxUser);
+    const lock = skillsLockPath(linuxUser);
+
+    const script = `
+MANIFEST=${escapeShellArg(manifest)}
+LOCK=${escapeShellArg(lock)}
+SKILL_ID=${escapeShellArg(skillId)}
+export MANIFEST LOCK SKILL_ID
+
+node <<'NODE'
+const fs = require('fs');
+const readJson = (p, fallback) => {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
+};
+
+const manifestPath = process.env.MANIFEST;
+const lockPath = process.env.LOCK;
+const id = process.env.SKILL_ID;
+
+const manifest = readJson(manifestPath, { version: 1, skills: {} });
+if (manifest.skills && manifest.skills[id]) {
+  delete manifest.skills[id];
+  manifest.updatedAt = new Date().toISOString();
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
+const lock = readJson(lockPath, { version: 1, skills: {} });
+if (lock.skills && lock.skills[id]) {
+  delete lock.skills[id];
+  lock.generatedAt = new Date().toISOString();
+  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2));
+}
+NODE
+`;
+
+    const result = await exec(script);
+    if (result.exitCode !== 0) {
+      throw new SkillsError(500, result.stderr || '清理技能状态文件失败');
     }
   }
 }

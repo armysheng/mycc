@@ -8,4 +8,5 @@ export interface ISkillsService {
   upgradeSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult>;
   enableSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult>;
   disableSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult>;
+  uninstallSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult>;
 }

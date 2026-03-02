@@ -212,4 +212,30 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       });
     }
   });
+
+  fastify.post('/api/skills/:skillId/uninstall', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { skillId } = request.params as { skillId: string };
+      const user = await withUser(request.user.userId);
+      const data = await skillsService.uninstallSkill({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      }, skillId);
+      return reply.send({ success: true, data });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({ success: false, error: err.message });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '卸载技能失败',
+      });
+    }
+  });
 }

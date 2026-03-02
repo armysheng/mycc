@@ -10,6 +10,7 @@ import {
   getSkillsUrl,
   getSkillsSearchUrl,
   getSkillsMarketUrl,
+  getSkillUninstallUrl,
   getSkillUpgradeUrl,
 } from "../config/api";
 
@@ -188,7 +189,7 @@ export function SkillsPage() {
   }, [activeTab, query, searchRemoteSkills]);
 
   const callSkillAction = useCallback(
-    async (skillId: string, action: "install" | "upgrade" | "enable" | "disable") => {
+    async (skillId: string, action: "install" | "upgrade" | "enable" | "disable" | "uninstall") => {
       if (!token) return;
       setProcessingId(skillId);
       setError(null);
@@ -197,6 +198,7 @@ export function SkillsPage() {
         upgrade: getSkillUpgradeUrl(skillId),
         enable: getSkillEnableUrl(skillId),
         disable: getSkillDisableUrl(skillId),
+        uninstall: getSkillUninstallUrl(skillId),
       };
       try {
         await fetchJsonWithTimeout(urlMap[action], {
@@ -240,9 +242,8 @@ export function SkillsPage() {
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
         onNewChat={() => navigate("/")}
-        currentSection="skills"
-        onOpenChat={() => navigate("/")}
-        onOpenSkills={() => navigate("/skills")}
+        isOpen={false}
+        onClose={() => {}}
       />
 
       <main className="flex-1 overflow-y-auto">
