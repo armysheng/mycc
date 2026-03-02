@@ -1,5 +1,6 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { getPlanById } from '../billing/plan-catalog.js';
 
 dotenv.config();
 
@@ -100,10 +101,11 @@ export async function createUser(params: {
     const user = result.rows[0];
 
     // 创建默认订阅（免费版）
+    const freePlan = getPlanById('free');
     await client.query(
       `INSERT INTO subscriptions (user_id, plan, tokens_limit, tokens_used, reset_at)
        VALUES ($1, 'free', $2, 0, date_trunc('month', NOW()) + interval '1 month')`,
-      [user.id, parseInt(process.env.PLAN_FREE_TOKENS || '10000')]
+      [user.id, freePlan.tokensLimit]
     );
 
     await client.query('COMMIT');
@@ -307,15 +309,13 @@ export async function getUsageStats(
 
 // 升级套餐
 export async function upgradePlan(userId: number, plan: 'basic' | 'pro'): Promise<void> {
-  const tokensLimit = plan === 'basic'
-    ? parseInt(process.env.PLAN_BASIC_TOKENS || '100000')
-    : parseInt(process.env.PLAN_PRO_TOKENS || '500000');
+  const targetPlan = getPlanById(plan);
 
   await pool.query(
     `UPDATE subscriptions
      SET plan = $1, tokens_limit = $2, expires_at = NOW() + interval '1 month'
      WHERE user_id = $3`,
-    [plan, tokensLimit, userId]
+    [plan, targetPlan.tokensLimit, userId]
   );
 }
 
