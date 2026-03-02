@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [],
-    "deny": [],
+    "deny": [
+      "WebSearch"
+    ],
     "ask": []
   },
   "hooks": {
