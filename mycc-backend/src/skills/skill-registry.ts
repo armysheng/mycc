@@ -157,7 +157,7 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     last_verified_at: '2026-03-02',
   },
 
-  // ── 市场技能 (2) ────────────────────────────────────────────
+  // ── 市场技能 (3) ────────────────────────────────────────────
   {
     id: 'skill-creator',
     name: '技能创建',
@@ -194,6 +194,25 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     source_url: 'https://github.com/openai/skills/tree/main/skills/.curated/spreadsheet',
     origin_type: 'community',
     validation_note: '参考 OpenAI Codex spreadsheet skill 实现',
+    last_verified_at: '2026-03-02',
+  },
+  {
+    id: 'deep-research',
+    name: '深度调研',
+    description: '格式可控的研究报告生成，含证据追踪、引用和多轮审阅',
+    trigger: '/deep-research',
+    icon: '🔬',
+    category: 'research',
+    builtin: false,
+    readiness: 'L1',
+    deps: [],
+    riskLevel: 'low',
+    defaultEnabled: true,
+    owner: 'system',
+    mdPath: 'deep-research/SKILL.md',
+    source_url: 'https://github.com/daymade/claude-code-skills/tree/main/deep-research',
+    origin_type: 'community',
+    validation_note: '完整 clone from daymade/claude-code-skills，含 5 个 references 文件',
     last_verified_at: '2026-03-02',
   },
 ];
