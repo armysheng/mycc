@@ -122,8 +122,34 @@ jobs:
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
           HEALTH_URL="${STAGING_BACKEND_HEALTH_URL:-http://127.0.0.1:8080/health}"
-          ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
-            "curl -fsS '${HEALTH_URL}'"
+          MAX_RETRIES="${STAGING_BACKEND_HEALTH_RETRIES:-20}"
+          RETRY_INTERVAL="${STAGING_BACKEND_HEALTH_RETRY_INTERVAL:-3}"
+
+          passed=false
+          for attempt in $(seq 1 "${MAX_RETRIES}"); do
+            if ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+              "curl -fsS --connect-timeout 2 --max-time 5 '${HEALTH_URL}'" >/dev/null; then
+              echo "Backend health check passed (${attempt}/${MAX_RETRIES})"
+              passed=true
+              break
+            fi
+            echo "Backend not ready (${attempt}/${MAX_RETRIES}), retry in ${RETRY_INTERVAL}s..."
+            sleep "${RETRY_INTERVAL}"
+          done
+
+          if [ "${passed}" != "true" ]; then
+            echo "Backend health check failed after ${MAX_RETRIES} attempts: ${HEALTH_URL}" >&2
+            ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" '
+              set +e
+              echo "--- systemctl --user status (mycc*) ---" >&2
+              systemctl --user --no-pager --full status "mycc*" 2>/dev/null || true
+              echo "--- pm2 list ---" >&2
+              pm2 list 2>/dev/null || true
+              echo "--- recent user logs ---" >&2
+              journalctl --user -n 80 --no-pager 2>/dev/null || true
+            ' || true
+            exit 1
+          fi
 
       - name: Verify frontend endpoint (optional)
         if: env.STAGING_FRONTEND_URL != ''
