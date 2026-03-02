@@ -1,17 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   SunIcon,
   MoonIcon,
-  ComputerDesktopIcon,
   CommandLineIcon,
   WrenchScrewdriverIcon,
   EyeIcon,
   UserCircleIcon,
   InformationCircleIcon,
+  BanknotesIcon,
 } from "@heroicons/react/24/outline";
 import { useSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../contexts/AuthContext";
-import type { FontSize, Theme } from "../../types/settings";
+import type { FontSize } from "../../types/settings";
+import {
+  getBillingPlans,
+  getBillingSubscription,
+  upgradePlan,
+  type BillingPlan,
+  type BillingPlansResponse,
+  type BillingSubscription,
+} from "../../api/billing";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
 
@@ -69,24 +77,26 @@ function ToggleRow({
 export function GeneralSettings() {
   const {
     theme,
-    resolvedTheme,
     enterBehavior,
     showToolCalls,
     autoExpandThinking,
     fontSize,
     profileNickname,
-    sidebarDefaultOpen,
-    setTheme,
+    toggleTheme,
     toggleEnterBehavior,
     toggleShowToolCalls,
     toggleAutoExpandThinking,
     setFontSize,
     setProfileNickname,
-    updateSettings,
   } = useSettings();
-  const { user } = useAuth();
+  const { user, token, refreshUser } = useAuth();
 
   const [nicknameDraft, setNicknameDraft] = useState(profileNickname || user?.nickname || "");
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [plansData, setPlansData] = useState<BillingPlansResponse | null>(null);
+  const [upgradingPlan, setUpgradingPlan] = useState<"basic" | "pro" | null>(null);
 
   const accountName = useMemo(() => {
     return user?.nickname || user?.email || user?.phone || user?.linux_user || "未登录用户";
@@ -98,8 +108,165 @@ export function GeneralSettings() {
     setProfileNickname(nicknameDraft.trim());
   };
 
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    const loadBillingData = async () => {
+      setBillingLoading(true);
+      setBillingError(null);
+      try {
+        const [subscriptionData, plans] = await Promise.all([
+          getBillingSubscription(token),
+          getBillingPlans(token),
+        ]);
+        if (!cancelled) {
+          setSubscription(subscriptionData);
+          setPlansData(plans);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBillingError(error instanceof Error ? error.message : "加载套餐信息失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setBillingLoading(false);
+        }
+      }
+    };
+
+    void loadBillingData();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const handleUpgradePlan = async (plan: BillingPlan["id"]) => {
+    if (!token || (plan !== "basic" && plan !== "pro")) return;
+    setUpgradingPlan(plan);
+    setBillingError(null);
+    try {
+      await upgradePlan(token, plan);
+      const [subscriptionData, plans] = await Promise.all([
+        getBillingSubscription(token),
+        getBillingPlans(token),
+      ]);
+      setSubscription(subscriptionData);
+      setPlansData(plans);
+      await refreshUser();
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "升级失败，请稍后重试");
+    } finally {
+      setUpgradingPlan(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <section>
+        <SectionTitle icon={<BanknotesIcon className="h-4 w-4" />} title="套餐与额度" />
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/65">
+          {billingLoading && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">正在加载套餐信息...</p>
+          )}
+          {billingError && (
+            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+              {billingError}
+            </p>
+          )}
+
+          {subscription && (
+            <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    当前套餐：{subscription.plan_name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    本月剩余 {subscription.tokens_remaining.toLocaleString()} / {subscription.tokens_limit.toLocaleString()} tokens
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    ¥{subscription.monthly_price_cny}/月
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    每千 tokens 约 ¥{subscription.cny_per_1k_tokens}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-full rounded-full bg-amber-500"
+                  style={{ width: `${Math.min(100, Math.max(0, subscription.usage_percentage))}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                额度重置时间：{new Date(subscription.reset_at).toLocaleString("zh-CN")}
+              </p>
+            </div>
+          )}
+
+          {plansData && (
+            <>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                推荐：{plansData.recommendation.reason}
+              </p>
+              <div className="grid gap-2 md:grid-cols-3">
+                {plansData.plans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className={`rounded-lg border p-3 ${
+                      plan.is_current
+                        ? "border-amber-400 bg-amber-50/70 dark:border-amber-700 dark:bg-amber-950/20"
+                        : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/70"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{plan.name}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{plan.description}</p>
+                      </div>
+                      {plan.is_recommended && (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                          推荐
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      ¥{plan.monthly_price_cny}/月
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {plan.tokens_limit.toLocaleString()} tokens / 月
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      约可完成 {plan.estimated_deep_tasks} 次深度任务
+                    </p>
+                    <ul className="mt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+                      {plan.highlights.slice(0, 2).map((highlight) => (
+                        <li key={highlight}>- {highlight}</li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      disabled={!plan.can_upgrade || plan.is_current || upgradingPlan === plan.id}
+                      onClick={() => handleUpgradePlan(plan.id)}
+                      className={`mt-3 w-full rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                        plan.can_upgrade && !plan.is_current
+                          ? "bg-slate-900 text-white hover:bg-slate-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+                          : "cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                      }`}
+                    >
+                      {plan.is_current ? "当前套餐" : upgradingPlan === plan.id ? "升级中..." : "升级到此套餐"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
       <section>
         <SectionTitle icon={<UserCircleIcon className="h-4 w-4" />} title="个人信息" />
         <div className="rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/65">
@@ -168,30 +335,23 @@ export function GeneralSettings() {
       <section>
         <SectionTitle icon={<EyeIcon className="h-4 w-4" />} title="外观" />
         <div className="space-y-2">
-          <div className="rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-            <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">主题</div>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                ["light", "浅色", <SunIcon key="sun" className="h-4 w-4" />],
-                ["dark", "深色", <MoonIcon key="moon" className="h-4 w-4" />],
-                ["system", "跟随系统", <ComputerDesktopIcon key="desktop" className="h-4 w-4" />],
-              ] as [Theme, string, React.ReactNode][]).map(([t, label, icon]) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTheme(t)}
-                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
-                    theme === t
-                      ? "border-amber-500 bg-amber-500 text-white"
-                      : "border-slate-300 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-amber-700"
-                  }`}
-                >
-                  {icon}
-                  {label}
-                </button>
-              ))}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white/90 p-3 transition-all hover:border-amber-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-amber-700"
+          >
+            <div className="flex items-center gap-2">
+              {theme === "light" ? (
+                <SunIcon className="h-5 w-5 text-amber-500" />
+              ) : (
+                <MoonIcon className="h-5 w-5 text-sky-400" />
+              )}
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                {theme === "light" ? "浅色模式" : "深色模式"}
+              </span>
             </div>
-          </div>
+            <span className="text-xs text-slate-500 dark:text-slate-400">点击切换</span>
+          </button>
 
           <div className="rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-700 dark:bg-slate-800/80">
             <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">字号</div>
@@ -216,13 +376,6 @@ export function GeneralSettings() {
               ))}
             </div>
           </div>
-
-          <ToggleRow
-            title="侧栏默认展开"
-            description="控制页面加载时桌面端侧栏是否默认展开。移动端始终默认收起。"
-            checked={sidebarDefaultOpen}
-            onToggle={() => updateSettings({ sidebarDefaultOpen: !sidebarDefaultOpen })}
-          />
         </div>
       </section>
 
@@ -238,7 +391,7 @@ export function GeneralSettings() {
       <section>
         <SectionTitle icon={<WrenchScrewdriverIcon className="h-4 w-4" />} title="无障碍提示" />
         <div aria-live="polite" className="rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
-          当前主题：{theme === "system" ? `跟随系统（${resolvedTheme === "light" ? "浅色" : "深色"}）` : resolvedTheme === "light" ? "浅色" : "深色"}；发送方式：
+          当前主题：{theme === "light" ? "浅色" : "深色"}；发送方式：
           {enterBehavior === "send" ? "Enter 发送" : "Enter 换行"}；字号：{fontSize}
         </div>
       </section>

@@ -6,6 +6,7 @@ export const API_CONFIG = {
     ABORT: "/api/abort",
     SKILLS: "/api/skills",
     AUTOMATIONS: "/api/automations",
+    BILLING: "/api/billing",
   },
 } as const;
 
@@ -32,6 +33,11 @@ export const getChatSessionsUrl = () => {
 // Helper function to get skills URL
 export const getSkillsUrl = () => {
   return API_CONFIG.ENDPOINTS.SKILLS;
+};
+
+// Helper function to get market skills URL
+export const getSkillsMarketUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/market`;
 };
 
 // Helper function to search skills
@@ -63,6 +69,18 @@ export const getSkillUninstallUrl = (skillId: string) => {
 // Helper function to get automations URL
 export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;
+};
+
+export const getBillingSubscriptionUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/subscription`;
+};
+
+export const getBillingPlansUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/plans`;
+};
+
+export const getBillingUpgradeUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/upgrade`;
 };
 
 // Helper function to get session messages URL

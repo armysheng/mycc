@@ -2,13 +2,98 @@ import { FastifyInstance } from 'fastify';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { getSubscription, getUsageStats, upgradePlan } from '../db/client.js';
 import { z } from 'zod';
+import {
+  comparePlanLevel,
+  getPlanById,
+  getPlanCatalog,
+  suggestPlan,
+  toPlanView,
+  type PlanId,
+  UPGRADABLE_PLAN_IDS,
+} from '../billing/plan-catalog.js';
 
 // 升级套餐请求验证
 const upgradePlanSchema = z.object({
-  plan: z.enum(['basic', 'pro']),
+  plan: z.enum(UPGRADABLE_PLAN_IDS),
 });
 
+function estimateProjectedMonthlyTokens(tokensUsed: number, resetAt: Date): number {
+  const now = Date.now();
+  const reset = new Date(resetAt);
+  const cycleStart = new Date(reset);
+  cycleStart.setMonth(cycleStart.getMonth() - 1);
+
+  const elapsedMs = Math.max(1, now - cycleStart.getTime());
+  const cycleMs = Math.max(elapsedMs, reset.getTime() - cycleStart.getTime());
+  const projected = Math.ceil(tokensUsed * (cycleMs / elapsedMs));
+  return Math.max(tokensUsed, projected);
+}
+
 export async function billingRoutes(fastify: FastifyInstance) {
+  // GET /api/billing/plans - 获取套餐目录与推荐
+  fastify.get('/api/billing/plans', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const subscription = await getSubscription(request.user.userId);
+      if (!subscription) {
+        return reply.status(404).send({
+          success: false,
+          error: '订阅信息不存在',
+        });
+      }
+
+      const catalog = getPlanCatalog();
+      const currentPlan = getPlanById(subscription.plan as PlanId, catalog);
+      const projectedMonthlyTokens = estimateProjectedMonthlyTokens(
+        subscription.tokens_used,
+        new Date(subscription.reset_at)
+      );
+      const recommendation = suggestPlan(projectedMonthlyTokens, catalog);
+
+      const plans = catalog.map((plan) => {
+        const view = toPlanView(plan);
+        return {
+          id: view.id,
+          name: view.name,
+          description: view.description,
+          monthly_price_cny: view.monthlyPriceCny,
+          tokens_limit: view.tokensLimit,
+          estimated_deep_tasks: view.estimatedDeepTasks,
+          cny_per_1k_tokens: view.cnyPer1kTokens,
+          tokens_per_cny: view.tokensPerCny,
+          highlights: view.highlights,
+          is_current: view.id === currentPlan.id,
+          can_upgrade: comparePlanLevel(view.id, currentPlan.id) > 0,
+          is_recommended: Boolean(view.isRecommended),
+        };
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          currency: 'CNY',
+          current_plan: currentPlan.id,
+          projected_monthly_tokens: projectedMonthlyTokens,
+          recommendation: {
+            plan: recommendation.planId,
+            reason: recommendation.reason,
+          },
+          plans,
+        },
+      });
+    } catch (err) {
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '获取套餐列表失败',
+      });
+    }
+  });
+
   // GET /api/billing/subscription - 获取订阅信息
   fastify.get('/api/billing/subscription', {
     preHandler: jwtAuthMiddleware,
@@ -27,14 +112,23 @@ export async function billingRoutes(fastify: FastifyInstance) {
         });
       }
 
+      const planView = toPlanView(getPlanById(subscription.plan as PlanId));
+      const usagePercentage = subscription.tokens_limit > 0
+        ? Number(((subscription.tokens_used / subscription.tokens_limit) * 100).toFixed(1))
+        : 0;
+
       return reply.send({
         success: true,
         data: {
           plan: subscription.plan,
+          plan_name: planView.name,
+          monthly_price_cny: planView.monthlyPriceCny,
           tokens_limit: subscription.tokens_limit,
           tokens_used: subscription.tokens_used,
           tokens_remaining: subscription.tokens_limit - subscription.tokens_used,
-          usage_percentage: ((subscription.tokens_used / subscription.tokens_limit) * 100).toFixed(1),
+          usage_percentage: usagePercentage,
+          cny_per_1k_tokens: planView.cnyPer1kTokens,
+          estimated_deep_tasks: planView.estimatedDeepTasks,
           reset_at: subscription.reset_at,
           expires_at: subscription.expires_at,
         },
@@ -105,8 +199,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       }
 
       // 检查是否降级（不允许）
-      const planOrder = { free: 0, basic: 1, pro: 2 };
-      if (planOrder[body.plan] <= planOrder[currentSubscription.plan as keyof typeof planOrder]) {
+      if (comparePlanLevel(body.plan, currentSubscription.plan as PlanId) <= 0) {
         return reply.status(400).send({
           success: false,
           error: '不支持降级或重复升级',
@@ -118,11 +211,14 @@ export async function billingRoutes(fastify: FastifyInstance) {
 
       // 获取新的订阅信息
       const newSubscription = await getSubscription(request.user.userId);
+      const targetPlan = getPlanById(body.plan);
 
       return reply.send({
         success: true,
         data: {
           plan: newSubscription?.plan,
+          plan_name: targetPlan.name,
+          monthly_price_cny: targetPlan.monthlyPriceCny,
           tokens_limit: newSubscription?.tokens_limit,
           expires_at: newSubscription?.expires_at,
         },
