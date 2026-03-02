@@ -20,10 +20,16 @@ interface LegacyTask {
   description: string;
 }
 
+interface ParsedLegacyTasks {
+  tasks: LegacyTask[];
+  invalidRows: string[];
+}
+
 const DAILY_RE = /^\d{1,2}:\d{2}$/;
 const WEEKLY_RE = /^周[一二三四五六日]\s*\d{1,2}:\d{2}$/;
 const ONCE_RE = /^\d{4}-\d{2}-\d{2}(?:\s+|T)\d{1,2}:\d{2}$/;
 const INTERVAL_RE = /^每\d+(分钟|m|小时|h)$/;
+const CRON_5_RE = /^([*0-9,\-/]+)\s+([*0-9,\-/]+)\s+([*0-9,\-/]+)\s+([*0-9,\-/]+)\s+([*0-9,\-/]+)$/;
 
 function detectScheduleType(time: string): AutomationScheduleType {
   if (INTERVAL_RE.test(time)) return 'interval';
@@ -157,19 +163,54 @@ function parseAutomationDocument(content: string): AutomationRecord[] {
 }
 
 export function parseTasksMd(content: string): LegacyTask[] {
+  return parseTasksMdDetailed(content).tasks;
+}
+
+function looksLikeTaskTime(time: string): boolean {
+  const normalized = time.trim();
+  const relaxedInterval = normalized.replace(/\s+/g, '');
+  return (
+    DAILY_RE.test(normalized) ||
+    WEEKLY_RE.test(normalized) ||
+    ONCE_RE.test(normalized) ||
+    INTERVAL_RE.test(relaxedInterval) ||
+    CRON_5_RE.test(normalized)
+  );
+}
+
+function parseTasksMdDetailed(content: string): ParsedLegacyTasks {
   const tasks: LegacyTask[] = [];
+  const invalidRows: string[] = [];
   const lines = content.split('\n');
+  const hasTaskSectionHeading = lines.some((line) => {
+    const headingMatch = line.match(/^##\s+(.+)$/);
+    if (!headingMatch) return false;
+    const title = headingMatch[1].trim();
+    return ['每日任务', '间隔任务', '每周任务', '一次性任务'].includes(title);
+  });
+  let inTaskSection = false;
 
   for (const line of lines) {
+    const headingMatch = line.match(/^##\s+(.+)$/);
+    if (headingMatch) {
+      const title = headingMatch[1].trim();
+      inTaskSection = ['每日任务', '间隔任务', '每周任务', '一次性任务'].includes(title);
+      continue;
+    }
+
+    if (hasTaskSectionHeading && !inTaskSection) continue;
     if (!line.startsWith('|')) continue;
     if (line.includes('时间') || line.includes('日期时间') || line.includes('---')) continue;
 
-    // 保留 legacy 表格行，避免迁移时因格式差异静默丢任务
     const cells = line.split('|').slice(1, -1).map((cell) => cell.trim());
     if (cells.length < 2) continue;
 
     const [time, name, skill = '-', description = ''] = cells;
     if (!time && !name) continue;
+    if (!looksLikeTaskTime(time)) {
+      invalidRows.push(line.trim());
+      continue;
+    }
 
     tasks.push({
       time,
@@ -179,7 +220,7 @@ export function parseTasksMd(content: string): LegacyTask[] {
     });
   }
 
-  return tasks;
+  return { tasks, invalidRows };
 }
 
 function legacyTaskToRecord(task: LegacyTask, index: number): AutomationRecord {
@@ -336,7 +377,16 @@ NODE
     }
 
     const tasksContent = await this.readFile(this.tasksPath);
-    const legacyTasks = tasksContent.trim() ? parseTasksMd(tasksContent) : [];
+    const parsedLegacy = tasksContent.trim()
+      ? parseTasksMdDetailed(tasksContent)
+      : { tasks: [], invalidRows: [] };
+    const legacyTasks = parsedLegacy.tasks;
+
+    if (parsedLegacy.invalidRows.length > 0) {
+      const sample = parsedLegacy.invalidRows.slice(0, 2).join(' ; ');
+      throw new AutomationStoreError(500, `legacy tasks.md 存在无法识别的任务时间行，已阻止自动迁移以避免数据丢失: ${sample}`);
+    }
+
     if (tasksContent.trim() && legacyTasks.length === 0) {
       throw new AutomationStoreError(500, 'legacy tasks.md 存在但无法解析，已阻止自动迁移以避免数据丢失');
     }

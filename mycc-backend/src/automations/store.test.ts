@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseTasksMd, renderTasksMd } from './store.js';
 import type { AutomationRecord } from './types.js';
@@ -13,23 +14,36 @@ describe('automation store helpers', () => {
 | 每2小时 | 健康巡检 | /mycc-regression | 采集健康指标 |
 | 2026-03-02 10:00 | 临时提醒 | /tell-me | 一次性提醒 |
 | 2026-03-03T10:00 | T分隔提醒 | /tell-me | 兼容旧格式 |
-| 每月1号 09:00 | 历史脏格式 | /tell-me | 迁移保留不丢弃 |
 `;
 
     const rows = parseTasksMd(md);
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(6);
     expect(rows[0]).toEqual({
       time: '09:00',
       name: '每日简报',
       skill: '/tell-me',
       description: '总结昨日进展',
     });
-    expect(rows[6]).toEqual({
-      time: '每月1号 09:00',
-      name: '历史脏格式',
+    expect(rows[5]).toEqual({
+      time: '2026-03-03T10:00',
+      name: 'T分隔提醒',
       skill: '/tell-me',
-      description: '迁移保留不丢弃',
+      description: '兼容旧格式',
     });
+  });
+
+  it('does not migrate guidance tables from tasks.md.example', () => {
+    const samplePath = new URL('../../../.claude/skills/scheduler/tasks.md.example', import.meta.url);
+    const md = readFileSync(samplePath, 'utf8');
+    const rows = parseTasksMd(md);
+
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.time)).toEqual([
+      '23:40',
+      '每2小时',
+      '2026-02-01 10:00',
+    ]);
+    expect(rows.some((row) => ['类型', '每日', '每周', '一次性', '间隔'].includes(row.time))).toBe(false);
   });
 
   it('renders only enabled cron tasks back to tasks.md', () => {
