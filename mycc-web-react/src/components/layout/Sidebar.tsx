@@ -146,15 +146,15 @@ export function Sidebar({
       <div className="p-4 border-b panel-surface">
         <div className="flex items-center gap-3 mb-4">
           <div
-            className="w-9 h-9 rounded-lg text-white flex items-center justify-center font-semibold"
-            style={{ background: "var(--accent)" }}
+            className="w-9 h-9 rounded-xl text-white flex items-center justify-center text-base font-bold tracking-tight shadow-sm"
+            style={{ background: "linear-gradient(135deg, var(--accent), #7c3aed)" }}
           >
-            cc
+            C
           </div>
           <div>
-            <div className="text-sm font-semibold">MyCC</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              多用户助手
+            <div className="text-sm font-bold tracking-tight">MyCC</div>
+            <div className="text-[11px] text-slate-400 dark:text-slate-500">
+              你的 AI 搭档
             </div>
           </div>
         </div>

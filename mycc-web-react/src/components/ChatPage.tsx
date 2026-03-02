@@ -560,27 +560,27 @@ export function ChatPage() {
                 <div className="flex items-center">
                   <button
                     onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
+                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
                     aria-label="Back to project selection"
                   >
-                    Claude Code Web UI
+                    MyCC
                   </button>
                   {(isHistoryView || sessionId) && (
                     <>
                       <span
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
+                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight mx-3 select-none"
                         aria-hidden="true"
                       >
                         {" "}
                         ›{" "}
                       </span>
                       <h1
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
+                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight"
                         aria-current="page"
                       >
                         {isHistoryView
-                          ? "Conversation History"
-                          : "Conversation"}
+                          ? "历史记录"
+                          : "对话"}
                       </h1>
                     </>
                   )}
