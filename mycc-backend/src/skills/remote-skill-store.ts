@@ -71,6 +71,12 @@ function runAsLinuxUserCommand(linuxUser: string, command: string): string {
   return `sudo -u ${escapeShellArg(linuxUser)} bash -lc ${escapeShellArg(command)}`;
 }
 
+function extractSkillIdFromPath(skillMdPath: string): string | null {
+  const parts = skillMdPath.split('/').filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts[parts.length - 2] ?? null;
+}
+
 export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
   private clawhubAdapter = new ClawHubAdapter();
@@ -101,7 +107,15 @@ export class RemoteSkillStore {
       const map = new Map<string, SkillInfo>();
 
       // 首次访问（无 manifest 且无已安装技能）时，自动补齐内置技能。
-      if (!manifest && installedPaths.length === 0) {
+      // 同时兼容老账号：若检测到缺失内置技能，也执行一次补齐。
+      const installedIds = new Set(
+        installedPaths
+          .map((p) => extractSkillIdFromPath(p))
+          .filter((id): id is string => Boolean(id))
+      );
+      const hasMissingBuiltin = getBuiltinSkills().some((skill) => !installedIds.has(skill.id));
+
+      if ((!manifest && installedPaths.length === 0) || (installedPaths.length > 0 && hasMissingBuiltin)) {
         const seeded = await this.seedBuiltinSkills(run, runAsUser, linuxUser, catalogDir);
         if (seeded > 0) {
           const refreshedInstalled = await runAsUser(
