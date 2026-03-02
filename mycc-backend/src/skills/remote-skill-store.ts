@@ -85,7 +85,7 @@ export class RemoteSkillStore {
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
       const installedDir = userSkillsDir(linuxUser);
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
-      const manifest = await this.readManifest(runAsUser, linuxUser);
+      let manifest = await this.readManifest(runAsUser, linuxUser);
 
       const installedResult = await runAsUser(
         `find ${escapeShellArg(installedDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
@@ -96,9 +96,21 @@ export class RemoteSkillStore {
           )
         : { stdout: '', stderr: '', exitCode: 0 };
 
-      const installedPaths = installedResult.stdout.trim().split('\n').filter(Boolean);
+      let installedPaths = installedResult.stdout.trim().split('\n').filter(Boolean);
       const availablePaths = availableResult.stdout.trim().split('\n').filter(Boolean);
       const map = new Map<string, SkillInfo>();
+
+      // 首次访问（无 manifest 且无已安装技能）时，自动补齐内置技能。
+      if (!manifest && installedPaths.length === 0) {
+        const seeded = await this.seedBuiltinSkills(run, runAsUser, linuxUser, catalogDir);
+        if (seeded > 0) {
+          const refreshedInstalled = await runAsUser(
+            `find ${escapeShellArg(installedDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
+          );
+          installedPaths = refreshedInstalled.stdout.trim().split('\n').filter(Boolean);
+          manifest = await this.readManifest(runAsUser, linuxUser);
+        }
+      }
 
       for (const path of availablePaths) {
         const skill = await this.readSkillInfo(run, path, 'catalog', 'available');
@@ -458,6 +470,57 @@ export class RemoteSkillStore {
     } finally {
       sshPool.release(connection);
     }
+  }
+
+  private async seedBuiltinSkills(
+    run: ExecFn,
+    runAsUser: ExecFn,
+    linuxUser: string,
+    catalogDir: string | null
+  ): Promise<number> {
+    const sourceRoot = catalogDir ?? await this.resolveCatalogDir(run, runAsUser, linuxUser);
+    if (!sourceRoot) return 0;
+
+    const builtinSkills = getBuiltinSkills();
+    if (builtinSkills.length === 0) return 0;
+
+    const userDir = userSkillsDir(linuxUser);
+    await runAsUser(`mkdir -p ${escapeShellArg(userDir)}`);
+
+    let seededCount = 0;
+    for (const skill of builtinSkills) {
+      const sourceDir = `${sourceRoot}/${skill.id}`;
+      const targetDir = `${userDir}/${skill.id}`;
+
+      const sourceCheck = await runAsUser(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
+      if (!sourceCheck.stdout.trim()) {
+        continue;
+      }
+
+      const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
+      if (!targetCheck.stdout.trim()) {
+        const copy = await runAsUser(`cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}`);
+        if (copy.exitCode !== 0) {
+          throw new SkillsError(500, copy.stderr || `自动安装内置技能失败: ${skill.id}`);
+        }
+      }
+
+      const skillFile = `${targetDir}/SKILL.md`;
+      const skillResult = await runAsUser(`cat ${escapeShellArg(skillFile)} 2>/dev/null || true`);
+      const parsed = matter(skillResult.stdout || '');
+      const version = normalizeVersion(parsed.data.version).version;
+
+      await this.updateManifestAndLock(runAsUser, linuxUser, {
+        skillId: skill.id,
+        version,
+        source: 'catalog',
+        installedPath: targetDir,
+        disabled: false,
+      });
+      seededCount += 1;
+    }
+
+    return seededCount;
   }
 
   private async readSkillInfo(
