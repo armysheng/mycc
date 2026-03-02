@@ -65,6 +65,26 @@ export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;
 };
 
+export const getAutomationUpdateUrl = (automationId: string) => {
+  return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}`;
+};
+
+export const getAutomationDeleteUrl = (automationId: string) => {
+  return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}`;
+};
+
+export const getAutomationEnableUrl = (automationId: string) => {
+  return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/enable`;
+};
+
+export const getAutomationDisableUrl = (automationId: string) => {
+  return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/disable`;
+};
+
+export const getAutomationRunUrl = (automationId: string) => {
+  return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/run`;
+};
+
 // Helper function to get session messages URL
 export const getChatSessionMessagesUrl = (sessionId: string) => {
   return `${API_CONFIG.ENDPOINTS.CHAT_SESSIONS}/${sessionId}/messages`;
