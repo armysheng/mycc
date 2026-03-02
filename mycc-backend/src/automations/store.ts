@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { escapeShellArg } from '../utils/validation.js';
+import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import type {
   AutomationDocument,
   AutomationListResult,
@@ -20,8 +21,8 @@ interface LegacyTask {
 }
 
 const DAILY_RE = /^\d{1,2}:\d{2}$/;
-const WEEKLY_RE = /^周[一二三四五六日]\s+\d{1,2}:\d{2}$/;
-const ONCE_RE = /^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}$/;
+const WEEKLY_RE = /^周[一二三四五六日]\s*\d{1,2}:\d{2}$/;
+const ONCE_RE = /^\d{4}-\d{2}-\d{2}(?:\s+|T)\d{1,2}:\d{2}$/;
 const INTERVAL_RE = /^每\d+(分钟|m|小时|h)$/;
 
 function detectScheduleType(time: string): AutomationScheduleType {
@@ -163,13 +164,12 @@ export function parseTasksMd(content: string): LegacyTask[] {
     if (!line.startsWith('|')) continue;
     if (line.includes('时间') || line.includes('日期时间') || line.includes('---')) continue;
 
-    const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean);
-    if (cells.length < 4) continue;
+    // 保留 legacy 表格行，避免迁移时因格式差异静默丢任务
+    const cells = line.split('|').slice(1, -1).map((cell) => cell.trim());
+    if (cells.length < 2) continue;
 
-    const [time, name, skill, description] = cells;
-    if (!DAILY_RE.test(time) && !WEEKLY_RE.test(time) && !ONCE_RE.test(time) && !INTERVAL_RE.test(time)) {
-      continue;
-    }
+    const [time, name, skill = '-', description = ''] = cells;
+    if (!time && !name) continue;
 
     tasks.push({
       time,
@@ -279,6 +279,7 @@ export class AutomationStore {
   private readonly schedulerDir: string;
   private readonly automationsPath: string;
   private readonly tasksPath: string;
+  private readonly tasksBackupPath: string;
 
   constructor(
     private readonly linuxUser: string,
@@ -288,6 +289,7 @@ export class AutomationStore {
     this.schedulerDir = `/home/${linuxUser}/workspace/.claude/skills/scheduler`;
     this.automationsPath = `${this.schedulerDir}/automations.json`;
     this.tasksPath = `${this.schedulerDir}/tasks.md`;
+    this.tasksBackupPath = `${this.schedulerDir}/tasks.legacy.backup.md`;
   }
 
   static buildUserCommand = runAsLinuxUserCommand;
@@ -335,6 +337,18 @@ NODE
 
     const tasksContent = await this.readFile(this.tasksPath);
     const legacyTasks = tasksContent.trim() ? parseTasksMd(tasksContent) : [];
+    if (tasksContent.trim() && legacyTasks.length === 0) {
+      throw new AutomationStoreError(500, 'legacy tasks.md 存在但无法解析，已阻止自动迁移以避免数据丢失');
+    }
+
+    if (tasksContent.trim()) {
+      try {
+        await this.writeFile(this.tasksBackupPath, tasksContent);
+      } catch (error) {
+        console.warn('[automations] legacy tasks backup failed:', error);
+      }
+    }
+
     const migrated = legacyTasks.map((task, index) => legacyTaskToRecord(task, index));
 
     await this.persistRecords(migrated);
@@ -373,6 +387,11 @@ NODE
   }
 
   async createAutomation(input: CreateAutomationInput): Promise<AutomationView> {
+    const triggerCron = normalizeCron(input.trigger.cron);
+    if (input.trigger.type === 'cron' && !triggerCron) {
+      throw new AutomationStoreError(400, 'cron 触发任务必须提供 trigger.cron');
+    }
+
     const { records } = await this.loadRecords();
     const now = new Date().toISOString();
     const enabled = input.enabled ?? true;
@@ -384,7 +403,7 @@ NODE
       enabled,
       trigger: {
         type: input.trigger.type,
-        cron: input.trigger.cron || '',
+        cron: triggerCron,
         timezone: input.trigger.timezone || 'Asia/Shanghai',
       },
       execution: {
@@ -417,6 +436,11 @@ NODE
     }
     const current = records[index];
     const enabled = patch.enabled ?? current.enabled;
+    const nextTriggerType = patch.trigger?.type ?? current.trigger.type;
+    const nextTriggerCron = normalizeCron(patch.trigger?.cron ?? current.trigger.cron);
+    if (nextTriggerType === 'cron' && !nextTriggerCron) {
+      throw new AutomationStoreError(400, 'cron 触发任务的 trigger.cron 不能为空');
+    }
 
     const next: AutomationRecord = normalizeRecord({
       ...current,
@@ -427,6 +451,7 @@ NODE
       trigger: {
         ...current.trigger,
         ...patch.trigger,
+        cron: nextTriggerCron,
       },
       execution: {
         ...current.execution,
@@ -471,21 +496,36 @@ NODE
     }
     const current = records[index];
     const executedAt = new Date().toISOString();
+    const runCount = current.execution.runCount + 1;
+
+    let runStatus: 'success' | 'failed' = 'success';
+    let runError: string | null = null;
+    try {
+      await this.executeAutomation(current);
+    } catch (error) {
+      runStatus = 'failed';
+      runError = error instanceof Error ? error.message : String(error);
+    }
+
     const next: AutomationRecord = normalizeRecord({
       ...current,
       execution: {
         ...current.execution,
-        runCount: current.execution.runCount + 1,
+        runCount,
         lastRunAt: executedAt,
-        lastRunStatus: 'success',
-        lastError: null,
+        lastRunStatus: runStatus,
+        lastError: runError,
       },
       updatedAt: executedAt,
     }, index);
 
     records[index] = next;
     await this.persistRecords(records);
-    console.info(`[automations] run once user=${this.linuxUser} id=${next.id} skill=${next.execution.skill}`);
+    console.info(`[automations] run once user=${this.linuxUser} id=${next.id} skill=${next.execution.skill} status=${runStatus}`);
+
+    if (runStatus === 'failed') {
+      throw new AutomationStoreError(500, `立即运行失败: ${runError || '未知错误'}`);
+    }
 
     return {
       automation: toView(next),
@@ -494,5 +534,46 @@ NODE
         status: 'success',
       },
     };
+  }
+
+  private buildRunMessage(record: AutomationRecord): string {
+    const skillRaw = (record.execution.skill || '').trim();
+    const skillPrefix = skillRaw && skillRaw !== '-'
+      ? (skillRaw.startsWith('/') ? skillRaw : `/${skillRaw}`)
+      : '';
+    const content = (record.execution.prompt || record.description || record.name || '').trim();
+    if (!content) {
+      throw new AutomationStoreError(400, '执行内容为空，无法立即运行');
+    }
+    return skillPrefix ? `${skillPrefix} ${content}`.trim() : content;
+  }
+
+  private async executeAutomation(record: AutomationRecord): Promise<void> {
+    const adapter = new RemoteClaudeAdapter();
+    const message = this.buildRunMessage(record);
+    const cwd = `/home/${this.linuxUser}/workspace`;
+
+    let runtimeError: string | null = null;
+    for await (const event of adapter.chat({
+      message,
+      cwd,
+      linuxUser: this.linuxUser,
+    })) {
+      if (event.type === 'error') {
+        runtimeError = typeof event.error === 'string' ? event.error : '执行失败';
+        break;
+      }
+
+      if (event.type === 'result' && event.is_error === true) {
+        runtimeError = typeof event.result === 'string'
+          ? event.result
+          : (typeof event.error === 'string' ? event.error : '执行失败');
+        break;
+      }
+    }
+
+    if (runtimeError) {
+      throw new Error(runtimeError);
+    }
   }
 }

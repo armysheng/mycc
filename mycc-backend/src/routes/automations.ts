@@ -146,7 +146,7 @@ export async function automationsRoutes(fastify: FastifyInstance) {
     try {
       const { id } = paramsSchema.parse(request.params);
       const patch = updateAutomationSchema.parse(request.body) as UpdateAutomationInput;
-      if (patch.trigger?.type === 'cron' && patch.trigger.cron !== undefined && !patch.trigger.cron.trim()) {
+      if (patch.trigger?.cron !== undefined && !patch.trigger.cron.trim()) {
         return reply.status(400).send({
           success: false,
           error: 'cron 触发任务的 trigger.cron 不能为空',

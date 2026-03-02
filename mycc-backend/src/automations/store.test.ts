@@ -9,17 +9,26 @@ describe('automation store helpers', () => {
 |------|------|-------|------|
 | 09:00 | 每日简报 | /tell-me | 总结昨日进展 |
 | 周一 18:30 | 周会提醒 | /scheduler | 准备周会材料 |
+| 周二18:40 | 无空格周任务 | /tell-me | 兼容旧格式 |
 | 每2小时 | 健康巡检 | /mycc-regression | 采集健康指标 |
 | 2026-03-02 10:00 | 临时提醒 | /tell-me | 一次性提醒 |
+| 2026-03-03T10:00 | T分隔提醒 | /tell-me | 兼容旧格式 |
+| 每月1号 09:00 | 历史脏格式 | /tell-me | 迁移保留不丢弃 |
 `;
 
     const rows = parseTasksMd(md);
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(7);
     expect(rows[0]).toEqual({
       time: '09:00',
       name: '每日简报',
       skill: '/tell-me',
       description: '总结昨日进展',
+    });
+    expect(rows[6]).toEqual({
+      time: '每月1号 09:00',
+      name: '历史脏格式',
+      skill: '/tell-me',
+      description: '迁移保留不丢弃',
     });
   });
 
