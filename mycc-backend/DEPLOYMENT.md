@@ -201,20 +201,44 @@ systemctl restart mycc-backend
 ```bash
 # 切换到服务账号
 su - mycc_service
-cd mycc/mycc-backend
+cd mycc
 
-# 拉取最新代码
-git pull
+# 铁令 1：部署前必须是干净工作区（禁止服务器手改代码）
+test -z "$(git status --porcelain)" || {
+  echo "ERROR: 工作区有未提交改动，禁止部署"
+  git status --short
+  exit 1
+}
+
+# 拉取并对齐主干
+git fetch origin main
+git checkout main
+git pull --ff-only origin main
 
 # 安装依赖
-npm install
+npm -C mycc-web-react ci
+npm -C mycc-backend ci
 
 # 重新构建
-npm run build
+npm -C mycc-web-react run build
+npm -C mycc-backend run build
 
 # 退出并重启服务
 exit
 systemctl restart mycc-backend
+```
+
+如遇历史脏改动导致无法拉取（仅测试环境允许），先留证据再强制恢复：
+
+```bash
+cd /home/armysheng/mycc
+TS="$(date +%Y%m%d-%H%M%S)"
+mkdir -p ~/deploy-backups
+git diff > ~/deploy-backups/dirty-${TS}.patch
+git status --short > ~/deploy-backups/dirty-${TS}.status
+git fetch origin main
+git reset --hard origin/main
+git clean -fd
 ```
 
 ### 数据库备份
