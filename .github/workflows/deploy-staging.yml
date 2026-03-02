@@ -84,6 +84,10 @@ jobs:
           npm -C mycc-backend ci
           npm -C mycc-backend run build
 
+          # 技能目录是静态资源，tsc 不会复制到 dist，需手动同步
+          mkdir -p mycc-backend/dist/skills/catalog
+          rsync -a --delete mycc-backend/src/skills/catalog/ mycc-backend/dist/skills/catalog/
+
           if [ -n "${STAGING_BACKEND_RESTART_CMD:-}" ]; then
             echo "restart via custom command"
             bash -lc "${STAGING_BACKEND_RESTART_CMD}"
