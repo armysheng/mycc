@@ -1,4 +1,6 @@
 import matter from 'gray-matter';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getSSHPool } from '../ssh/pool.js';
 import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
@@ -70,6 +72,8 @@ function userCatalogSeedDir(linuxUser: string): string {
 function runAsLinuxUserCommand(linuxUser: string, command: string): string {
   return `sudo -u ${escapeShellArg(linuxUser)} bash -lc ${escapeShellArg(command)}`;
 }
+
+const runtimeCatalogDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'catalog');
 
 function extractSkillIdFromPath(skillMdPath: string): string | null {
   const parts = skillMdPath.split('/').filter(Boolean);
@@ -295,15 +299,8 @@ export class RemoteSkillStore {
       }
 
       // 本地 catalog 安装逻辑（原有逻辑）
-      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
-      if (!catalogDir) {
-        throw new SkillsError(503, '未找到技能目录，已尝试自动初始化但失败');
-      }
-
-      const sourceDir = `${catalogDir}/${skillId}`;
-
-      const sourceCheck = await run(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
-      if (!sourceCheck.stdout.trim()) {
+      const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
+      if (!sourceDir) {
         throw new SkillsError(404, '技能不存在于目录中');
       }
 
@@ -379,21 +376,15 @@ export class RemoteSkillStore {
       }
 
       // 本地 catalog 升级逻辑（原有逻辑）
-      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
-      if (!catalogDir) {
-        throw new SkillsError(503, '未找到技能目录，无法升级');
+      const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
+      if (!sourceDir) {
+        throw new SkillsError(404, '技能不存在于目录中');
       }
-      const sourceDir = `${catalogDir}/${skillId}`;
 
       if (sourceDir === targetDir) {
         const currentSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
         const parsedCurrent = matter(currentSkill.stdout || '');
         return normalizeVersion(parsedCurrent.data.version).version;
-      }
-
-      const sourceCheck = await run(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
-      if (!sourceCheck.stdout.trim()) {
-        throw new SkillsError(404, '技能不存在于目录中');
       }
 
       const upgrade = await runAsUser(
@@ -557,7 +548,7 @@ export class RemoteSkillStore {
   private async resolveCatalogDir(exec: ExecFn, execAsUser: ExecFn, linuxUser: string): Promise<string | null> {
     const cached = RemoteSkillStore.catalogCache.get(linuxUser);
     if (cached && cached.expiresAt > Date.now()) {
-      const check = await execAsUser(
+      const check = await exec(
         `[ -d ${escapeShellArg(cached.path)} ] && echo ok || true`
       );
       if (check.stdout.trim()) {
@@ -566,21 +557,7 @@ export class RemoteSkillStore {
       RemoteSkillStore.catalogCache.delete(linuxUser);
     }
 
-    const explicit = process.env.SKILLS_CATALOG_DIR?.trim();
-    if (explicit) {
-      const ready = await exec(`[ -d ${escapeShellArg(explicit)} ] && echo ok || true`);
-      if (ready.stdout.trim()) {
-        this.cacheCatalogPath(linuxUser, explicit);
-        return explicit;
-      }
-    }
-
-    const candidates = [
-      '/opt/mycc/.claude/skills',
-      '/opt/mycc/mycc/.claude/skills',
-      '/opt/mycc/skills',
-      '/home/mycc/.claude/skills',
-    ];
+    const candidates = this.buildCatalogCandidates(linuxUser);
 
     for (const candidate of candidates) {
       const check = await exec(`[ -d ${escapeShellArg(candidate)} ] && echo ${escapeShellArg(candidate)} || true`);
@@ -604,6 +581,42 @@ export class RemoteSkillStore {
       this.cacheCatalogPath(linuxUser, bootstrapped);
     }
     return bootstrapped;
+  }
+
+  private buildCatalogCandidates(linuxUser: string): string[] {
+    const explicit = process.env.SKILLS_CATALOG_DIR?.trim();
+    const ordered = [
+      explicit || '',
+      runtimeCatalogDir,
+      '/opt/mycc/.claude/skills',
+      '/opt/mycc/mycc/.claude/skills',
+      '/opt/mycc/skills',
+      '/home/mycc/.claude/skills',
+      userCatalogSeedDir(linuxUser),
+    ].filter(Boolean);
+    return Array.from(new Set(ordered));
+  }
+
+  private async resolveSkillSourceDir(
+    exec: ExecFn,
+    execAsUser: ExecFn,
+    linuxUser: string,
+    skillId: string
+  ): Promise<string | null> {
+    const primary = await this.resolveCatalogDir(exec, execAsUser, linuxUser);
+    const candidates = Array.from(
+      new Set([primary || '', ...this.buildCatalogCandidates(linuxUser)].filter(Boolean))
+    );
+
+    for (const candidate of candidates) {
+      const sourceDir = `${candidate}/${skillId}`;
+      const check = await exec(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
+      if (check.stdout.trim()) {
+        return sourceDir;
+      }
+    }
+
+    return null;
   }
 
   private cacheCatalogPath(linuxUser: string, path: string): void {
