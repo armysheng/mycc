@@ -17,8 +17,8 @@ const createAutomationSchema = z.object({
     timezone: z.string().trim().max(64, '时区过长').optional().default('Asia/Shanghai'),
   }),
   execution: z.object({
-    type: z.literal('skill').default('skill'),
-    skill: z.string().trim().max(80, 'skill 过长').optional().default('-'),
+    type: z.enum(['prompt', 'skill']).optional(),
+    skill: z.string().trim().max(80, 'skill 过长').optional(),
     prompt: z.string().trim().max(2000, '提示词过长').optional().default(''),
   }),
   delivery: z.object({
@@ -38,7 +38,7 @@ const updateAutomationSchema = z.object({
     timezone: z.string().trim().max(64, '时区过长').optional(),
   }).optional(),
   execution: z.object({
-    type: z.literal('skill').optional(),
+    type: z.enum(['prompt', 'skill']).optional(),
     skill: z.string().trim().max(80, 'skill 过长').optional(),
     prompt: z.string().trim().max(2000, '提示词过长').optional(),
   }).optional(),

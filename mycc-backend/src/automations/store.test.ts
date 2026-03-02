@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
-import { parseTasksMd, renderTasksMd } from './store.js';
+import { describe, expect, it, vi } from 'vitest';
+import { AutomationStore, parseTasksMd, renderTasksMd } from './store.js';
 import type { AutomationRecord } from './types.js';
+
+const noopExec = async () => ({ stdout: '', stderr: '', exitCode: 0 });
 
 describe('automation store helpers', () => {
   it('parses legacy tasks.md rows into tasks', () => {
@@ -90,14 +92,13 @@ describe('automation store helpers', () => {
       },
       {
         id: 'a3',
-        name: '手动任务',
-        description: '手动触发',
+        name: '默认执行任务',
+        description: '无 skill 也应落盘',
         status: 'healthy',
         enabled: true,
-        trigger: { type: 'manual', timezone: 'Asia/Shanghai' },
+        trigger: { type: 'cron', cron: '11:00', timezone: 'Asia/Shanghai' },
         execution: {
-          type: 'skill',
-          skill: '/scheduler',
+          type: 'prompt',
           prompt: '',
           runCount: 0,
           lastRunAt: null,
@@ -112,7 +113,97 @@ describe('automation store helpers', () => {
 
     const md = renderTasksMd(records);
     expect(md).toContain('| 09:00 | 日报 | /tell-me | 生成日报 |');
+    expect(md).toContain('| 11:00 | 默认执行任务 | - | 无 skill 也应落盘 |');
     expect(md).not.toContain('暂停任务');
-    expect(md).not.toContain('手动任务');
+  });
+
+  it('supports prompt execution create + run once', async () => {
+    const store = new AutomationStore('tester', noopExec, noopExec);
+    const persistedSnapshots: AutomationRecord[][] = [];
+
+    vi.spyOn(store as any, 'loadRecords').mockResolvedValueOnce({
+      records: [],
+      migratedFromTasks: false,
+    });
+    vi.spyOn(store as any, 'persistRecords').mockImplementation(async (...args: unknown[]) => {
+      persistedSnapshots.push(args[0] as AutomationRecord[]);
+    });
+
+    const created = await store.createAutomation({
+      name: '提示词任务',
+      description: '仅提示词执行',
+      enabled: true,
+      trigger: { type: 'cron', cron: '09:00', timezone: 'Asia/Shanghai' },
+      execution: { type: 'prompt', prompt: '请输出日报' },
+      delivery: { type: 'inbox', enabled: true },
+    });
+
+    expect(created.execution.type).toBe('prompt');
+    expect(created.execution.skill).toBeUndefined();
+    expect(persistedSnapshots).toHaveLength(1);
+    const createdRecord = persistedSnapshots[0][0];
+
+    vi.spyOn(store as any, 'loadRecords').mockResolvedValueOnce({
+      records: [createdRecord],
+      migratedFromTasks: false,
+    });
+    vi.spyOn(store as any, 'executeAutomation').mockResolvedValueOnce(undefined);
+    vi.spyOn(store as any, 'persistRecords').mockImplementation(async (...args: unknown[]) => {
+      persistedSnapshots.push(args[0] as AutomationRecord[]);
+    });
+
+    const result = await store.runOnce(createdRecord.id);
+    expect(result.run.status).toBe('success');
+    expect(result.automation.execution.runCount).toBe(1);
+    expect(result.automation.execution.lastRunStatus).toBe('success');
+  });
+
+  it('keeps legacy skill run message compatible', () => {
+    const store = new AutomationStore('tester', noopExec, noopExec);
+    const record: AutomationRecord = {
+      id: 'legacy-1',
+      name: '兼容任务',
+      description: '',
+      status: 'healthy',
+      enabled: true,
+      trigger: { type: 'manual', timezone: 'Asia/Shanghai' },
+      execution: {
+        type: 'skill',
+        skill: 'tell-me',
+        prompt: '请给我一个摘要',
+        runCount: 0,
+        lastRunAt: null,
+        lastRunStatus: null,
+        lastError: null,
+      },
+      delivery: { type: 'inbox', enabled: true },
+      createdAt: '2026-03-01T00:00:00.000Z',
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    };
+
+    const message = (store as any).buildRunMessage(record);
+    expect(message).toBe('/tell-me 请给我一个摘要');
+  });
+
+  it('seeds builtin templates on first empty initialization', async () => {
+    const store = new AutomationStore('tester', noopExec, noopExec);
+    let persisted: AutomationRecord[] = [];
+
+    vi.spyOn(store as any, 'readFile')
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('');
+    vi.spyOn(store as any, 'persistRecords').mockImplementation(async (...args: unknown[]) => {
+      persisted = args[0] as AutomationRecord[];
+    });
+
+    const result = await store.listAutomations();
+    expect(result.total).toBe(3);
+    expect(result.migratedFromTasks).toBe(false);
+    expect(persisted).toHaveLength(3);
+
+    const enabledByName = Object.fromEntries(result.automations.map((item) => [item.name, item.enabled]));
+    expect(enabledByName['每日简报']).toBe(true);
+    expect(enabledByName['每周复盘']).toBe(false);
+    expect(enabledByName['系统健康巡检']).toBe(false);
   });
 });

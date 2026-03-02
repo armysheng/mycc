@@ -8,8 +8,8 @@ export interface AutomationTrigger {
 }
 
 export interface AutomationExecution {
-  type: 'skill';
-  skill: string;
+  type: 'prompt' | 'skill';
+  skill?: string;
   prompt: string;
   runCount: number;
   lastRunAt: string | null;
@@ -59,7 +59,7 @@ export interface CreateAutomationInput {
   status?: AutomationStatus;
   trigger: AutomationTrigger;
   execution: {
-    type: 'skill';
+    type?: 'prompt' | 'skill';
     skill?: string;
     prompt?: string;
   };
