@@ -12,7 +12,7 @@
 
 ## 2. 单一事实源（Single Source of Truth）
 
-- 任务状态：`agent-kanban/boards/mycc/board.yaml`
+- 任务状态：`tasks/board.yaml`（公共看板，所有成员可见）
 - 设计与计划：`docs/plans/*`
 - 回归与验收：`docs/testing/regression-smoke.md`
 - 团队运行细则：`docs/process/team-operating-model.md`
@@ -75,3 +75,12 @@
   - 变更说明
   - 回归结果
 - 发现重复开发必须立即停工，由 `codex` 出具保留/回退方案。
+
+## 9. 测试环境部署铁令
+
+- 禁止在测试环境服务器直接改业务代码（`vim/nano/sed` 等）。
+- 部署前必须通过干净工作区检查：`test -z "$(git status --porcelain)"`。
+- 检查失败即中止部署，不允许强行 `git pull`。
+- 必须先留证据再恢复：保存 `git status --short` 和 `git diff` 到 `~/deploy-backups/`。
+- 仅在测试环境允许“证据留存后强制对齐主干”：`git reset --hard origin/main && git clean -fd`。
+- 强制对齐后必须重建并验活：后端 `build` + `/health` 返回 200。

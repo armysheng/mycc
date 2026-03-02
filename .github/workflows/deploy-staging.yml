@@ -69,6 +69,17 @@ jobs:
 
           cd "${PROJECT_DIR}"
 
+          if [ -n "$(git status --porcelain)" ]; then
+            TS="$(date +%Y%m%d-%H%M%S)"
+            BACKUP_DIR="${HOME}/deploy-backups"
+            mkdir -p "${BACKUP_DIR}"
+            git status --short | tee "${BACKUP_DIR}/dirty-${TS}.status"
+            git diff > "${BACKUP_DIR}/dirty-${TS}.patch" || true
+            echo "ERROR: remote working tree is dirty, deploy aborted."
+            echo "Backup: ${BACKUP_DIR}/dirty-${TS}.patch"
+            exit 2
+          fi
+
           git fetch origin main
           git checkout main
           git pull --ff-only origin main

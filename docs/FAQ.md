@@ -92,14 +92,23 @@ Select-String -Path ".claude\skills\mycc\scripts\package.json" -Pattern '"versio
 # 1. 进入 mycc 仓库根目录
 cd /path/to/mycc  # 替换为你的实际路径
 
-# 2. 拉取最新代码
-git pull origin main
+# 2. 检查工作区（有本地改动就先处理，禁止直接 pull 覆盖）
+test -z "$(git status --porcelain)" || {
+  echo "工作区有未提交改动，请先提交或备份后再更新"
+  git status --short
+  exit 1
+}
 
-# 3. 重新安装依赖
+# 3. 拉取最新代码
+git fetch origin main
+git checkout main
+git pull --ff-only origin main
+
+# 4. 重新安装依赖
 cd .claude/skills/mycc/scripts
 npm install
 
-# 4. 回到项目根目录，重启后端
+# 5. 回到项目根目录，重启后端
 cd ../../../..
 /mycc
 ```

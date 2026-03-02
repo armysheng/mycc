@@ -1,0 +1,9 @@
+version: 1
+updated_at: "2026-03-02"
+columns:
+  - todo
+  - in_progress
+  - review
+  - done
+cards: []
+
