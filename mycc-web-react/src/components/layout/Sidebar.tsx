@@ -317,6 +317,7 @@ export function Sidebar({
               type="button"
               onClick={() => {
                 setUserMenuOpen(false);
+                navigate("/", { replace: true });
                 logout();
               }}
               className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
