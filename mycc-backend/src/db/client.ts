@@ -78,6 +78,11 @@ export interface ConversationSummary {
   updatedAt: Date;
 }
 
+export interface ActiveUserSummary {
+  id: number;
+  linux_user: string;
+}
+
 // 创建用户
 export async function createUser(params: {
   phone?: string;
@@ -325,4 +330,17 @@ export async function markUserInitialized(userId: number): Promise<boolean> {
     [userId]
   );
   return (result.rowCount || 0) > 0;
+}
+
+export async function listActiveUsers(limit: number = 500): Promise<ActiveUserSummary[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 500;
+  const result = await pool.query<ActiveUserSummary>(
+    `SELECT id, linux_user
+     FROM users
+     WHERE status = 'active'
+     ORDER BY id ASC
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return result.rows;
 }
