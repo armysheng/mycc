@@ -22,10 +22,11 @@ import {
 } from '../utils/validation.js';
 import { getSSHPool } from '../ssh/pool.js';
 import {
-  injectSoulContext,
-  loadOrCreateSoulProfile,
-  readSoulMemory,
-} from '../chat/session-soul.js';
+  buildBootstrapContextFiles,
+  buildProjectContextPrompt,
+  injectProjectContextPrompt,
+  type WorkspaceBootstrapFile,
+} from '../chat/openclaw-context.js';
 
 // 发送消息请求验证
 const chatSchema = z.object({
@@ -44,6 +45,18 @@ type HistoryMessage = {
   [key: string]: unknown;
 };
 
+const REQUIRED_BOOTSTRAP_FILE_NAMES = [
+  'AGENTS.md',
+  'SOUL.md',
+  'TOOLS.md',
+  'IDENTITY.md',
+  'USER.md',
+  'HEARTBEAT.md',
+  'BOOTSTRAP.md',
+] as const;
+
+const OPTIONAL_BOOTSTRAP_FILE_NAMES = ['MEMORY.md', 'memory.md'] as const;
+
 function isHistoryMessage(value: unknown): value is HistoryMessage {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Record<string, unknown>;
@@ -61,6 +74,59 @@ function extractConversationTitle(message: string): string {
   const source = cleaned || normalized;
   const maxLength = 40;
   return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
+}
+
+async function loadWorkspaceBootstrapFilesFromRemote(params: {
+  linuxUser: string;
+  workspaceDir: string;
+}): Promise<WorkspaceBootstrapFile[]> {
+  const sshPool = getSSHPool();
+  const connection = await sshPool.acquire();
+  try {
+    const entries = [
+      ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
+        name,
+        path: `${params.workspaceDir}/${name}`,
+        required: true,
+      })),
+      ...OPTIONAL_BOOTSTRAP_FILE_NAMES.map((name) => ({
+        name,
+        path: `${params.workspaceDir}/${name}`,
+        required: false,
+      })),
+    ];
+
+    const script = [
+      'const fs=require("fs");',
+      `const entries=${JSON.stringify(entries)};`,
+      'const out=[];',
+      'for(const e of entries){',
+      '  try{',
+      '    if(fs.existsSync(e.path)){',
+      '      const content=fs.readFileSync(e.path,"utf8");',
+      '      out.push({name:e.name,path:e.path,content,missing:false});',
+      '    }else if(e.required){',
+      '      out.push({name:e.name,path:e.path,missing:true});',
+      '    }',
+      '  }catch(_err){',
+      '    if(e.required){ out.push({name:e.name,path:e.path,missing:true}); }',
+      '  }',
+      '}',
+      'process.stdout.write(JSON.stringify(out));',
+    ].join('');
+
+    const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
+    const result = await sshPool.exec(connection, cmd);
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr || '读取 bootstrap 文件失败');
+    }
+
+    const parsed = JSON.parse(result.stdout) as WorkspaceBootstrapFile[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item) => item && typeof item.path === 'string' && typeof item.name === 'string');
+  } finally {
+    sshPool.release(connection);
+  }
 }
 
 export async function chatRoutes(fastify: FastifyInstance) {
@@ -107,9 +173,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
       // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
       const cwd = path.join('/home', linuxUser, 'workspace');
-      const soulProfile = await loadOrCreateSoulProfile(userId);
-      const soulMemory = await readSoulMemory(userId);
-      const enhancedMessage = injectSoulContext(body.message, soulProfile, soulMemory);
+      let enhancedMessage = body.message;
+      try {
+        const bootstrapFiles = await loadWorkspaceBootstrapFilesFromRemote({
+          linuxUser,
+          workspaceDir: cwd,
+        });
+        const contextFiles = buildBootstrapContextFiles(bootstrapFiles);
+        const projectContextPrompt = buildProjectContextPrompt(contextFiles);
+        enhancedMessage = injectProjectContextPrompt(body.message, projectContextPrompt);
+      } catch (bootstrapErr) {
+        console.warn(`[Chat] workspace context injection skipped userId=${userId}:`, bootstrapErr);
+      }
 
       // 验证路径安全性
       if (!validatePathPrefix(cwd, '/home/')) {

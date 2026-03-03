@@ -4,7 +4,6 @@ import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { findUserById, markUserInitialized } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
-import { seedSoulMemoryFromOnboarding } from '../chat/session-soul.js';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -51,10 +50,23 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         `const a=Buffer.from("${assistantB64}","base64").toString();`,
         `const o=Buffer.from("${ownerB64}","base64").toString();`,
         `const f="${claudeMdPath}";`,
+        `const ws="${workspaceDir}";`,
         `let c=fs.readFileSync(f,"utf8");`,
         `c=c.split("{{ASSISTANT_NAME}}").join(a);`,
         `c=c.split("{{OWNER_NAME}}").join(o);`,
         `fs.writeFileSync(f,c);`,
+        `const identityPath=ws+"/IDENTITY.md";`,
+        `const userPath=ws+"/USER.md";`,
+        `const memoryPath=ws+"/MEMORY.md";`,
+        `if(!fs.existsSync(identityPath)){`,
+        `  fs.writeFileSync(identityPath,["# IDENTITY.md - 我是谁？","","- **名称：** "+a,"- **生物类型：** AI 助手","- **气质：** 可靠、直接、务实","- **表情符号：** 🤖",""].join("\\n"));`,
+        `}`,
+        `if(!fs.existsSync(userPath)){`,
+        `  fs.writeFileSync(userPath,["# USER.md - 关于你的用户","","- **姓名：** "+o,"- **称呼方式：** "+o,"- **代词：** （可选）","- **时区：** Asia/Shanghai","- **备注：**",""].join("\\n"));`,
+        `}`,
+        `if(!fs.existsSync(memoryPath) || !fs.readFileSync(memoryPath,"utf8").trim()){`,
+        `  fs.writeFileSync(memoryPath,["# MEMORY.md","","## 长期偏好","- 助手名称："+a,"- 对用户称呼："+o,"- 回复风格：先结论，后细节，保持简洁。",""].join("\\n"));`,
+        `}`,
       ].join('');
 
       const sshPool = getSSHPool();
@@ -71,7 +83,9 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         let preflight = await sshPool.exec(connection, preflightCmd);
         if (preflight.exitCode !== 0) {
           // 尝试一次自愈：补齐 workspace 和模板，再次校验。
-          const safeNickname = (user.nickname || '用户').replace(/[/&\\]/g, '\\$&');
+          const safeNickname = (user.nickname || '用户')
+            .replace(/[/&\\]/g, '\\$&')
+            .replace(/'/g, `'\"'\"'`);
           const repairCmd = [
             `id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)}`,
             `sudo mkdir -p "${workspaceDir}"`,
@@ -108,17 +122,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         }
       } finally {
         sshPool.release(connection);
-      }
-
-      try {
-        await seedSoulMemoryFromOnboarding(
-          request.user.userId,
-          body.assistantName,
-          body.ownerName,
-        );
-      } catch (seedErr) {
-        // onboarding 主流程不因 soul 初始化失败而中断，避免用户无法进入系统
-        console.warn(`⚠️ Onboarding soul seed failed userId=${request.user.userId}:`, seedErr);
       }
 
       // 只有文件替换成功才标记初始化完成
