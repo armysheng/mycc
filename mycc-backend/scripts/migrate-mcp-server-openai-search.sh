@@ -5,6 +5,8 @@ set -euo pipefail
 #
 # Usage:
 #   OPENAI_API_KEY=... ./scripts/migrate-mcp-server-openai-search.sh [USER_GLOB] [SERVER_NAME]
+#   # 或无 key 代理模式：
+#   OPENAI_ALLOW_EMPTY_API_KEY=true OPENAI_BASE_URL=http://proxy/v1 ./scripts/migrate-mcp-server-openai-search.sh mycc_u*
 #
 # Optional env:
 #   OPENAI_BASE_URL
@@ -12,6 +14,7 @@ set -euo pipefail
 #   OPENAI_SEARCH_TOOL_TYPE
 #   OPENAI_SEARCH_TIMEOUT_MS
 #   OPENAI_SEARCH_EXTERNAL_WEB_ACCESS
+#   OPENAI_ALLOW_EMPTY_API_KEY
 #   OPENAI_SEARCH_COMMAND (default: node)
 #   OPENAI_SEARCH_SERVER_PATH (default: /opt/mycc/mcp/openai-web-search-mcp.mjs)
 
@@ -31,6 +34,7 @@ server_name = os.environ.get("SERVER_NAME", "openai-web-search")
 stamp = os.environ.get("STAMP", datetime.now().strftime("%Y%m%d-%H%M%S"))
 
 openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+allow_empty_key = os.environ.get("OPENAI_ALLOW_EMPTY_API_KEY", "")
 openai_base_url = os.environ.get("OPENAI_BASE_URL", "")
 search_model = os.environ.get("OPENAI_SEARCH_MODEL", "")
 search_tool_type = os.environ.get("OPENAI_SEARCH_TOOL_TYPE", "")
@@ -40,9 +44,6 @@ search_command = os.environ.get("OPENAI_SEARCH_COMMAND", "node")
 server_path = os.environ.get(
     "OPENAI_SEARCH_SERVER_PATH", "/opt/mycc/mcp/openai-web-search-mcp.mjs"
 )
-
-if not openai_api_key:
-    raise SystemExit("[ERROR] OPENAI_API_KEY is required")
 
 homes = sorted(glob.glob(f"/home/{user_glob}"))
 total = 0
@@ -87,9 +88,9 @@ for home in homes:
         # 清理旧 duck 配置，避免同类工具冲突。
         mcp_servers.pop("duckduckgo-search", None)
 
-        env = {
-            "OPENAI_API_KEY": openai_api_key,
-        }
+        env = {}
+        if openai_api_key:
+            env["OPENAI_API_KEY"] = openai_api_key
         if openai_base_url:
             env["OPENAI_BASE_URL"] = openai_base_url
         if search_model:
@@ -100,6 +101,8 @@ for home in homes:
             env["OPENAI_SEARCH_TIMEOUT_MS"] = search_timeout
         if external_web_access:
             env["OPENAI_SEARCH_EXTERNAL_WEB_ACCESS"] = external_web_access
+        if allow_empty_key:
+            env["OPENAI_ALLOW_EMPTY_API_KEY"] = allow_empty_key
 
         mcp_servers[server_name] = {
             "type": "stdio",

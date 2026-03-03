@@ -31,6 +31,10 @@ const OPENAI_SEARCH_TIMEOUT_MS = Number.parseInt(
 );
 const OPENAI_SEARCH_EXTERNAL_WEB_ACCESS =
   process.env.OPENAI_SEARCH_EXTERNAL_WEB_ACCESS;
+const OPENAI_ALLOW_EMPTY_API_KEY = parseBool(
+  process.env.OPENAI_ALLOW_EMPTY_API_KEY,
+  false,
+);
 
 function writeRpcMessage(message) {
   const body = JSON.stringify(message);
@@ -116,7 +120,7 @@ function extractOutputText(responseJson) {
 }
 
 async function callOpenAIWebSearch(query, maxResults) {
-  if (!OPENAI_API_KEY) {
+  if (!OPENAI_API_KEY && !OPENAI_ALLOW_EMPTY_API_KEY) {
     throw new Error("OPENAI_API_KEY 未配置");
   }
 
@@ -139,12 +143,16 @@ async function callOpenAIWebSearch(query, maxResults) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OPENAI_SEARCH_TIMEOUT_MS);
   try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (OPENAI_API_KEY) {
+      headers.Authorization = `Bearer ${OPENAI_API_KEY}`;
+    }
+
     const resp = await fetch(`${OPENAI_BASE_URL}/responses`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
