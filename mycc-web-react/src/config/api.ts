@@ -6,6 +6,7 @@ export const API_CONFIG = {
     ABORT: "/api/abort",
     SKILLS: "/api/skills",
     AUTOMATIONS: "/api/automations",
+    WORKSPACE: "/api/workspace",
   },
 } as const;
 
@@ -88,6 +89,22 @@ export const getAutomationDisableUrl = (automationId: string) => {
 
 export const getAutomationRunUrl = (automationId: string) => {
   return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/run`;
+};
+
+export const getWorkspaceTreeUrl = (path = "/", depth = 3) => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/tree?path=${encodeURIComponent(path)}&depth=${depth}`;
+};
+
+export const getWorkspaceFileUrl = (path: string) => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`;
+};
+
+export const getWorkspaceSaveFileUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file`;
+};
+
+export const getWorkspaceExecUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`;
 };
 
 // Helper function to get session messages URL

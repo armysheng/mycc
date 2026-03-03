@@ -4,6 +4,7 @@ import { ChatPage } from "./components/ChatPage";
 import { LoginPage } from "./components/LoginPage";
 import { SkillsPage } from "./components/SkillsPage";
 import { AutomationsPage } from "./components/AutomationsPage";
+import { WorkspacePage } from "./components/WorkspacePage";
 import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
@@ -47,6 +48,7 @@ function App() {
           <Route path="/" element={<ChatPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/automations" element={<AutomationsPage />} />
+          <Route path="/workspace" element={<WorkspacePage />} />
           {DemoPage && (
             <Route
               path="/demo"
