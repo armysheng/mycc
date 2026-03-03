@@ -19,6 +19,12 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const clearStaleSessionQuery = () => {
+    if (typeof window === "undefined") return;
+    if (!window.location.search) return;
+    window.history.replaceState(null, "", window.location.pathname);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -26,6 +32,7 @@ export function LoginPage() {
     try {
       const res = await apiLogin({ credential, password });
       if (res.success && res.data) {
+        clearStaleSessionQuery();
         login(res.data.token, res.data.user);
       } else {
         setError(res.error || "登录失败");
@@ -44,6 +51,7 @@ export function LoginPage() {
     try {
       const res = await apiRegister({ phone, email, password, nickname });
       if (res.success && res.data) {
+        clearStaleSessionQuery();
         login(res.data.token, res.data.user);
       } else {
         setError(res.error || "注册失败");
