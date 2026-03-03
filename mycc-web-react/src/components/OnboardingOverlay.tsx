@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { initializeOnboarding } from '../api/auth';
 
@@ -14,6 +15,7 @@ interface DialogMessage {
 
 export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverlayProps) {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [messages, setMessages] = useState<DialogMessage[]>([]);
   const [input, setInput] = useState('');
@@ -179,6 +181,9 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
       });
       if (res.success) {
         await onComplete();
+        if (res.data?.sessionId) {
+          navigate(`/?sessionId=${encodeURIComponent(res.data.sessionId)}`, { replace: true });
+        }
       } else {
         setError(res.error || '初始化失败，请重试');
       }
@@ -201,6 +206,9 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
       });
       if (res.success) {
         await onComplete();
+        if (res.data?.sessionId) {
+          navigate(`/?sessionId=${encodeURIComponent(res.data.sessionId)}`, { replace: true });
+        }
       } else {
         setError(res.error || '初始化失败，请重试');
       }

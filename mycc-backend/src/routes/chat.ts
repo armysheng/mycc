@@ -52,10 +52,10 @@ const REQUIRED_BOOTSTRAP_FILE_NAMES = [
   'IDENTITY.md',
   'USER.md',
   'HEARTBEAT.md',
-  'BOOTSTRAP.md',
 ] as const;
 
 const OPTIONAL_BOOTSTRAP_FILE_NAMES = ['MEMORY.md', 'memory.md'] as const;
+const OPENCLAW_ABOUT_ME_DIR = '0-System/about-me';
 const CONTEXT_PROMPT_CACHE_TTL_MS = 10 * 60 * 1000;
 const SESSION_INJECTION_MARK_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONTEXT_PROMPT_CACHE_ENTRIES = 512;
@@ -95,15 +95,16 @@ async function loadWorkspaceBootstrapFilesFromRemote(params: {
   const sshPool = getSSHPool();
   const connection = await sshPool.acquire();
   try {
+    const bootstrapRoot = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
     const entries = [
       ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
         name,
-        path: `${params.workspaceDir}/${name}`,
+        path: `${bootstrapRoot}/${name}`,
         required: true,
       })),
       ...OPTIONAL_BOOTSTRAP_FILE_NAMES.map((name) => ({
         name,
-        path: `${params.workspaceDir}/${name}`,
+        path: `${bootstrapRoot}/${name}`,
         required: false,
       })),
     ];

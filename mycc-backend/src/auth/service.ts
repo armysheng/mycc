@@ -78,6 +78,7 @@ export async function register(params: {
       nickname: user.nickname,
       linux_user: user.linux_user,
       plan: subscription?.plan,
+      is_initialized: user.is_initialized,
     },
   };
 }
@@ -123,6 +124,7 @@ export async function login(params: {
       nickname: user.nickname,
       linux_user: user.linux_user,
       plan: subscription?.plan,
+      is_initialized: user.is_initialized,
     },
   };
 }

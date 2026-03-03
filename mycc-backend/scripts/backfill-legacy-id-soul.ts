@@ -41,6 +41,7 @@ type DryRunResult = {
 };
 
 const TEMPLATE_DIR = '/opt/mycc/templates/user-workspace';
+const ABOUT_ME_DIR = '0-System/about-me';
 const REQUIRED_FILES = [
   'AGENTS.md',
   'SOUL.md',
@@ -215,10 +216,9 @@ async function checkUsersHasColumn(columnName: string): Promise<boolean> {
 }
 
 function buildDryRunScript(workspaceDir: string): string {
-  const files = REQUIRED_FILES.map((name) => `${workspaceDir}/${name}`);
+  const files = REQUIRED_FILES.map((name) => `${workspaceDir}/${ABOUT_ME_DIR}/${name}`);
   const placeholderTargets = [
     `${workspaceDir}/CLAUDE.md`,
-    `${workspaceDir}/0-System/about-me/README.md`,
   ];
 
   return [
@@ -245,16 +245,30 @@ function buildBackfillScript(params: {
   ownerName: string;
   assistantName: string;
 }): string {
+  const legacyRootFiles = REQUIRED_FILES.map((name) => `${params.workspaceDir}/${name}`);
   return [
     'const fs=require("fs");',
     `const ws=${JSON.stringify(params.workspaceDir)};`,
+    `const aboutDir=${JSON.stringify(`${params.workspaceDir}/${ABOUT_ME_DIR}`)};`,
+    `const legacyRootFiles=${JSON.stringify(legacyRootFiles)};`,
     `const owner=${JSON.stringify(params.ownerName)};`,
     `const assistant=${JSON.stringify(params.assistantName)};`,
-    'const identityPath=ws+"/IDENTITY.md";',
-    'const userPath=ws+"/USER.md";',
-    'const memoryPath=ws+"/MEMORY.md";',
-    'const placeholderTargets=[ws+"/CLAUDE.md",ws+"/0-System/about-me/README.md"];',
+    'const identityPath=aboutDir+"/IDENTITY.md";',
+    'const userPath=aboutDir+"/USER.md";',
+    'const memoryPath=aboutDir+"/MEMORY.md";',
+    'const placeholderTargets=[ws+"/CLAUDE.md"];',
     'const out={createdIdentity:false,createdUser:false,createdMemory:false,updatedMemoryFromEmpty:false,replacedUsernamePlaceholders:0};',
+    'fs.mkdirSync(aboutDir,{recursive:true});',
+    'for(const legacyPath of legacyRootFiles){',
+    '  try{',
+    '    if(!fs.existsSync(legacyPath)) continue;',
+    '    const base=legacyPath.split("/").pop();',
+    '    const target=aboutDir+"/"+base;',
+    '    if(!fs.existsSync(target)){',
+    '      fs.renameSync(legacyPath,target);',
+    '    }',
+    '  }catch{}',
+    '}',
     'if(!fs.existsSync(identityPath)){',
     '  fs.writeFileSync(identityPath,["# IDENTITY.md - 我是谁？","","- **名称：** "+assistant,"- **生物类型：** AI 助手","- **气质：** 可靠、直接、务实","- **表情符号：** 🤖",""].join("\\n"));',
     '  out.createdIdentity=true;',
