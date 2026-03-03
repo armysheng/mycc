@@ -51,8 +51,12 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         `const o=Buffer.from("${ownerB64}","base64").toString();`,
         `const f="${claudeMdPath}";`,
         `let c=fs.readFileSync(f,"utf8");`,
+        // 兼容新旧模板占位符：
+        // - 新模板：{{USERNAME}}
+        // - 旧模板：{{ASSISTANT_NAME}} + {{OWNER_NAME}}
         `c=c.split("{{ASSISTANT_NAME}}").join(a);`,
         `c=c.split("{{OWNER_NAME}}").join(o);`,
+        `c=c.split("{{USERNAME}}").join(o);`,
         `fs.writeFileSync(f,c);`,
       ].join('');
 
@@ -63,8 +67,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         const preflightCmd = [
           `sudo test -d "${workspaceDir}"`,
           `sudo test -f "${claudeMdPath}"`,
-          `sudo grep -q "{{ASSISTANT_NAME}}" "${claudeMdPath}"`,
-          `sudo grep -q "{{OWNER_NAME}}" "${claudeMdPath}"`,
         ].join(' && ');
 
         let preflight = await sshPool.exec(connection, preflightCmd);
