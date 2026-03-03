@@ -37,10 +37,7 @@ const OPENAI_ALLOW_EMPTY_API_KEY = parseBool(
 );
 
 function writeRpcMessage(message) {
-  const body = JSON.stringify(message);
-  const bytes = Buffer.byteLength(body, "utf8");
-  const header = `Content-Length: ${bytes}\r\nContent-Type: application/json\r\n\r\n`;
-  process.stdout.write(header + body);
+  process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
 function writeResult(id, result) {
@@ -310,44 +307,20 @@ async function handleRequest(message) {
   }
 }
 
-function readContentLength(headerText) {
-  const lines = headerText.split("\r\n");
-  for (const line of lines) {
-    const m = /^content-length:\s*(\d+)$/i.exec(line.trim());
-    if (m) {
-      return Number.parseInt(m[1], 10);
-    }
-  }
-  return null;
-}
-
-let stdinBuffer = Buffer.alloc(0);
+let stdinTextBuffer = "";
 process.stdin.on("data", (chunk) => {
-  stdinBuffer = Buffer.concat([stdinBuffer, chunk]);
+  stdinTextBuffer += chunk.toString("utf8");
 
   while (true) {
-    const headerEnd = stdinBuffer.indexOf("\r\n\r\n");
-    if (headerEnd < 0) return;
-
-    const header = stdinBuffer.slice(0, headerEnd).toString("utf8");
-    const contentLength = readContentLength(header);
-    if (!Number.isFinite(contentLength) || contentLength < 0) {
-      // Invalid frame; drop buffer to avoid infinite loop.
-      stdinBuffer = Buffer.alloc(0);
-      return;
-    }
-
-    const total = headerEnd + 4 + contentLength;
-    if (stdinBuffer.length < total) return;
-
-    const body = stdinBuffer
-      .slice(headerEnd + 4, total)
-      .toString("utf8");
-    stdinBuffer = stdinBuffer.slice(total);
+    const idx = stdinTextBuffer.indexOf("\n");
+    if (idx < 0) return;
+    const line = stdinTextBuffer.slice(0, idx).trim();
+    stdinTextBuffer = stdinTextBuffer.slice(idx + 1);
+    if (!line) continue;
 
     let message;
     try {
-      message = JSON.parse(body);
+      message = JSON.parse(line);
     } catch {
       writeError(null, -32700, "Parse error");
       continue;

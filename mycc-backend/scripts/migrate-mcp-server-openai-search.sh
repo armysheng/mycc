@@ -15,7 +15,7 @@ set -euo pipefail
 #   OPENAI_SEARCH_TIMEOUT_MS
 #   OPENAI_SEARCH_EXTERNAL_WEB_ACCESS
 #   OPENAI_ALLOW_EMPTY_API_KEY
-#   OPENAI_SEARCH_COMMAND (default: node)
+#   OPENAI_SEARCH_COMMAND (default: /usr/bin/node)
 #   OPENAI_SEARCH_SERVER_PATH (default: /opt/mycc/mcp/openai-web-search-mcp.mjs)
 
 USER_GLOB="${1:-mycc_u*}"
@@ -40,7 +40,7 @@ search_model = os.environ.get("OPENAI_SEARCH_MODEL", "")
 search_tool_type = os.environ.get("OPENAI_SEARCH_TOOL_TYPE", "")
 search_timeout = os.environ.get("OPENAI_SEARCH_TIMEOUT_MS", "")
 external_web_access = os.environ.get("OPENAI_SEARCH_EXTERNAL_WEB_ACCESS", "")
-search_command = os.environ.get("OPENAI_SEARCH_COMMAND", "node")
+search_command = os.environ.get("OPENAI_SEARCH_COMMAND", "/usr/bin/node")
 server_path = os.environ.get(
     "OPENAI_SEARCH_SERVER_PATH", "/opt/mycc/mcp/openai-web-search-mcp.mjs"
 )
