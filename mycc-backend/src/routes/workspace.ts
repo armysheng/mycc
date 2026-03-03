@@ -190,7 +190,7 @@ function sendWorkspaceError(reply: FastifyReply, err: unknown) {
   });
 }
 
-function normalizeWorkspacePath(rawPath?: string): string {
+export function normalizeWorkspacePath(rawPath?: string): string {
   const input = (rawPath || '/').trim();
   if (!input || input === '/') return '.';
   const cleaned = input.replace(/\\/g, '/');
@@ -201,6 +201,10 @@ function normalizeWorkspacePath(rawPath?: string): string {
     throw new WorkspaceRouteError(400, '非法路径');
   }
   return normalized;
+}
+
+export function isWorkspaceExecEnabled(): boolean {
+  return process.env.WORKSPACE_EXEC_ENABLED === 'true';
 }
 
 async function runNodeTask<T>(
@@ -368,40 +372,45 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/api/workspace/exec', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ success: false, error: '未认证' });
-    }
+  if (isWorkspaceExecEnabled()) {
+    fastify.post('/api/workspace/exec', {
+      preHandler: jwtAuthMiddleware,
+    }, async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ success: false, error: '未认证' });
+      }
+      if (request.user.role !== 'admin') {
+        return reply.status(403).send({ success: false, error: '无权限使用工作区命令执行' });
+      }
 
-    try {
-      const body = execSchema.parse(request.body);
-      const relCwd = normalizeWorkspacePath(body.cwd);
-      const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
+      try {
+        const body = execSchema.parse(request.body);
+        const relCwd = normalizeWorkspacePath(body.cwd);
+        const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
 
-      const result = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
-        return runNodeTask<{
-          cwd: string;
-          exitCode: number;
-          stdout: string;
-          stderr: string;
-          timedOut: boolean;
-        }>(
-          run,
-          linuxUser,
-          EXEC_SCRIPT,
-          [workspaceRoot, relCwd, body.command],
-          125000,
-        );
-      });
+        const result = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
+          return runNodeTask<{
+            cwd: string;
+            exitCode: number;
+            stdout: string;
+            stderr: string;
+            timedOut: boolean;
+          }>(
+            run,
+            linuxUser,
+            EXEC_SCRIPT,
+            [workspaceRoot, relCwd, body.command],
+            125000,
+          );
+        });
 
-      return reply.send({
-        success: true,
-        data: result,
-      });
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
-  });
+        return reply.send({
+          success: true,
+          data: result,
+        });
+      } catch (err) {
+        return sendWorkspaceError(reply, err);
+      }
+    });
+  }
 }
