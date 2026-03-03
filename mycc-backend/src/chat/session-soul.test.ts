@@ -1,0 +1,67 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  getSoulState,
+  injectSoulContext,
+  loadOrCreateSoulProfile,
+  readSoulMemory,
+  seedSoulMemoryFromOnboarding,
+  writeSoulMemory,
+} from './session-soul.js';
+
+describe('session-soul', () => {
+  const originalSoulDir = process.env.CHAT_SOUL_DIR;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'session-soul-'));
+    process.env.CHAT_SOUL_DIR = tempDir;
+  });
+
+  afterEach(async () => {
+    process.env.CHAT_SOUL_DIR = originalSoulDir;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('creates and persists profile as file state', async () => {
+    const first = await loadOrCreateSoulProfile(1001);
+    const second = await loadOrCreateSoulProfile(1001);
+
+    expect(first.identityId).toBe('u-1001');
+    expect(first.soulId).toBeTruthy();
+    expect(second.soulId).toBe(first.soulId);
+  });
+
+  it('writes and reads memory file, then injects id+soul+memory prompt context', async () => {
+    const profile = await loadOrCreateSoulProfile(1004);
+    await writeSoulMemory(1004, '用户偏好：回答要先给结论。');
+    const memory = await readSoulMemory(1004);
+    const merged = injectSoulContext('帮我总结今天进展', profile, memory);
+
+    expect(memory).toContain('用户偏好');
+    expect(merged).toContain('<SOUL_IDENTITY');
+    expect(merged).toContain('<SOUL_MEMORY>');
+    expect(merged).toContain('帮我总结今天进展');
+  });
+
+  it('returns identity state for internal prompt injection', async () => {
+    const state = await getSoulState(1005);
+    expect(state.profile.identityId).toBe('u-1005');
+    expect(state.hasMemory).toBe(false);
+    expect(state.memoryChars).toBe(0);
+  });
+
+  it('seeds onboarding memory only once', async () => {
+    const first = await seedSoulMemoryFromOnboarding(1006, '小顾', '风筝');
+    const second = await seedSoulMemoryFromOnboarding(1006, '小王', '老风');
+    const memory = await readSoulMemory(1006);
+
+    expect(first.seeded).toBe(true);
+    expect(second.seeded).toBe(false);
+    expect(memory).toContain('你的名字是：小顾');
+    expect(memory).toContain('对用户的称呼：风筝');
+    expect(memory).not.toContain('小王');
+  });
+});
