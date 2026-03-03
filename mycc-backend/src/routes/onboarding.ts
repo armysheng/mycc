@@ -52,12 +52,14 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         `const f="${claudeMdPath}";`,
         `const ws="${workspaceDir}";`,
         `let c=fs.readFileSync(f,"utf8");`,
-        // 兼容新旧模板占位符：
-        // - 新模板：{{USERNAME}}
-        // - 旧模板：{{ASSISTANT_NAME}} + {{OWNER_NAME}}
-        `c=c.split("{{ASSISTANT_NAME}}").join(a);`,
-        `c=c.split("{{OWNER_NAME}}").join(o);`,
         `c=c.split("{{USERNAME}}").join(o);`,
+        `if(c.includes("{{ASSISTANT_NAME}}")||c.includes("{{OWNER_NAME}}")){`,
+        `  c=c.split("{{ASSISTANT_NAME}}").join(a);`,
+        `  c=c.split("{{OWNER_NAME}}").join(o);`,
+        `}else{`,
+        `  c=c.replace(/我叫\\s+\\*\\*[^*]+\\*\\*，是\\s+.*?\\s+的个人助手（Claude Code 的简称）。/g,"我叫 **"+a+"**，是 "+o+" 的个人助手（Claude Code 的简称）。");`,
+        `  c=c.replace(/我和\\s+.*?\\s+是搭档，一起写代码、做项目、把事情做成。/g,"我和 "+o+" 是搭档，一起写代码、做项目、把事情做成。");`,
+        `}`,
         `fs.writeFileSync(f,c);`,
         `const identityPath=ws+"/IDENTITY.md";`,
         `const userPath=ws+"/USER.md";`,
@@ -77,6 +79,7 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const connection = await sshPool.acquire();
 
       try {
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
         const preflightCmd = [
           `sudo test -d "${workspaceDir}"`,
           `sudo test -f "${claudeMdPath}"`,
@@ -89,7 +92,9 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
             .replace(/[/&\\]/g, '\\$&')
             .replace(/'/g, `'\"'\"'`);
           const repairCmd = [
-            `id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)}`,
+            // 容错注册并发创建：避免「id 检查通过时序变化导致 useradd 报已存在」中断整条命令
+            `(id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)} || true)`,
+            `id ${escapeShellArg(linuxUser)} >/dev/null 2>&1`,
             `sudo mkdir -p "${workspaceDir}"`,
             `sudo test -d "${templateDir}"`,
             `sudo cp -rn "${templateDir}/." "${workspaceDir}/"`,
@@ -103,7 +108,12 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
             console.error(`❌ Onboarding 自愈失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${repaired.stderr}`);
           }
 
-          preflight = await sshPool.exec(connection, preflightCmd);
+          // 注册接口是异步创建 VPS 用户，这里允许短暂等待，避免刚注册就初始化的竞态失败。
+          for (let i = 0; i < 8; i += 1) {
+            preflight = await sshPool.exec(connection, preflightCmd);
+            if (preflight.exitCode === 0) break;
+            await sleep(500);
+          }
           if (preflight.exitCode !== 0) {
             console.error(`❌ Onboarding 目录或模板异常 userId=${request.user.userId} linuxUser=${linuxUser} path=${claudeMdPath}`);
             return reply.status(500).send({
