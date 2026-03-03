@@ -22,12 +22,9 @@ import {
 } from '../utils/validation.js';
 import { getSSHPool } from '../ssh/pool.js';
 import {
-  bindMainSession,
-  clearMainSession,
   getSoulState,
   injectSoulMemory,
   readSoulMemory,
-  resolveChatSession,
   writeSoulMemory,
 } from '../chat/session-soul.js';
 
@@ -84,22 +81,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const body = chatSchema.parse(request.body);
       const userId = request.user.userId;
       const linuxUser = request.user.linuxUser;
-      const resolved = await resolveChatSession(userId, body.sessionId);
-      let effectiveSessionId = resolved.effectiveSessionId;
 
-      if (effectiveSessionId) {
-        const ownsSession = await userOwnsConversation(userId, effectiveSessionId);
+      if (body.sessionId) {
+        const ownsSession = await userOwnsConversation(userId, body.sessionId);
         if (!ownsSession) {
-          if (body.sessionId) {
-            return reply.status(403).send({
-              success: false,
-              error: '无权访问该会话',
-            });
-          }
-
-          // main 会话文件残留（如数据库重置）时自动自愈，降级为创建新会话
-          await clearMainSession(userId);
-          effectiveSessionId = undefined;
+          return reply.status(403).send({
+            success: false,
+            error: '无权访问该会话',
+          });
         }
       }
 
@@ -141,7 +130,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         'Connection': 'keep-alive',
       });
 
-      let currentSessionId = effectiveSessionId;
+      let currentSessionId = body.sessionId;
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
       let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
@@ -152,7 +141,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         // 流式处理响应
         for await (const event of adapter.chat({
           message: enhancedMessage,
-          sessionId: effectiveSessionId,
+          sessionId: body.sessionId,
           cwd,
           linuxUser,
           images: body.images,
@@ -182,7 +171,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
         // 确保会话元数据存在（首次消息会创建并自动提取标题，会话续聊仅刷新 updated_at）
         if (currentSessionId) {
-          const derivedTitle = effectiveSessionId ? undefined : extractConversationTitle(body.message);
+          const derivedTitle = body.sessionId ? undefined : extractConversationTitle(body.message);
           const upserted = await upsertConversation({
             userId,
             sessionId: currentSessionId,
@@ -191,9 +180,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
           if (!upserted) {
             throw new Error('会话归属校验失败');
           }
-
-          // OpenClaw 风格主会话：首次拿到会话 ID 后绑定为 main，后续无 sessionId 请求统一归并
-          await bindMainSession(userId, currentSessionId);
         }
 
         // 记录使用量
@@ -268,8 +254,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
         data: {
           identityId: state.profile.identityId,
           soulId: state.profile.soulId,
-          mainSessionId: state.profile.mainSessionId || null,
-          dmScope: state.dmScope,
           hasMemory: state.hasMemory,
           memoryChars: state.memoryChars,
         },

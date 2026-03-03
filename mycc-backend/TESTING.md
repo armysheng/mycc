@@ -161,9 +161,6 @@ curl http://localhost:8080/api/chat/memory \
 ```bash
 cd mycc-backend
 ./scripts/e2e-session-soul.sh
-
-# 如需包含真实 chat 主会话归并校验
-RUN_CHAT_E2E=1 ./scripts/e2e-session-soul.sh
 ```
 
 ### 场景 3: 计费和额度

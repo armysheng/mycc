@@ -7,14 +7,11 @@ const PROFILE_FILENAME = 'profile.json';
 const MEMORY_FILENAME = 'MEMORY.md';
 const MAX_MEMORY_CHARS = 8000;
 
-export type DMScope = 'main' | 'request';
-
 export interface SoulProfile {
   version: number;
   userId: number;
   identityId: string;
   soulId: string;
-  mainSessionId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,14 +21,6 @@ export interface SoulState {
   hasMemory: boolean;
   memoryChars: number;
   memoryPath: string;
-  dmScope: DMScope;
-}
-
-export interface ResolvedSession {
-  profile: SoulProfile;
-  requestedSessionId?: string;
-  effectiveSessionId?: string;
-  dmScope: DMScope;
 }
 
 function nowIso(): string {
@@ -54,14 +43,6 @@ function getProfilePath(userId: number): string {
 
 function getMemoryPath(userId: number): string {
   return path.join(getUserSoulDir(userId), MEMORY_FILENAME);
-}
-
-function parseDMScope(raw: string | undefined): DMScope {
-  return raw?.toLowerCase() === 'request' ? 'request' : 'main';
-}
-
-function getDMScope(): DMScope {
-  return parseDMScope(process.env.CHAT_DM_SCOPE);
 }
 
 async function ensureUserSoulDir(userId: number): Promise<void> {
@@ -89,8 +70,7 @@ function isSoulProfile(value: unknown): value is SoulProfile {
     typeof profile.identityId === 'string' &&
     typeof profile.soulId === 'string' &&
     typeof profile.createdAt === 'string' &&
-    typeof profile.updatedAt === 'string' &&
-    (profile.mainSessionId === undefined || typeof profile.mainSessionId === 'string')
+    typeof profile.updatedAt === 'string'
   );
 }
 
@@ -116,58 +96,6 @@ export async function loadOrCreateSoulProfile(userId: number): Promise<SoulProfi
   const profile = createProfile(userId);
   await saveProfile(profile);
   return profile;
-}
-
-export async function resolveChatSession(
-  userId: number,
-  requestedSessionId?: string,
-): Promise<ResolvedSession> {
-  const profile = await loadOrCreateSoulProfile(userId);
-  const dmScope = getDMScope();
-  const requested = requestedSessionId?.trim();
-
-  if (requested) {
-    return {
-      profile,
-      requestedSessionId: requested,
-      effectiveSessionId: requested,
-      dmScope,
-    };
-  }
-
-  if (dmScope === 'main' && profile.mainSessionId) {
-    return {
-      profile,
-      effectiveSessionId: profile.mainSessionId,
-      dmScope,
-    };
-  }
-
-  return {
-    profile,
-    dmScope,
-  };
-}
-
-export async function bindMainSession(userId: number, sessionId?: string): Promise<void> {
-  const normalized = sessionId?.trim();
-  if (!normalized || getDMScope() !== 'main') return;
-
-  const profile = await loadOrCreateSoulProfile(userId);
-  if (profile.mainSessionId) return;
-
-  profile.mainSessionId = normalized;
-  profile.updatedAt = nowIso();
-  await saveProfile(profile);
-}
-
-export async function clearMainSession(userId: number): Promise<void> {
-  const profile = await loadOrCreateSoulProfile(userId);
-  if (!profile.mainSessionId) return;
-
-  delete profile.mainSessionId;
-  profile.updatedAt = nowIso();
-  await saveProfile(profile);
 }
 
 export async function readSoulMemory(userId: number): Promise<string> {
@@ -215,6 +143,5 @@ export async function getSoulState(userId: number): Promise<SoulState> {
     hasMemory: memory.length > 0,
     memoryChars: memory.length,
     memoryPath: getMemoryPath(userId),
-    dmScope: getDMScope(),
   };
 }
