@@ -109,19 +109,25 @@ export async function readSoulMemory(userId: number): Promise<string> {
   }
 }
 
-export function injectSoulMemory(message: string, memory: string): string {
+export function injectSoulContext(message: string, profile: SoulProfile, memory: string): string {
+  const parts: string[] = [
+    '你正在服务同一位用户，请保持人格与偏好连续性。',
+    `<SOUL_IDENTITY user_id="${profile.userId}" identity_id="${profile.identityId}" soul_id="${profile.soulId}" />`,
+  ];
   const memoryBlock = memory.trim();
-  if (!memoryBlock) return message;
-
-  return [
-    '请在回复时参考以下长期记忆（如与当前指令冲突，以当前指令为准）：',
-    '<SOUL_MEMORY>',
-    memoryBlock,
-    '</SOUL_MEMORY>',
+  if (memoryBlock) {
+    parts.push(
+      '<SOUL_MEMORY>',
+      memoryBlock,
+      '</SOUL_MEMORY>',
+    );
+  }
+  parts.push(
     '',
     '用户当前请求：',
     message,
-  ].join('\n');
+  );
+  return parts.join('\n');
 }
 
 export async function writeSoulMemory(userId: number, content: string): Promise<void> {

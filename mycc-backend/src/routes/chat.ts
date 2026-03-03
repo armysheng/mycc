@@ -22,10 +22,9 @@ import {
 } from '../utils/validation.js';
 import { getSSHPool } from '../ssh/pool.js';
 import {
-  getSoulState,
-  injectSoulMemory,
+  injectSoulContext,
+  loadOrCreateSoulProfile,
   readSoulMemory,
-  writeSoulMemory,
 } from '../chat/session-soul.js';
 
 // 发送消息请求验证
@@ -36,10 +35,6 @@ const chatSchema = z.object({
     data: z.string(),
     mediaType: z.string(),
   })).optional(),
-});
-
-const memoryUpdateSchema = z.object({
-  content: z.string().max(8000),
 });
 
 type HistoryMessageType = 'user' | 'assistant' | 'system' | 'result';
@@ -112,8 +107,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
       // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
       const cwd = path.join('/home', linuxUser, 'workspace');
+      const soulProfile = await loadOrCreateSoulProfile(userId);
       const soulMemory = await readSoulMemory(userId);
-      const enhancedMessage = injectSoulMemory(body.message, soulMemory);
+      const enhancedMessage = injectSoulContext(body.message, soulProfile, soulMemory);
 
       // 验证路径安全性
       if (!validatePathPrefix(cwd, '/home/')) {
@@ -235,94 +231,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: err instanceof Error ? err.message : '发送消息失败',
-      });
-    }
-  });
-
-  // GET /api/chat/identity - 获取文件化 identity/soul 状态
-  fastify.get('/api/chat/identity', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const state = await getSoulState(request.user.userId);
-      return reply.send({
-        success: true,
-        data: {
-          identityId: state.profile.identityId,
-          soulId: state.profile.soulId,
-          hasMemory: state.hasMemory,
-          memoryChars: state.memoryChars,
-        },
-      });
-    } catch (err) {
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '读取 identity 失败',
-      });
-    }
-  });
-
-  // GET /api/chat/memory - 读取 MEMORY.md 内容
-  fastify.get('/api/chat/memory', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const content = await readSoulMemory(request.user.userId);
-      return reply.send({
-        success: true,
-        data: {
-          content,
-          chars: content.length,
-        },
-      });
-    } catch (err) {
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '读取 memory 失败',
-      });
-    }
-  });
-
-  // PUT /api/chat/memory - 更新 MEMORY.md 内容
-  fastify.put('/api/chat/memory', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const body = memoryUpdateSchema.parse(request.body);
-      await writeSoulMemory(request.user.userId, body.content);
-      const state = await getSoulState(request.user.userId);
-
-      return reply.send({
-        success: true,
-        data: {
-          chars: state.memoryChars,
-          hasMemory: state.hasMemory,
-        },
-      });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: '请求参数错误',
-          details: err.errors,
-        });
-      }
-
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '更新 memory 失败',
       });
     }
   });

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   getSoulState,
-  injectSoulMemory,
+  injectSoulContext,
   loadOrCreateSoulProfile,
   readSoulMemory,
   writeSoulMemory,
@@ -33,17 +33,19 @@ describe('session-soul', () => {
     expect(second.soulId).toBe(first.soulId);
   });
 
-  it('writes and reads memory file, then injects memory into message', async () => {
+  it('writes and reads memory file, then injects id+soul+memory prompt context', async () => {
+    const profile = await loadOrCreateSoulProfile(1004);
     await writeSoulMemory(1004, '用户偏好：回答要先给结论。');
     const memory = await readSoulMemory(1004);
-    const merged = injectSoulMemory('帮我总结今天进展', memory);
+    const merged = injectSoulContext('帮我总结今天进展', profile, memory);
 
     expect(memory).toContain('用户偏好');
+    expect(merged).toContain('<SOUL_IDENTITY');
     expect(merged).toContain('<SOUL_MEMORY>');
     expect(merged).toContain('帮我总结今天进展');
   });
 
-  it('returns identity state for API exposure', async () => {
+  it('returns identity state for internal prompt injection', async () => {
     const state = await getSoulState(1005);
     expect(state.profile.identityId).toBe('u-1005');
     expect(state.hasMemory).toBe(false);
