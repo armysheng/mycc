@@ -106,7 +106,8 @@ async function start() {
     if (schedulerEnabled) {
       const tickMs = parseInt(process.env.AUTOMATIONS_SCHEDULER_TICK_MS || '60000', 10);
       const maxUsersPerTick = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_USERS_PER_TICK || '500', 10);
-      automationScheduler = new AutomationScheduler(tickMs, maxUsersPerTick);
+      const maxConcurrentRuns = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_CONCURRENT_RUNS || '8', 10);
+      automationScheduler = new AutomationScheduler(tickMs, maxUsersPerTick, maxConcurrentRuns);
       automationScheduler.start();
     } else {
       console.log('ℹ️ 自动化调度器已禁用（AUTOMATIONS_SCHEDULER_ENABLED=false）');

@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { getSSHPool } from '../ssh/pool.js';
-import { findUserById } from '../db/client.js';
+import { checkQuota, findUserById, logUsage } from '../db/client.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
 import { AutomationStore, AutomationStoreError } from '../automations/store.js';
 import type { CreateAutomationInput, UpdateAutomationInput } from '../automations/types.js';
@@ -72,6 +72,27 @@ function sendAutomationError(reply: { status: (statusCode: number) => { send: (p
   });
 }
 
+function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing: Record<string, { input: number; output: number }> = {
+    'claude-opus-4': { input: 15, output: 75 },
+    'claude-sonnet-4-6': { input: 3, output: 15 },
+    'claude-sonnet-4-5': { input: 3, output: 15 },
+    'claude-haiku-4-5': { input: 0.8, output: 4 },
+  };
+
+  let modelPricing = pricing['claude-sonnet-4-6'];
+  for (const [key, value] of Object.entries(pricing)) {
+    if (model.includes(key)) {
+      modelPricing = value;
+      break;
+    }
+  }
+
+  const inputCost = (inputTokens / 1_000_000) * modelPricing.input;
+  const outputCost = (outputTokens / 1_000_000) * modelPricing.output;
+  return inputCost + outputCost;
+}
+
 export async function automationsRoutes(fastify: FastifyInstance) {
   const withStore = async (
     userId: number,
@@ -89,7 +110,21 @@ export async function automationsRoutes(fastify: FastifyInstance) {
       const run = (command: string) => sshPool.exec(connection, command);
       const runAsUser = (command: string) =>
         sshPool.exec(connection, AutomationStore.buildUserCommand(linuxUser, command));
-      const store = new AutomationStore(linuxUser, run, runAsUser);
+      const store = new AutomationStore(linuxUser, run, runAsUser, {
+        checkQuota: () => checkQuota(userId),
+        recordUsage: async (input) => {
+          const totalTokens = input.inputTokens + input.outputTokens;
+          if (totalTokens <= 0) return;
+          await logUsage({
+            userId,
+            sessionId: `automation:${input.automationId}`,
+            inputTokens: input.inputTokens,
+            outputTokens: input.outputTokens,
+            model: input.model,
+            costUsd: calculateCost(input.model, input.inputTokens, input.outputTokens),
+          });
+        },
+      });
       return await handler(store);
     } finally {
       sshPool.release(connection);

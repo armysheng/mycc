@@ -1,5 +1,5 @@
 import { getSSHPool } from '../ssh/pool.js';
-import { listActiveUsers } from '../db/client.js';
+import { checkQuota, listActiveUsers, logUsage } from '../db/client.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
 import { AutomationStore } from './store.js';
 import type { AutomationView } from './types.js';
@@ -89,11 +89,11 @@ function slotKey(parts: ZonedParts, timezone: string): string {
 }
 
 function matchCronField(field: string, value: number, min: number, max: number, isDayOfWeek = false): boolean {
-  const normalizedValue = isDayOfWeek && value === 0 ? 7 : value;
+  const valueCandidates = isDayOfWeek && value === 0 ? [0, 7] : [value];
   const tokens = field.split(',').map((token) => token.trim()).filter(Boolean);
   if (tokens.length === 0) return false;
 
-  const matchToken = (token: string): boolean => {
+  const matchTokenWithValue = (token: string, currentValue: number): boolean => {
     if (token === '*') return true;
 
     const stepIndex = token.indexOf('/');
@@ -103,20 +103,20 @@ function matchCronField(field: string, value: number, min: number, max: number, 
       const step = parseIntSafe(right);
       if (!Number.isFinite(step) || step <= 0) return false;
       if (left === '*') {
-        return normalizedValue % step === 0;
+        return currentValue % step === 0;
       }
       if (left.includes('-')) {
         const [startRaw, endRaw] = left.split('-', 2);
         const start = parseIntSafe(startRaw);
         const end = parseIntSafe(endRaw);
         if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return false;
-        if (normalizedValue < start || normalizedValue > end) return false;
-        return (normalizedValue - start) % step === 0;
+        if (currentValue < start || currentValue > end) return false;
+        return (currentValue - start) % step === 0;
       }
       const base = parseIntSafe(left);
       if (!Number.isFinite(base)) return false;
-      if (normalizedValue < base) return false;
-      return (normalizedValue - base) % step === 0;
+      if (currentValue < base) return false;
+      return (currentValue - base) % step === 0;
     }
 
     if (token.includes('-')) {
@@ -124,16 +124,16 @@ function matchCronField(field: string, value: number, min: number, max: number, 
       const start = parseIntSafe(startRaw);
       const end = parseIntSafe(endRaw);
       if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return false;
-      return normalizedValue >= start && normalizedValue <= end;
+      return currentValue >= start && currentValue <= end;
     }
 
     const exact = parseIntSafe(token);
     if (!Number.isFinite(exact)) return false;
-    return normalizedValue === exact;
+    return currentValue === exact;
   };
 
   if (value < min || value > max) return false;
-  return tokens.some(matchToken);
+  return tokens.some((token) => valueCandidates.some((candidate) => matchTokenWithValue(token, candidate)));
 }
 
 export function resolveScheduleSlotKey(cron: string, timezone: string, date: Date): string | null {
@@ -242,13 +242,46 @@ function shouldTriggerAutomation(automation: AutomationView, now: Date): boolean
   return true;
 }
 
+function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing: Record<string, { input: number; output: number }> = {
+    'claude-opus-4': { input: 15, output: 75 },
+    'claude-sonnet-4-6': { input: 3, output: 15 },
+    'claude-sonnet-4-5': { input: 3, output: 15 },
+    'claude-haiku-4-5': { input: 0.8, output: 4 },
+  };
+
+  let modelPricing = pricing['claude-sonnet-4-6'];
+  for (const [key, value] of Object.entries(pricing)) {
+    if (model.includes(key)) {
+      modelPricing = value;
+      break;
+    }
+  }
+
+  const inputCost = (inputTokens / 1_000_000) * modelPricing.input;
+  const outputCost = (outputTokens / 1_000_000) * modelPricing.output;
+  return inputCost + outputCost;
+}
+
+interface ScheduledRunJob {
+  userId: number;
+  linuxUser: string;
+  automationId: string;
+}
+
 export class AutomationScheduler {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private pendingTick = false;
+  private userCursorId = 0;
+  private activeRunCount = 0;
+  private readonly runQueue: ScheduledRunJob[] = [];
+  private readonly queuedOrRunning = new Set<string>();
 
   constructor(
     private readonly tickMs: number = 60_000,
     private readonly maxUsersPerTick: number = 500,
+    private readonly maxConcurrentRuns: number = 8,
   ) {}
 
   start(): void {
@@ -256,12 +289,14 @@ export class AutomationScheduler {
 
     const alignedDelay = this.tickMs - (Date.now() % this.tickMs);
     this.timer = setTimeout(() => {
-      void this.tick();
+      void this.requestTick();
       this.timer = setInterval(() => {
-        void this.tick();
+        void this.requestTick();
       }, this.tickMs);
     }, alignedDelay);
-    console.log(`[AutomationScheduler] started: tick=${this.tickMs}ms maxUsers=${this.maxUsersPerTick}`);
+    console.log(
+      `[AutomationScheduler] started: tick=${this.tickMs}ms maxUsers=${this.maxUsersPerTick} maxRuns=${this.maxConcurrentRuns}`,
+    );
   }
 
   stop(): void {
@@ -273,17 +308,22 @@ export class AutomationScheduler {
     console.log('[AutomationScheduler] stopped');
   }
 
-  private async tick(): Promise<void> {
+  private async requestTick(): Promise<void> {
     if (this.running) {
-      console.warn('[AutomationScheduler] skip tick: previous run still in progress');
+      this.pendingTick = true;
       return;
     }
+    await this.tick();
+  }
+
+  private async tick(): Promise<void> {
     this.running = true;
 
     try {
       const now = new Date();
-      const users = await listActiveUsers(this.maxUsersPerTick);
+      const users = await listActiveUsers(this.maxUsersPerTick, this.userCursorId);
       if (users.length === 0) return;
+      this.userCursorId = users[users.length - 1].id;
 
       for (const user of users) {
         await this.processUser(user.id, user.linux_user, now);
@@ -292,6 +332,10 @@ export class AutomationScheduler {
       console.error('[AutomationScheduler] tick failed:', error);
     } finally {
       this.running = false;
+      if (this.pendingTick) {
+        this.pendingTick = false;
+        void this.requestTick();
+      }
     }
   }
 
@@ -304,25 +348,97 @@ export class AutomationScheduler {
       const run = (command: string) => sshPool.exec(connection, command);
       const runAsUser = (command: string) =>
         sshPool.exec(connection, AutomationStore.buildUserCommand(linuxUser, command));
-      const store = new AutomationStore(linuxUser, run, runAsUser);
+      const store = new AutomationStore(linuxUser, run, runAsUser, {
+        checkQuota: () => checkQuota(userId),
+        recordUsage: async (input) => {
+          const totalTokens = input.inputTokens + input.outputTokens;
+          if (totalTokens <= 0) return;
+          await logUsage({
+            userId,
+            sessionId: `automation:${input.automationId}`,
+            inputTokens: input.inputTokens,
+            outputTokens: input.outputTokens,
+            model: input.model,
+            costUsd: calculateCost(input.model, input.inputTokens, input.outputTokens),
+          });
+        },
+      });
       const list = await store.listAutomations();
 
       for (const automation of list.automations) {
         if (!shouldTriggerAutomation(automation, now)) continue;
-        try {
-          const result = await store.runOnce(automation.id);
-          console.info(
-            `[AutomationScheduler] fired user=${userId} linuxUser=${linuxUser} id=${automation.id} at=${result.run.executedAt}`,
-          );
-        } catch (error) {
-          console.error(
-            `[AutomationScheduler] run failed user=${userId} linuxUser=${linuxUser} id=${automation.id}:`,
-            error,
-          );
-        }
+        this.enqueueRun({
+          userId,
+          linuxUser,
+          automationId: automation.id,
+        });
       }
     } catch (error) {
       console.error(`[AutomationScheduler] process user failed user=${userId} linuxUser=${linuxUser}:`, error);
+    } finally {
+      sshPool.release(connection);
+    }
+  }
+
+  private runKey(job: ScheduledRunJob): string {
+    return `${job.userId}:${job.automationId}`;
+  }
+
+  private enqueueRun(job: ScheduledRunJob): void {
+    const key = this.runKey(job);
+    if (this.queuedOrRunning.has(key)) {
+      return;
+    }
+    this.queuedOrRunning.add(key);
+    this.runQueue.push(job);
+    this.drainRunQueue();
+  }
+
+  private drainRunQueue(): void {
+    while (this.activeRunCount < this.maxConcurrentRuns && this.runQueue.length > 0) {
+      const job = this.runQueue.shift()!;
+      this.activeRunCount += 1;
+      void this.executeRunJob(job).finally(() => {
+        this.activeRunCount = Math.max(0, this.activeRunCount - 1);
+        this.queuedOrRunning.delete(this.runKey(job));
+        this.drainRunQueue();
+      });
+    }
+  }
+
+  private async executeRunJob(job: ScheduledRunJob): Promise<void> {
+    const sshPool = getSSHPool();
+    const connection = await sshPool.acquire();
+
+    try {
+      const run = (command: string) => sshPool.exec(connection, command);
+      const runAsUser = (command: string) =>
+        sshPool.exec(connection, AutomationStore.buildUserCommand(job.linuxUser, command));
+      const store = new AutomationStore(job.linuxUser, run, runAsUser, {
+        checkQuota: () => checkQuota(job.userId),
+        recordUsage: async (input) => {
+          const totalTokens = input.inputTokens + input.outputTokens;
+          if (totalTokens <= 0) return;
+          await logUsage({
+            userId: job.userId,
+            sessionId: `automation:${input.automationId}`,
+            inputTokens: input.inputTokens,
+            outputTokens: input.outputTokens,
+            model: input.model,
+            costUsd: calculateCost(input.model, input.inputTokens, input.outputTokens),
+          });
+        },
+      });
+
+      const result = await store.runOnce(job.automationId);
+      console.info(
+        `[AutomationScheduler] fired user=${job.userId} linuxUser=${job.linuxUser} id=${job.automationId} at=${result.run.executedAt}`,
+      );
+    } catch (error) {
+      console.error(
+        `[AutomationScheduler] run failed user=${job.userId} linuxUser=${job.linuxUser} id=${job.automationId}:`,
+        error,
+      );
     } finally {
       sshPool.release(connection);
     }

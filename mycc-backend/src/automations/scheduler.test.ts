@@ -69,6 +69,12 @@ describe('automation scheduler matching', () => {
     expect(resolveScheduleSlotKey('*/15 9-18 * * 1-5', 'Asia/Shanghai', now)).toBe('2026-03-03T09:00@Asia/Shanghai');
   });
 
+  it('supports sunday as both 0 and 7 in cron day-of-week', () => {
+    const sunday = new Date('2026-03-01T01:00:00.000Z'); // Sunday, Asia/Shanghai 09:00
+    expect(resolveScheduleSlotKey('0 9 * * 0', 'Asia/Shanghai', sunday)).toBe('2026-03-01T09:00@Asia/Shanghai');
+    expect(resolveScheduleSlotKey('0 9 * * 7', 'Asia/Shanghai', sunday)).toBe('2026-03-01T09:00@Asia/Shanghai');
+  });
+
   it('detects already executed slot', () => {
     const now = new Date('2026-03-03T01:00:10.000Z');
     const executed = mockAutomation({
