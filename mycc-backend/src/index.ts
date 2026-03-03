@@ -11,6 +11,7 @@ import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
 import { validateRegistry } from './skills/skill-registry.js';
+import { AutomationScheduler } from './automations/scheduler.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -20,6 +21,7 @@ dotenv.config();
 
 const PORT = parseInt(process.env.PORT || '8080');
 const HOST = '0.0.0.0';
+let automationScheduler: AutomationScheduler | null = null;
 
 // 创建 Fastify 实例
 const fastify = Fastify({
@@ -100,6 +102,17 @@ async function start() {
     }
     console.log('✅ VPS 连接测试成功');
 
+    const schedulerEnabled = process.env.AUTOMATIONS_SCHEDULER_ENABLED !== 'false';
+    if (schedulerEnabled) {
+      const tickMs = parseInt(process.env.AUTOMATIONS_SCHEDULER_TICK_MS || '60000', 10);
+      const maxUsersPerTick = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_USERS_PER_TICK || '500', 10);
+      const maxConcurrentRuns = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_CONCURRENT_RUNS || '8', 10);
+      automationScheduler = new AutomationScheduler(tickMs, maxUsersPerTick, maxConcurrentRuns);
+      automationScheduler.start();
+    } else {
+      console.log('ℹ️ 自动化调度器已禁用（AUTOMATIONS_SCHEDULER_ENABLED=false）');
+    }
+
     // 技能注册表一致性校验
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
@@ -127,6 +140,10 @@ async function start() {
 // 优雅关闭
 process.on('SIGINT', async () => {
   console.log('\n⏳ 正在关闭服务器...');
+  if (automationScheduler) {
+    automationScheduler.stop();
+    automationScheduler = null;
+  }
   await fastify.close();
   await pool.end();
 

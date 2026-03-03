@@ -147,7 +147,11 @@ describe('automation store helpers', () => {
       records: [createdRecord],
       migratedFromTasks: false,
     });
-    vi.spyOn(store as any, 'executeAutomation').mockResolvedValueOnce(undefined);
+    vi.spyOn(store as any, 'executeAutomation').mockResolvedValueOnce({
+      inputTokens: 11,
+      outputTokens: 22,
+      model: 'claude-sonnet-4-6',
+    });
     vi.spyOn(store as any, 'persistRecords').mockImplementation(async (...args: unknown[]) => {
       persistedSnapshots.push(args[0] as AutomationRecord[]);
     });
@@ -156,6 +160,91 @@ describe('automation store helpers', () => {
     expect(result.run.status).toBe('success');
     expect(result.automation.execution.runCount).toBe(1);
     expect(result.automation.execution.lastRunStatus).toBe('success');
+    expect(result.run.usage).toEqual({
+      inputTokens: 11,
+      outputTokens: 22,
+      model: 'claude-sonnet-4-6',
+    });
+  });
+
+  it('blocks run once when quota is exhausted', async () => {
+    const store = new AutomationStore('tester', noopExec, noopExec, {
+      checkQuota: async () => ({ allowed: false, remaining: 0 }),
+    });
+    const record: AutomationRecord = {
+      id: 'quota-1',
+      name: '额度任务',
+      description: '',
+      status: 'healthy',
+      enabled: true,
+      trigger: { type: 'cron', cron: '09:00', timezone: 'Asia/Shanghai' },
+      execution: {
+        type: 'prompt',
+        prompt: 'hello',
+        runCount: 0,
+        lastRunAt: null,
+        lastRunStatus: null,
+        lastError: null,
+      },
+      delivery: { type: 'inbox', enabled: true },
+      createdAt: '2026-03-01T00:00:00.000Z',
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    };
+
+    vi.spyOn(store as any, 'loadRecords').mockResolvedValueOnce({
+      records: [record],
+      migratedFromTasks: false,
+    });
+    const executeSpy = vi.spyOn(store as any, 'executeAutomation');
+
+    await expect(store.runOnce('quota-1')).rejects.toThrow('额度已用完');
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('records usage after successful run', async () => {
+    const recordUsage = vi.fn();
+    const store = new AutomationStore('tester', noopExec, noopExec, {
+      checkQuota: async () => ({ allowed: true, remaining: 1000 }),
+      recordUsage,
+    });
+    const record: AutomationRecord = {
+      id: 'usage-1',
+      name: '计费任务',
+      description: '',
+      status: 'healthy',
+      enabled: true,
+      trigger: { type: 'cron', cron: '09:00', timezone: 'Asia/Shanghai' },
+      execution: {
+        type: 'prompt',
+        prompt: 'hello',
+        runCount: 0,
+        lastRunAt: null,
+        lastRunStatus: null,
+        lastError: null,
+      },
+      delivery: { type: 'inbox', enabled: true },
+      createdAt: '2026-03-01T00:00:00.000Z',
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    };
+
+    vi.spyOn(store as any, 'loadRecords').mockResolvedValueOnce({
+      records: [record],
+      migratedFromTasks: false,
+    });
+    vi.spyOn(store as any, 'persistRecords').mockResolvedValue(undefined);
+    vi.spyOn(store as any, 'executeAutomation').mockResolvedValueOnce({
+      inputTokens: 4,
+      outputTokens: 8,
+      model: 'claude-sonnet-4-6',
+    });
+
+    await store.runOnce('usage-1');
+    expect(recordUsage).toHaveBeenCalledWith({
+      automationId: 'usage-1',
+      inputTokens: 4,
+      outputTokens: 8,
+      model: 'claude-sonnet-4-6',
+    });
   });
 
   it('keeps legacy skill run message compatible', () => {

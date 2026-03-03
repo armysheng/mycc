@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { escapeShellArg } from '../utils/validation.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
+import { extractModel, extractUsage } from '../adapters/stream-parser.js';
 import type {
   AutomationDocument,
   AutomationListResult,
@@ -31,6 +32,29 @@ interface BuiltinTemplate {
   description: string;
   prompt: string;
   enabled: boolean;
+}
+
+interface QuotaResult {
+  allowed: boolean;
+  remaining: number;
+}
+
+interface RecordUsageInput {
+  automationId: string;
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+}
+
+interface AutomationStoreDeps {
+  checkQuota?: () => Promise<QuotaResult>;
+  recordUsage?: (input: RecordUsageInput) => Promise<void>;
+}
+
+interface RunExecutionUsage {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
 }
 
 const DAILY_RE = /^\d{1,2}:\d{2}$/;
@@ -408,6 +432,7 @@ export class AutomationStore {
     private readonly linuxUser: string,
     private readonly run: ExecFn,
     private readonly runAsUser: ExecFn,
+    private readonly deps: AutomationStoreDeps = {},
   ) {
     this.schedulerDir = `/home/${linuxUser}/workspace/.claude/skills/scheduler`;
     this.automationsPath = `${this.schedulerDir}/automations.json`;
@@ -640,7 +665,11 @@ NODE
 
   async runOnce(id: string): Promise<{
     automation: AutomationView;
-    run: { executedAt: string; status: 'success' };
+    run: {
+      executedAt: string;
+      status: 'success';
+      usage?: RunExecutionUsage;
+    };
   }> {
     const { records } = await this.loadRecords();
     const index = records.findIndex((item) => item.id === id);
@@ -650,11 +679,16 @@ NODE
     const current = records[index];
     const executedAt = new Date().toISOString();
     const runCount = current.execution.runCount + 1;
+    const quota = this.deps.checkQuota ? await this.deps.checkQuota() : { allowed: true, remaining: 0 };
+    if (!quota.allowed) {
+      throw new AutomationStoreError(403, '额度已用完，无法执行自动化任务');
+    }
 
     let runStatus: 'success' | 'failed' = 'success';
     let runError: string | null = null;
+    let usage: RunExecutionUsage | undefined;
     try {
-      await this.executeAutomation(current);
+      usage = await this.executeAutomation(current);
     } catch (error) {
       runStatus = 'failed';
       runError = error instanceof Error ? error.message : String(error);
@@ -680,11 +714,21 @@ NODE
       throw new AutomationStoreError(500, `立即运行失败: ${runError || '未知错误'}`);
     }
 
+    if (usage && this.deps.recordUsage && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
+      await this.deps.recordUsage({
+        automationId: next.id,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        model: usage.model,
+      });
+    }
+
     return {
       automation: toView(next),
       run: {
         executedAt,
         status: 'success',
+        usage,
       },
     };
   }
@@ -701,10 +745,13 @@ NODE
     return skillPrefix ? `${skillPrefix} ${content}`.trim() : content;
   }
 
-  private async executeAutomation(record: AutomationRecord): Promise<void> {
+  private async executeAutomation(record: AutomationRecord): Promise<RunExecutionUsage> {
     const adapter = new RemoteClaudeAdapter();
     const message = this.buildRunMessage(record);
     const cwd = `/home/${this.linuxUser}/workspace`;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
     let runtimeError: string | null = null;
     for await (const event of adapter.chat({
@@ -712,6 +759,16 @@ NODE
       cwd,
       linuxUser: this.linuxUser,
     })) {
+      const usage = extractUsage(event);
+      if (usage) {
+        totalInputTokens += usage.inputTokens;
+        totalOutputTokens += usage.outputTokens;
+      }
+      const modelName = extractModel(event);
+      if (modelName) {
+        model = modelName;
+      }
+
       if (event.type === 'error') {
         runtimeError = typeof event.error === 'string' ? event.error : '执行失败';
         break;
@@ -728,5 +785,11 @@ NODE
     if (runtimeError) {
       throw new Error(runtimeError);
     }
+
+    return {
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      model,
+    };
   }
 }

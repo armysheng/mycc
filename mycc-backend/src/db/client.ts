@@ -78,6 +78,11 @@ export interface ConversationSummary {
   updatedAt: Date;
 }
 
+export interface ActiveUserSummary {
+  id: number;
+  linux_user: string;
+}
+
 // 创建用户
 export async function createUser(params: {
   phone?: string;
@@ -325,4 +330,47 @@ export async function markUserInitialized(userId: number): Promise<boolean> {
     [userId]
   );
   return (result.rowCount || 0) > 0;
+}
+
+export async function listActiveUsers(
+  limit: number = 500,
+  cursorAfterId?: number,
+): Promise<ActiveUserSummary[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 500;
+  const safeCursor = Number.isFinite(cursorAfterId) ? Math.max(0, Math.floor(cursorAfterId as number)) : 0;
+
+  if (safeCursor <= 0) {
+    const result = await pool.query<ActiveUserSummary>(
+      `SELECT id, linux_user
+       FROM users
+       WHERE status = 'active'
+       ORDER BY id ASC
+       LIMIT $1`,
+      [safeLimit]
+    );
+    return result.rows;
+  }
+
+  const first = await pool.query<ActiveUserSummary>(
+    `SELECT id, linux_user
+     FROM users
+     WHERE status = 'active' AND id > $1
+     ORDER BY id ASC
+     LIMIT $2`,
+    [safeCursor, safeLimit]
+  );
+  if (first.rows.length >= safeLimit) {
+    return first.rows;
+  }
+
+  const remaining = safeLimit - first.rows.length;
+  const second = await pool.query<ActiveUserSummary>(
+    `SELECT id, linux_user
+     FROM users
+     WHERE status = 'active' AND id <= $1
+     ORDER BY id ASC
+     LIMIT $2`,
+    [safeCursor, remaining]
+  );
+  return [...first.rows, ...second.rows];
 }
