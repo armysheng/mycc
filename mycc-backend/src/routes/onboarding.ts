@@ -111,7 +111,17 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
           }
         }
 
-        const cmd = `sudo node -e '${nodeScript}'`;
+        const ensureOwnerCmd = `sudo chown -R ${escapeShellArg(linuxUser)}:mycc "${workspaceDir}"`;
+        const ensureOwner = await sshPool.exec(connection, ensureOwnerCmd);
+        if (ensureOwner.exitCode !== 0) {
+          console.error(`❌ Onboarding 权限修复失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${ensureOwner.stderr}`);
+          return reply.status(500).send({
+            success: false,
+            error: '初始化目录权限异常，请联系管理员',
+          });
+        }
+
+        const cmd = `sudo -n -u ${escapeShellArg(linuxUser)} node -e '${nodeScript}'`;
         const result = await sshPool.exec(connection, cmd);
         if (result.exitCode !== 0) {
           console.error(`❌ Onboarding 变量替换失败: ${result.stderr}`);
