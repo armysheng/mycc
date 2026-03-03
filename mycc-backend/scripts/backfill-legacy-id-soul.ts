@@ -14,7 +14,7 @@ type LegacyUser = {
   phone: string | null;
   email: string | null;
   status: string;
-  is_initialized: boolean;
+  is_initialized?: boolean;
 };
 
 type ScriptOptions = {
@@ -162,12 +162,15 @@ function pickOwnerName(user: LegacyUser): string {
 }
 
 async function queryUsers(options: ScriptOptions): Promise<LegacyUser[]> {
+  const hasInitializedColumn = await checkUsersHasColumn('is_initialized');
   const conditions: string[] = ['status = $1'];
   const params: Array<string | number> = ['active'];
 
-  if (!options.includeUninitialized) {
+  if (!options.includeUninitialized && hasInitializedColumn) {
     conditions.push(`is_initialized = $${params.length + 1}`);
     params.push(true);
+  } else if (!options.includeUninitialized && !hasInitializedColumn) {
+    console.warn('[backfill:id-soul] users.is_initialized 列不存在，已降级为按 active 用户全量处理');
   }
 
   if (options.userId) {
@@ -181,8 +184,11 @@ async function queryUsers(options: ScriptOptions): Promise<LegacyUser[]> {
   }
 
   const limitClause = options.limit ? `LIMIT ${options.limit}` : '';
+  const selectInitialized = hasInitializedColumn
+    ? 'is_initialized'
+    : 'NULL::boolean as is_initialized';
   const sql = `
-    SELECT id, linux_user, nickname, phone, email, status, is_initialized
+    SELECT id, linux_user, nickname, phone, email, status, ${selectInitialized}
     FROM users
     WHERE ${conditions.join(' AND ')}
     ORDER BY id ASC
@@ -190,6 +196,22 @@ async function queryUsers(options: ScriptOptions): Promise<LegacyUser[]> {
   `;
   const result = await pool.query<LegacyUser>(sql, params);
   return result.rows;
+}
+
+async function checkUsersHasColumn(columnName: string): Promise<boolean> {
+  const result = await pool.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = $1
+      ) AS exists
+    `,
+    [columnName],
+  );
+  return result.rows[0]?.exists === true;
 }
 
 function buildDryRunScript(workspaceDir: string): string {
