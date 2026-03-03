@@ -26,6 +26,7 @@ import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
+import { shouldRecoverFromForbiddenSession } from "./chat/session-recovery";
 
 export function ChatPage() {
   const location = useLocation();
@@ -187,11 +188,11 @@ export function ChatPage() {
 
           if (!response.ok) {
             const parsed = await parseApiErrorResponse(response);
-            const sessionDenied =
-              parsed.status === 403 &&
-              parsed.backendError.includes("会话") &&
-              Boolean(sessionIdForRequest) &&
-              attempt === 0;
+            const sessionDenied = shouldRecoverFromForbiddenSession(
+              parsed,
+              Boolean(sessionIdForRequest),
+              attempt,
+            );
 
             if (sessionDenied) {
               // 旧会话跨账号/权限变化时自动切到新会话重试一次，减少用户手动刷新成本
