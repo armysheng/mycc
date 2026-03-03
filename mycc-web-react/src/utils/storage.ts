@@ -78,7 +78,6 @@ function migrateLegacySettings(): AppSettings {
     showToolCalls: DEFAULT_SETTINGS.showToolCalls,
     autoExpandThinking: DEFAULT_SETTINGS.autoExpandThinking,
     fontSize: DEFAULT_SETTINGS.fontSize,
-    profileNickname: DEFAULT_SETTINGS.profileNickname,
     sidebarDefaultOpen: DEFAULT_SETTINGS.sidebarDefaultOpen,
     version: CURRENT_SETTINGS_VERSION,
   };

@@ -9,6 +9,8 @@ import type {
   TodoItem,
   HooksMessage,
 } from "../types";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { TimestampComponent } from "./TimestampComponent";
 import { MessageContainer } from "./messages/MessageContainer";
 import { CollapsibleDetails } from "./messages/CollapsibleDetails";
@@ -21,6 +23,58 @@ import {
   isBashToolUseResult,
 } from "../utils/contentUtils";
 import { getToolDisplayText } from "../utils/toolDisplayMapper";
+
+const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+function sanitizeUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (!ALLOWED_LINK_PROTOCOLS.has(parsed.protocol)) {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ href, children }) => {
+          const safeHref = sanitizeUrl(href);
+          if (!safeHref) {
+            return <span>{children}</span>;
+          }
+          return (
+            <a
+              href={safeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-slate-400 hover:decoration-slate-700 dark:decoration-slate-500 dark:hover:decoration-slate-200"
+            >
+              {children}
+            </a>
+          );
+        },
+        pre: ({ children }) => (
+          <pre className="whitespace-pre-wrap text-sm leading-relaxed overflow-x-auto rounded-md bg-black/5 p-2 dark:bg-white/10">
+            {children}
+          </pre>
+        ),
+        code: ({ children, className }) => (
+          <code className={className || "text-sm"}>{children}</code>
+        ),
+        p: ({ children }) => <p className="text-sm leading-relaxed mb-2">{children}</p>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -39,9 +93,15 @@ function isHooksMessage(
 
 interface ChatMessageComponentProps {
   message: ChatMessage;
+  assistantDisplayName: string;
+  assistantAvatarText: string;
 }
 
-export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
+export function ChatMessageComponent({
+  message,
+  assistantDisplayName,
+  assistantAvatarText,
+}: ChatMessageComponentProps) {
   const isUser = message.role === "user";
   if (isUser) {
     return (
@@ -80,7 +140,7 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
           border: "1px solid var(--surface-border)",
         }}
       >
-        CC
+        {assistantAvatarText}
       </div>
       <div
         className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-bl-md px-4 py-3 border"
@@ -93,16 +153,16 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
       >
         <div className="mb-1.5 flex items-center justify-between gap-4">
           <span className="text-xs font-semibold opacity-90">
-            Claude
+            {assistantDisplayName}
           </span>
           <TimestampComponent
             timestamp={message.timestamp}
             className="text-xs opacity-70"
           />
         </div>
-        <pre className="whitespace-pre-wrap text-sm leading-relaxed">
-          {message.content}
-        </pre>
+        <div className="space-y-2">
+          <AssistantMarkdown content={message.content} />
+        </div>
       </div>
     </div>
   );
@@ -455,17 +515,30 @@ export function TodoMessageComponent({ message }: TodoMessageComponentProps) {
   );
 }
 
-export function LoadingComponent() {
+export function LoadingComponent({
+  assistantDisplayName,
+  assistantAvatarText,
+}: {
+  assistantDisplayName: string;
+  assistantAvatarText: string;
+}) {
   return (
     <MessageContainer
       alignment="left"
       colorScheme="panel-surface border"
     >
-      <div
-        className="text-xs font-semibold mb-2 opacity-90"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        Claude
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold opacity-90" style={{ color: "var(--text-secondary)" }}>
+        <span
+          className="h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[10px]"
+          style={{
+            background: "var(--bg-elevated)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--surface-border)",
+          }}
+        >
+          {assistantAvatarText}
+        </span>
+        <span>{assistantDisplayName}</span>
       </div>
       <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>

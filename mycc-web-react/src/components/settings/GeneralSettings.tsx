@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState, useEffect } from "react";
 import {
   SunIcon,
   MoonIcon,
@@ -11,6 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../contexts/AuthContext";
+import { updateProfile } from "../../api/auth";
 import type { FontSize, Theme } from "../../types/settings";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
@@ -74,28 +75,54 @@ export function GeneralSettings() {
     showToolCalls,
     autoExpandThinking,
     fontSize,
-    profileNickname,
     sidebarDefaultOpen,
     setTheme,
     toggleEnterBehavior,
     toggleShowToolCalls,
     toggleAutoExpandThinking,
     setFontSize,
-    setProfileNickname,
     updateSettings,
   } = useSettings();
-  const { user } = useAuth();
+  const { user, token, refreshUser } = useAuth();
 
-  const [nicknameDraft, setNicknameDraft] = useState(profileNickname || user?.nickname || "");
+  const [assistantNameDraft, setAssistantNameDraft] = useState(user?.assistant_name || "");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState("");
 
-  const accountName = useMemo(() => {
-    return user?.nickname || user?.email || user?.phone || user?.linux_user || "未登录用户";
-  }, [user]);
+  useEffect(() => {
+    setAssistantNameDraft(user?.assistant_name || "");
+  }, [user?.assistant_name]);
 
-  const avatarChar = (nicknameDraft || accountName).charAt(0).toUpperCase();
+  const accountName = user?.email || user?.phone || user?.linux_user || "未登录用户";
+  const assistantDisplayName = user?.assistant_name?.trim() || "cc";
+  const avatarChar = accountName.charAt(0).toUpperCase();
 
-  const handleSaveNickname = () => {
-    setProfileNickname(nicknameDraft.trim());
+  const handleSaveProfile = async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileSaveError("");
+    setProfileSaveSuccess("");
+
+    try {
+      const response = await updateProfile(token, {
+        assistantName: assistantNameDraft.trim(),
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || "保存失败");
+      }
+
+      await refreshUser();
+      setProfileSaveSuccess("保存成功");
+    } catch (error) {
+      setProfileSaveError(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   return (
@@ -113,25 +140,34 @@ export function GeneralSettings() {
             </div>
           </div>
 
-          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">昵称</label>
-          <div className="flex gap-2">
-            <input
-              value={nicknameDraft}
-              onChange={(event) => setNicknameDraft(event.target.value)}
-              placeholder="输入你的显示昵称"
-              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-amber-700 dark:focus:ring-amber-900/30"
-            />
+          <label className="mb-1 mt-3 block text-xs font-medium text-slate-600 dark:text-slate-300">助手名称</label>
+          <input
+            value={assistantNameDraft}
+            onChange={(event) => setAssistantNameDraft(event.target.value)}
+            placeholder="输入助手显示名称"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-amber-700 dark:focus:ring-amber-900/30"
+          />
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              助手当前显示名：{assistantDisplayName}
+            </p>
             <button
               type="button"
-              onClick={handleSaveNickname}
-              className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+              onClick={handleSaveProfile}
+              disabled={isSavingProfile}
+              className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              保存
+              {isSavingProfile ? "保存中..." : "保存"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            昵称保存在本地浏览器，用于前端显示。
-          </p>
+
+          {profileSaveError && (
+            <p className="mt-2 text-[11px] text-red-500">{profileSaveError}</p>
+          )}
+          {profileSaveSuccess && (
+            <p className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">{profileSaveSuccess}</p>
+          )}
         </div>
       </section>
 

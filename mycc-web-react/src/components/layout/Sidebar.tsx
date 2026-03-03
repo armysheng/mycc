@@ -136,9 +136,9 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", handler);
   }, [userMenuOpen]);
 
-  const userInitial = user?.nickname?.charAt(0)?.toUpperCase() || "U";
+  const userInitial = user?.email?.charAt(0)?.toUpperCase() || user?.phone?.charAt(0) || "U";
   const userDisplayName =
-    user?.nickname || user?.email || user?.phone || "用户";
+    user?.email || user?.phone || user?.linux_user || "用户";
 
   const sidebarContent = (
     <>

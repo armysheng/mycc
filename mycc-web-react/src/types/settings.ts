@@ -8,7 +8,6 @@ export interface AppSettings {
   showToolCalls: boolean;
   autoExpandThinking: boolean;
   fontSize: FontSize;
-  profileNickname: string;
   sidebarDefaultOpen: boolean;
   version: number;
 }
@@ -25,7 +24,6 @@ export interface SettingsContextType {
   showToolCalls: boolean;
   autoExpandThinking: boolean;
   fontSize: FontSize;
-  profileNickname: string;
   sidebarDefaultOpen: boolean;
   resolvedTheme: "light" | "dark";
   setTheme: (theme: Theme) => void;
@@ -34,7 +32,6 @@ export interface SettingsContextType {
   toggleShowToolCalls: () => void;
   toggleAutoExpandThinking: () => void;
   setFontSize: (size: FontSize) => void;
-  setProfileNickname: (nickname: string) => void;
   updateSettings: (updates: Partial<AppSettings>) => void;
 }
 
@@ -45,7 +42,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showToolCalls: true,
   autoExpandThinking: false,
   fontSize: "md",
-  profileNickname: "",
   sidebarDefaultOpen: true,
   version: 3,
 };
