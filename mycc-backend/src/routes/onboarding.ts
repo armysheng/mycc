@@ -4,6 +4,7 @@ import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { findUserById, markUserInitialized } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
+import { seedSoulMemoryFromOnboarding } from '../chat/session-soul.js';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -107,6 +108,17 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         }
       } finally {
         sshPool.release(connection);
+      }
+
+      try {
+        await seedSoulMemoryFromOnboarding(
+          request.user.userId,
+          body.assistantName,
+          body.ownerName,
+        );
+      } catch (seedErr) {
+        // onboarding 主流程不因 soul 初始化失败而中断，避免用户无法进入系统
+        console.warn(`⚠️ Onboarding soul seed failed userId=${request.user.userId}:`, seedErr);
       }
 
       // 只有文件替换成功才标记初始化完成

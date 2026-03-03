@@ -141,6 +141,34 @@ export async function writeSoulMemory(userId: number, content: string): Promise<
   await saveProfile(profile);
 }
 
+function buildOnboardingMemory(assistantName: string, ownerName: string): string {
+  return [
+    '角色与称呼偏好：',
+    `- 你的名字是：${assistantName}`,
+    `- 对用户的称呼：${ownerName}`,
+    '- 回复优先保持简洁、先结论后细节。',
+  ].join('\n');
+}
+
+/**
+ * 首次 onboarding 时种下 soul 记忆。
+ * 仅在 memory 为空时写入，避免覆盖用户后续手动沉淀的长期记忆。
+ */
+export async function seedSoulMemoryFromOnboarding(
+  userId: number,
+  assistantName: string,
+  ownerName: string,
+): Promise<{ seeded: boolean }> {
+  await loadOrCreateSoulProfile(userId);
+  const existing = await readSoulMemory(userId);
+  if (existing.trim()) {
+    return { seeded: false };
+  }
+
+  await writeSoulMemory(userId, buildOnboardingMemory(assistantName.trim(), ownerName.trim()));
+  return { seeded: true };
+}
+
 export async function getSoulState(userId: number): Promise<SoulState> {
   const profile = await loadOrCreateSoulProfile(userId);
   const memory = await readSoulMemory(userId);

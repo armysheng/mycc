@@ -7,6 +7,7 @@ import {
   injectSoulContext,
   loadOrCreateSoulProfile,
   readSoulMemory,
+  seedSoulMemoryFromOnboarding,
   writeSoulMemory,
 } from './session-soul.js';
 
@@ -50,5 +51,17 @@ describe('session-soul', () => {
     expect(state.profile.identityId).toBe('u-1005');
     expect(state.hasMemory).toBe(false);
     expect(state.memoryChars).toBe(0);
+  });
+
+  it('seeds onboarding memory only once', async () => {
+    const first = await seedSoulMemoryFromOnboarding(1006, '小顾', '风筝');
+    const second = await seedSoulMemoryFromOnboarding(1006, '小王', '老风');
+    const memory = await readSoulMemory(1006);
+
+    expect(first.seeded).toBe(true);
+    expect(second.seeded).toBe(false);
+    expect(memory).toContain('你的名字是：小顾');
+    expect(memory).toContain('对用户的称呼：风筝');
+    expect(memory).not.toContain('小王');
   });
 });
