@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
 
 type ExecResult = { stdout: string; stderr: string; exitCode: number | null };
@@ -162,5 +163,63 @@ describe('remote-skill-store regression', () => {
     expect(resolved).toBe(cachedPath);
     expect(execAsUser).not.toHaveBeenCalled();
     expect((RemoteSkillStore as any).catalogCache.get(linuxUser)?.path).toBe(cachedPath);
+  });
+});
+
+describe('RemoteSkillStore.uninstallSkill', () => {
+  beforeEach(() => {
+    sshMocks.exec.mockReset();
+    sshMocks.acquire.mockReset();
+    sshMocks.release.mockReset();
+
+    sshMocks.acquire.mockResolvedValue({ id: 'conn-1' });
+    sshMocks.exec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+  });
+
+  it('删除技能目录并清理 manifest/lock', async () => {
+    const store = new RemoteSkillStore();
+
+    await store.uninstallSkill('alice', 'my-skill');
+
+    expect(sshMocks.acquire).toHaveBeenCalledTimes(1);
+    expect(sshMocks.exec).toHaveBeenCalledTimes(2);
+
+    const commands = sshMocks.exec.mock.calls.map(([, command]: [unknown, string]) => String(command));
+
+    expect(commands.every((cmd) => cmd.includes("sudo -u 'alice' bash -lc"))).toBe(true);
+    expect(commands.some((cmd) => cmd.includes('rm -rf'))).toBe(true);
+    expect(commands.some((cmd) => cmd.includes('SKILL_ID='))).toBe(true);
+
+    expect(sshMocks.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('无效 skillId 时返回 400 错误', async () => {
+    const store = new RemoteSkillStore();
+
+    await expect(store.uninstallSkill('alice', '../bad-id')).rejects.toMatchObject({
+      name: 'SkillsError',
+      statusCode: 400,
+      message: '无效的 skillId',
+    });
+
+    expect(sshMocks.acquire).not.toHaveBeenCalled();
+    expect(sshMocks.exec).not.toHaveBeenCalled();
+    expect(sshMocks.release).not.toHaveBeenCalled();
+  });
+
+  it('清理状态文件失败时抛出 500 错误并释放连接', async () => {
+    sshMocks.exec
+      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: 'cleanup failed', exitCode: 1 });
+
+    const store = new RemoteSkillStore();
+
+    const err = await store.uninstallSkill('alice', 'my-skill').catch((e) => e);
+
+    expect(err).toBeInstanceOf(SkillsError);
+    expect(err.statusCode).toBe(500);
+    expect(err.message).toBe('cleanup failed');
+
+    expect(sshMocks.release).toHaveBeenCalledTimes(1);
   });
 });

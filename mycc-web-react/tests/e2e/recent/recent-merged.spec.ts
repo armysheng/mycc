@@ -69,10 +69,44 @@ test("[RECENT-002] 安装+升级接口不再返回“技能不存在于目录中
   const listRes = await request.get("/api/skills", { headers });
   expect(listRes.status()).toBe(200);
   const listJson = await listRes.json();
-  const skills = (listJson?.data?.skills || []) as Array<{ id: string; installed?: boolean }>;
-  const candidate = skills.find((s) => !s.installed) ?? skills[0];
-  expect(candidate?.id).toBeTruthy();
-  const skillId = candidate.id;
+  const skills = (listJson?.data?.skills || []) as Array<{
+    id: string;
+    installed?: boolean;
+    source?: string;
+  }>;
+
+  const preferred = [
+    "deep-research",
+    "read-gzh",
+    "data-analysis",
+    "mycc-regression",
+    "tell-me",
+    "scheduler",
+  ];
+
+  const candidate =
+    preferred
+      .map((id) => skills.find((s) => s.id === id))
+      .find((s): s is { id: string; installed?: boolean; source?: string } => Boolean(s)) ??
+    skills.find((s) => s.source === "catalog" || s.source === "registry");
+
+  expect(candidate, "环境缺少可测的 catalog/registry skill").toBeTruthy();
+  const skillId = candidate!.id;
+
+  // 先做幂等预清理，避免复用账号导致 install 分支不稳定
+  let uninstallRes = await request.post(`/api/skills/${encodeURIComponent(skillId)}/uninstall`, {
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    data: {},
+  });
+  if (uninstallRes.status() === 405) {
+    uninstallRes = await request.delete(`/api/skills/${encodeURIComponent(skillId)}/uninstall`, {
+      headers,
+    });
+  }
+  expect(uninstallRes.status(), "预清理不应 5xx").toBeLessThan(500);
 
   const installRes = await request.post(`/api/skills/${encodeURIComponent(skillId)}/install`, {
     headers: {
