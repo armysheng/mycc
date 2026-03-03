@@ -1,7 +1,10 @@
-# MCP 搜索迁移（测试环境）
+# MCP 搜索迁移（测试环境，Duck 版本）
 
 > 日期：2026-03-02  
 > 目标：停用不稳定的内置 `WebSearch`，统一切到免费 `DuckDuckGo MCP`
+
+> 说明：2026-03-03 起新增 OpenAI 方案，见
+> `docs/process/openai-search-mcp-migration.md`
 
 ## 变更内容
 
@@ -47,4 +50,3 @@ sudo -u mycc_u2 bash -lc "cd /home/mycc_u2/workspace && claude mcp list"
 
 2. `~/.claude.json` 回滚
 - 使用同目录自动备份：`.claude.json.bak-*`
-
