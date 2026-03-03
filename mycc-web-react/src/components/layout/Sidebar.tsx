@@ -190,6 +190,16 @@ export function Sidebar({
           >
             ⏱ 自动化
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate("/workspace");
+              onClose();
+            }}
+            className="flex-1 px-2 py-1.5 text-xs rounded-md border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            📂 工作区
+          </button>
         </div>
       </div>
 

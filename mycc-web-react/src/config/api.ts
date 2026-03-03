@@ -1,11 +1,15 @@
 // API configuration - uses relative paths with Vite proxy in development
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+const withBase = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
+
 export const API_CONFIG = {
   ENDPOINTS: {
-    CHAT: "/api/chat",
-    CHAT_SESSIONS: "/api/chat/sessions",
-    ABORT: "/api/abort",
-    SKILLS: "/api/skills",
-    AUTOMATIONS: "/api/automations",
+    CHAT: withBase("/api/chat"),
+    CHAT_SESSIONS: withBase("/api/chat/sessions"),
+    ABORT: withBase("/api/abort"),
+    SKILLS: withBase("/api/skills"),
+    AUTOMATIONS: withBase("/api/automations"),
+    WORKSPACE: withBase("/api/workspace"),
   },
 } as const;
 
@@ -88,6 +92,22 @@ export const getAutomationDisableUrl = (automationId: string) => {
 
 export const getAutomationRunUrl = (automationId: string) => {
   return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/run`;
+};
+
+export const getWorkspaceTreeUrl = (path = "/", depth = 3) => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/tree?path=${encodeURIComponent(path)}&depth=${depth}`;
+};
+
+export const getWorkspaceFileUrl = (path: string) => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`;
+};
+
+export const getWorkspaceSaveFileUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file`;
+};
+
+export const getWorkspaceExecUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`;
 };
 
 // Helper function to get session messages URL

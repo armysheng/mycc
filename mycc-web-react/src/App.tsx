@@ -18,6 +18,12 @@ const DemoPage = isDevelopment()
     )
   : null;
 
+const WorkspacePage = lazy(() =>
+  import("./components/WorkspacePage").then((module) => ({
+    default: module.WorkspacePage,
+  })),
+);
+
 function App() {
   const { user, refreshUser, isLoading } = useAuth();
 
@@ -47,6 +53,14 @@ function App() {
           <Route path="/" element={<ChatPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/automations" element={<AutomationsPage />} />
+          <Route
+            path="/workspace"
+            element={
+              <Suspense fallback={<div>Loading workspace...</div>}>
+                <WorkspacePage />
+              </Suspense>
+            }
+          />
           {DemoPage && (
             <Route
               path="/demo"
