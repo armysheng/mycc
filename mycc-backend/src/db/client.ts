@@ -344,16 +344,6 @@ export async function hasUserColumn(columnName: string): Promise<boolean> {
   return result.rows[0]?.exists ?? false;
 }
 
-export async function ensureAssistantNameColumn(): Promise<boolean> {
-  const exists = await hasUserColumn('assistant_name');
-  if (exists) {
-    return false;
-  }
-
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS assistant_name VARCHAR(50)`);
-  return true;
-}
-
 export async function updateUserProfile(
   userId: number,
   updates: {
