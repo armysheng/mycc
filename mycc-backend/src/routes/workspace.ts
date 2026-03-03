@@ -66,7 +66,7 @@ const TREE_SCRIPT = [
   '    const children=[];',
   '    for(const entry of entries){',
   '      if(counter>=maxNodes)break;',
-  '      if(entry.name===".git")continue;',
+  '      if(entry.name.startsWith("."))continue;',
   '      const full=path.join(abs,entry.name);',
   '      let lst;',
   '      try{lst=fs.lstatSync(full);}catch{continue;}',

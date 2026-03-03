@@ -1,15 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import Editor from "@monaco-editor/react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
+import {
+  ArchiveBoxIcon,
+  CodeBracketIcon,
+  Cog6ToothIcon,
+  DocumentIcon,
+  DocumentTextIcon,
+  FilmIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  PhotoIcon,
+  TableCellsIcon,
+} from "@heroicons/react/24/outline";
 import { Sidebar } from "./layout/Sidebar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getAuthHeaders,
-  getWorkspaceExecUrl,
   getWorkspaceFileUrl,
   getWorkspaceSaveFileUrl,
   getWorkspaceTreeUrl,
@@ -34,28 +42,6 @@ interface WorkspaceFileData {
   truncated: boolean;
   binary: boolean;
   content: string | null;
-}
-
-interface WorkspaceExecData {
-  cwd: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-}
-
-function normalizePath(input: string): string {
-  const segments = input.split("/");
-  const stack: string[] = [];
-  for (const segment of segments) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") {
-      stack.pop();
-      continue;
-    }
-    stack.push(segment);
-  }
-  return `/${stack.join("/")}`;
 }
 
 function detectLanguage(filePath: string): string {
@@ -86,6 +72,64 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+type TreeIconMeta = {
+  Icon: typeof DocumentIcon;
+  colorClass: string;
+};
+
+function getTreeIconMeta(name: string, isDirectory: boolean, isOpen: boolean): TreeIconMeta {
+  if (isDirectory) {
+    return {
+      Icon: isOpen ? FolderOpenIcon : FolderIcon,
+      colorClass: "text-amber-500 dark:text-amber-400",
+    };
+  }
+
+  const lower = name.toLowerCase();
+  const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
+
+  if (
+    ext === "ts" || ext === "tsx" || ext === "js" || ext === "jsx" || ext === "mjs" ||
+    ext === "py" || ext === "go" || ext === "rs" || ext === "java" || ext === "sh" ||
+    ext === "bash" || ext === "json" || ext === "yml" || ext === "yaml" || ext === "toml" ||
+    ext === "xml" || ext === "sql"
+  ) {
+    return { Icon: CodeBracketIcon, colorClass: "text-sky-500 dark:text-sky-400" };
+  }
+
+  if (
+    ext === "md" || ext === "txt" || ext === "rtf" || ext === "doc" || ext === "docx" ||
+    lower === "readme" || lower.startsWith("readme.")
+  ) {
+    return { Icon: DocumentTextIcon, colorClass: "text-indigo-500 dark:text-indigo-400" };
+  }
+
+  if (ext === "csv" || ext === "xls" || ext === "xlsx") {
+    return { Icon: TableCellsIcon, colorClass: "text-emerald-500 dark:text-emerald-400" };
+  }
+
+  if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp" || ext === "svg") {
+    return { Icon: PhotoIcon, colorClass: "text-rose-500 dark:text-rose-400" };
+  }
+
+  if (ext === "mp4" || ext === "mov" || ext === "avi" || ext === "mkv" || ext === "mp3" || ext === "wav") {
+    return { Icon: FilmIcon, colorClass: "text-fuchsia-500 dark:text-fuchsia-400" };
+  }
+
+  if (ext === "zip" || ext === "tar" || ext === "gz" || ext === "tgz" || ext === "7z" || ext === "rar") {
+    return { Icon: ArchiveBoxIcon, colorClass: "text-orange-500 dark:text-orange-400" };
+  }
+
+  if (
+    lower === ".env" || lower.startsWith(".env.") ||
+    lower === "package.json" || lower === "tsconfig.json" || lower === "vite.config.ts"
+  ) {
+    return { Icon: Cog6ToothIcon, colorClass: "text-cyan-500 dark:text-cyan-400" };
+  }
+
+  return { Icon: DocumentIcon, colorClass: "text-slate-500 dark:text-slate-400" };
+}
+
 export function WorkspacePage() {
   const navigate = useNavigate();
   const { token } = useAuth();
@@ -101,13 +145,7 @@ export function WorkspacePage() {
   const [draftContent, setDraftContent] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [terminalCwd, setTerminalCwd] = useState("/");
-  const [terminalCommand, setTerminalCommand] = useState("");
-  const [terminalRunning, setTerminalRunning] = useState(false);
-
-  const terminalHostRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+  const [treeHeight, setTreeHeight] = useState(620);
 
   const apiFetch = useCallback(async (url: string, init?: RequestInit) => {
     if (!token) {
@@ -124,12 +162,6 @@ export function WorkspacePage() {
     return json;
   }, [token]);
 
-  const appendTerminal = useCallback((text: string) => {
-    const term = terminalRef.current;
-    if (!term) return;
-    term.write(text.replace(/\n/g, "\r\n"));
-  }, []);
-
   const loadTree = useCallback(async () => {
     setTreeLoading(true);
     setError(null);
@@ -141,7 +173,7 @@ export function WorkspacePage() {
       }
       setTreeRoot(tree);
       if (json?.data?.truncated) {
-        setNotice("目录节点过多，已自动截断展示。可通过命令行进一步查看。");
+        setNotice("目录节点较多，已自动截断显示。可分层打开目录查看完整内容。");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载目录失败");
@@ -161,10 +193,10 @@ export function WorkspacePage() {
       setDraftContent(file.content || "");
       setActivePath(file.path);
       if (file.truncated) {
-        setNotice("文件超过 1MB，仅加载前 1MB 内容用于编辑。\n");
+        setNotice("文件超过 1MB，仅加载前 1MB 内容用于在线编辑。");
       }
       if (file.binary) {
-        setNotice("当前是二进制文件，暂不支持在线编辑。\n");
+        setNotice("该文件是二进制格式，当前版本暂不支持在线编辑。");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取文件失败");
@@ -172,65 +204,6 @@ export function WorkspacePage() {
       setFileLoading(false);
     }
   }, [apiFetch]);
-
-  const runTerminalCommand = useCallback(async () => {
-    const cmd = terminalCommand.trim();
-    if (!cmd) return;
-
-    appendTerminal(`\n$ ${cmd}\n`);
-    setTerminalRunning(true);
-    setTerminalCommand("");
-
-    try {
-      const isCd = cmd === "cd" || cmd.startsWith("cd ");
-      if (isCd) {
-        const target = cmd === "cd" ? "/" : normalizePath(`${terminalCwd}/${cmd.slice(3).trim()}`);
-        const verify = await apiFetch(getWorkspaceExecUrl(), {
-          method: "POST",
-          body: JSON.stringify({
-            cwd: target,
-            command: "pwd",
-          }),
-        });
-        const result = verify?.data as WorkspaceExecData;
-        if (result.exitCode === 0) {
-          const nextCwd = normalizePath(result.cwd || target);
-          setTerminalCwd(nextCwd);
-          appendTerminal(`已切换目录: ${nextCwd}\n`);
-        } else {
-          appendTerminal(result.stderr || "目录切换失败\n");
-        }
-      } else {
-        const json = await apiFetch(getWorkspaceExecUrl(), {
-          method: "POST",
-          body: JSON.stringify({
-            cwd: terminalCwd,
-            command: cmd,
-          }),
-        });
-        const result = json?.data as WorkspaceExecData;
-        if (result.stdout) {
-          appendTerminal(result.stdout);
-          appendTerminal("\n");
-        }
-        if (result.stderr) {
-          appendTerminal(result.stderr);
-          appendTerminal("\n");
-        }
-        if (result.timedOut) {
-          appendTerminal("[命令超时]\n");
-        }
-        setTerminalCwd(normalizePath(result.cwd || terminalCwd));
-        if (result.exitCode !== 0) {
-          appendTerminal(`[exit ${result.exitCode}]\n`);
-        }
-      }
-    } catch (err) {
-      appendTerminal(`ERROR: ${err instanceof Error ? err.message : "执行失败"}\n`);
-    } finally {
-      setTerminalRunning(false);
-    }
-  }, [apiFetch, appendTerminal, terminalCommand, terminalCwd]);
 
   const saveCurrentFile = useCallback(async () => {
     if (!activeFile || activeFile.binary) return;
@@ -263,45 +236,14 @@ export function WorkspacePage() {
   }, [activeFile, apiFetch, draftContent, loadTree]);
 
   useEffect(() => {
-    loadTree();
+    void loadTree();
   }, [loadTree]);
 
   useEffect(() => {
-    if (!terminalHostRef.current || terminalRef.current) return;
-    const term = new Terminal({
-      cursorBlink: true,
-      convertEol: true,
-      fontSize: 12,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      theme: {
-        background: "#0b1220",
-        foreground: "#dbeafe",
-        cursor: "#f8fafc",
-      },
-      scrollback: 5000,
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(terminalHostRef.current);
-    fit.fit();
-    term.writeln("MyCC Workspace Terminal");
-    term.writeln("提示: 当前为命令执行模式（非交互 shell）");
-    term.writeln("------------------------------------");
-    terminalRef.current = term;
-    fitAddonRef.current = fit;
-
-    const handleResize = () => {
-      fit.fit();
-    };
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      fit.dispose();
-      term.dispose();
-      fitAddonRef.current = null;
-      terminalRef.current = null;
-    };
+    const updateHeight = () => setTreeHeight(Math.max(420, window.innerHeight - 260));
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
   }, []);
 
   const dirty = useMemo(() => {
@@ -311,34 +253,35 @@ export function WorkspacePage() {
 
   const onTreeNodeClick = useCallback((node: WorkspaceTreeNode) => {
     setActivePath(node.path);
-    if (node.type === "directory") {
-      setTerminalCwd(normalizePath(node.path));
-      return;
+    if (node.type === "file") {
+      void loadFile(node.path);
     }
-    void loadFile(node.path);
   }, [loadFile]);
 
   const renderTreeNode = useCallback(({ node, style }: NodeRendererProps<WorkspaceTreeNode>) => {
     const data = node.data;
     const selected = activePath === data.path;
     const isDir = data.type === "directory";
+    const iconMeta = getTreeIconMeta(data.name, isDir, node.isOpen);
+    const Icon = iconMeta.Icon;
 
     return (
       <div
         style={style}
         onClick={() => {
-          if (isDir) {
-            node.toggle();
-          }
+          if (isDir) node.toggle();
           onTreeNodeClick(data);
         }}
-        className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer border ${
+        className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm cursor-pointer border transition-colors ${
           selected
-            ? "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-200"
+            ? "bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-900/30 dark:border-sky-700 dark:text-sky-200"
             : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-800"
         }`}
       >
-        <span className="text-xs w-4 text-center">{isDir ? (node.isOpen ? "📂" : "📁") : "📄"}</span>
+        <span className="text-xs w-4 text-center opacity-80">{isDir ? (node.isOpen ? "▾" : "▸") : "·"}</span>
+        <span className={`w-4 h-4 ${iconMeta.colorClass}`}>
+          <Icon className="w-4 h-4" />
+        </span>
         <span className="truncate">{data.name}</span>
       </div>
     );
@@ -350,126 +293,107 @@ export function WorkspacePage() {
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar onNewChat={() => navigate("/")} isOpen={false} onClose={() => {}} />
 
-      <main className="flex-1 overflow-hidden flex flex-col">
-        <header className="px-6 py-4 border-b panel-surface flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">工作区</h1>
-            <p className="text-xs text-slate-500 mt-1">react-arborist + Monaco + xterm.js（命令执行模式）</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={loadTree}
-              className="px-3 py-1.5 rounded-lg border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              刷新目录
-            </button>
-            <button
-              type="button"
-              onClick={saveCurrentFile}
-              disabled={!dirty || saving || !activeFile || activeFile.binary}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-              style={{ background: "var(--accent)" }}
-            >
-              {saving ? "保存中..." : "保存文件"}
-            </button>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-hidden grid grid-cols-12 gap-0">
-          <aside className="col-span-3 border-r panel-surface overflow-hidden flex flex-col">
-            <div className="px-3 py-2 text-xs text-slate-500 border-b">文件树</div>
-            <div className="flex-1 overflow-auto p-2">
-              {treeLoading ? (
-                <div className="text-xs text-slate-500 px-2 py-3">加载目录中...</div>
-              ) : (
-                <Tree<WorkspaceTreeNode>
-                  data={data}
-                  childrenAccessor="children"
-                  idAccessor="id"
-                  rowHeight={32}
-                  width="100%"
-                  height={Math.max(window.innerHeight - 220, 320)}
-                  indent={18}
-                >
-                  {renderTreeNode}
-                </Tree>
-              )}
+      <main className="flex-1 overflow-hidden bg-[radial-gradient(1200px_420px_at_80%_-10%,rgba(14,165,233,0.14),transparent),radial-gradient(1000px_420px_at_10%_110%,rgba(16,185,129,0.10),transparent)]">
+        <div className="h-full p-5 md:p-6 flex flex-col gap-4">
+          <header className="rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
+            <div>
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] border border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200 dark:border-sky-700 mb-2">
+                Workspace Studio
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight">工作区文件编辑</h1>
+              <p className="text-xs text-slate-500 mt-1">轻量、直接、可保存。命令行面板已暂时移除。</p>
             </div>
-          </aside>
-
-          <section className="col-span-6 border-r overflow-hidden flex flex-col bg-white dark:bg-slate-950">
-            <div className="px-3 py-2 border-b text-xs text-slate-500 flex items-center justify-between">
-              <span className="truncate">{activeFile?.path || "请选择文件"}</span>
-              {activeFile && (
-                <span>
-                  {formatSize(activeFile.size)} · {formatTime(activeFile.mtime)}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {fileLoading ? (
-                <div className="h-full flex items-center justify-center text-sm text-slate-500">读取文件中...</div>
-              ) : !activeFile ? (
-                <div className="h-full flex items-center justify-center text-sm text-slate-500">从左侧文件树选择一个文本文件</div>
-              ) : activeFile.binary ? (
-                <div className="h-full flex items-center justify-center text-sm text-slate-500">二进制文件暂不支持在线编辑</div>
-              ) : (
-                <Editor
-                  height="100%"
-                  language={detectLanguage(activeFile.path)}
-                  value={draftContent}
-                  onChange={(value) => setDraftContent(value || "")}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    wordWrap: "on",
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                  }}
-                />
-              )}
-            </div>
-          </section>
-
-          <section className="col-span-3 overflow-hidden flex flex-col panel-surface">
-            <div className="px-3 py-2 border-b text-xs text-slate-500">终端 · cwd: {terminalCwd}</div>
-            <div className="flex-1 min-h-0 bg-[#0b1220]">
-              <div ref={terminalHostRef} className="w-full h-full" />
-            </div>
-            <div className="p-2 border-t flex items-center gap-2">
-              <input
-                value={terminalCommand}
-                onChange={(e) => setTerminalCommand(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !terminalRunning) {
-                    void runTerminalCommand();
-                  }
-                }}
-                placeholder="输入命令，如 ls -la / cd src"
-                className="flex-1 rounded-lg border px-2 py-1.5 text-xs panel-surface outline-none focus:ring-2 focus:ring-[var(--accent)]/35"
-              />
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  void runTerminalCommand();
+                  void loadTree();
                 }}
-                disabled={terminalRunning}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
-                style={{ background: "var(--accent)" }}
+                className="px-3.5 py-2 rounded-xl border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                {terminalRunning ? "执行中" : "运行"}
+                刷新目录
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveCurrentFile();
+                }}
+                disabled={!dirty || saving || !activeFile || activeFile.binary}
+                className="px-3.5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, var(--accent), #0284c7)" }}
+              >
+                {saving ? "保存中..." : "保存文件"}
               </button>
             </div>
-          </section>
-        </div>
+          </header>
 
-        {(error || notice) && (
-          <div className="px-6 py-3 border-t panel-surface text-sm">
-            {error && <div className="text-red-600">系统错误：{error}</div>}
-            {notice && <div className="text-emerald-600">{notice}</div>}
+          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+            <aside className="min-h-0 rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur shadow-sm overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-slate-200/70 dark:border-slate-700/80">
+                <div className="text-xs font-medium text-slate-500">文件树</div>
+                <div className="text-[11px] text-slate-400 mt-1 truncate">{activePath || "/"}</div>
+              </div>
+
+              <div className="flex-1 overflow-auto p-2">
+                {treeLoading ? (
+                  <div className="text-xs text-slate-500 px-2 py-3">加载目录中...</div>
+                ) : (
+                  <Tree<WorkspaceTreeNode>
+                    data={data}
+                    childrenAccessor="children"
+                    idAccessor="id"
+                    rowHeight={34}
+                    width="100%"
+                    height={treeHeight}
+                    indent={18}
+                  >
+                    {renderTreeNode}
+                  </Tree>
+                )}
+              </div>
+            </aside>
+
+            <section className="min-h-0 rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/90 dark:bg-slate-950/85 shadow-sm overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-slate-200/70 dark:border-slate-700/80 text-xs text-slate-500 flex items-center justify-between gap-3">
+                <span className="truncate">{activeFile?.path || "请选择文件"}</span>
+                {activeFile && (
+                  <span className="shrink-0">{formatSize(activeFile.size)} · {formatTime(activeFile.mtime)}</span>
+                )}
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {fileLoading ? (
+                  <div className="h-full flex items-center justify-center text-sm text-slate-500">读取文件中...</div>
+                ) : !activeFile ? (
+                  <div className="h-full flex items-center justify-center text-sm text-slate-500">从左侧选择一个文件开始编辑</div>
+                ) : activeFile.binary ? (
+                  <div className="h-full flex items-center justify-center text-sm text-slate-500">二进制文件暂不支持在线编辑</div>
+                ) : (
+                  <Editor
+                    height="100%"
+                    language={detectLanguage(activeFile.path)}
+                    value={draftContent}
+                    onChange={(value) => setDraftContent(value || "")}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      wordWrap: "on",
+                      automaticLayout: true,
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                )}
+              </div>
+            </section>
           </div>
-        )}
+
+          {(error || notice) && (
+            <div className="rounded-xl border border-slate-200/70 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/85 px-4 py-3 text-sm shadow-sm">
+              {error && <div className="text-red-600">系统错误：{error}</div>}
+              {notice && <div className="text-emerald-600">{notice}</div>}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

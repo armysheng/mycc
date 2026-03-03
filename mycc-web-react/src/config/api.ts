@@ -1,12 +1,15 @@
 // API configuration - uses relative paths with Vite proxy in development
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+const withBase = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
+
 export const API_CONFIG = {
   ENDPOINTS: {
-    CHAT: "/api/chat",
-    CHAT_SESSIONS: "/api/chat/sessions",
-    ABORT: "/api/abort",
-    SKILLS: "/api/skills",
-    AUTOMATIONS: "/api/automations",
-    WORKSPACE: "/api/workspace",
+    CHAT: withBase("/api/chat"),
+    CHAT_SESSIONS: withBase("/api/chat/sessions"),
+    ABORT: withBase("/api/abort"),
+    SKILLS: withBase("/api/skills"),
+    AUTOMATIONS: withBase("/api/automations"),
+    WORKSPACE: withBase("/api/workspace"),
   },
 } as const;
 
