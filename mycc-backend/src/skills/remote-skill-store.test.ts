@@ -53,7 +53,7 @@ describe('remote-skill-store regression', () => {
       if (hasDirCheck(command, '/home/qa/workspace/.claude/skills/tell-me')) {
         return ok('');
       }
-      if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills' || true")) {
+      if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills'")) {
         return ok('/opt/mycc/.claude/skills\n');
       }
       if (hasDirCheck(command, '/opt/mycc/.claude/skills/tell-me')) {
@@ -105,7 +105,7 @@ describe('remote-skill-store regression', () => {
       if (hasCat(command, '/home/qa/workspace/.claude/skills/.mycc-manifest.json')) {
         return ok('{"skills":{"scheduler":{"source":"catalog","disabled":false}}}');
       }
-      if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills' || true")) {
+      if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills'")) {
         return ok('/opt/mycc/.claude/skills\n');
       }
       if (hasDirCheck(command, '/opt/mycc/.claude/skills/scheduler')) {
@@ -221,5 +221,202 @@ describe('RemoteSkillStore.uninstallSkill', () => {
     expect(err.message).toBe('cleanup failed');
 
     expect(sshMocks.release).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RemoteSkillStore.listSkillInfos clawhub toggle', () => {
+  beforeEach(() => {
+    sshMocks.acquire.mockReset();
+    sshMocks.release.mockReset();
+    sshMocks.exec.mockReset();
+    sshMocks.acquire.mockResolvedValue({ id: 'conn-1' });
+    delete process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST;
+    (RemoteSkillStore as any).catalogCache.clear();
+  });
+
+  it('默认不合并 ClawHub 技能', async () => {
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+    const listAvailableSkills = vi.fn().mockResolvedValue([
+      {
+        id: 'clawhub-extra',
+        name: 'ClawHub Extra',
+        description: 'from clawhub',
+        trigger: '/clawhub-extra',
+        icon: '🌐',
+        status: 'available',
+        installed: false,
+        version: '1.0.0',
+        installedVersion: null,
+        latestVersion: '1.0.0',
+        source: 'clawhub',
+        legacy: false,
+        enabled: false,
+        upgradable: false,
+      },
+    ]);
+    (store as any).clawhubAdapter = {
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      searchSkills: vi.fn().mockResolvedValue([]),
+      listAvailableSkills,
+    };
+
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
+      if (command.includes('.mycc-manifest.json')) return ok('{}');
+      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      return ok('');
+    });
+
+    const result = await store.listSkillInfos(linuxUser);
+
+    expect(listAvailableSkills).not.toHaveBeenCalled();
+    expect(result.skills.some((skill) => skill.id === 'clawhub-extra')).toBe(false);
+  });
+
+  it('开关开启时合并 ClawHub 技能', async () => {
+    process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST = 'true';
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+    const listAvailableSkills = vi.fn().mockResolvedValue([
+      {
+        id: 'clawhub-extra',
+        name: 'ClawHub Extra',
+        description: 'from clawhub',
+        trigger: '/clawhub-extra',
+        icon: '🌐',
+        status: 'available',
+        installed: false,
+        version: '1.0.0',
+        installedVersion: null,
+        latestVersion: '1.0.0',
+        source: 'clawhub',
+        legacy: false,
+        enabled: false,
+        upgradable: false,
+      },
+    ]);
+    (store as any).clawhubAdapter = {
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      searchSkills: vi.fn().mockResolvedValue([]),
+      listAvailableSkills,
+    };
+
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
+      if (command.includes('.mycc-manifest.json')) return ok('{}');
+      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      return ok('');
+    });
+
+    const result = await store.listSkillInfos(linuxUser);
+
+    expect(listAvailableSkills).toHaveBeenCalledTimes(1);
+    expect(result.skills.some((skill) => skill.id === 'clawhub-extra')).toBe(true);
+  });
+});
+
+describe('RemoteSkillStore.searchSkills fallback', () => {
+  it('registry 未命中时回退 ClawHub', async () => {
+    const store = new RemoteSkillStore();
+    const searchSkills = vi.fn().mockResolvedValue([
+      {
+        id: 'tushare-tools',
+        name: 'Tushare Tools',
+        description: 'from clawhub',
+        trigger: '/tushare-tools',
+        icon: '🌐',
+        status: 'available',
+        installed: false,
+        version: '1.0.0',
+        installedVersion: null,
+        latestVersion: '1.0.0',
+        source: 'clawhub',
+        legacy: false,
+        enabled: false,
+        upgradable: false,
+      },
+    ]);
+    (store as any).clawhubAdapter = {
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      listAvailableSkills: vi.fn().mockResolvedValue([]),
+      searchSkills,
+    };
+
+    const results = await store.searchSkills('qa', 'tushare');
+
+    expect(searchSkills).toHaveBeenCalledTimes(1);
+    expect(results[0]?.id).toBe('tushare-tools');
+  });
+
+  it('registry 命中时不调用 ClawHub', async () => {
+    const store = new RemoteSkillStore();
+    const searchSkills = vi.fn().mockResolvedValue([]);
+    (store as any).clawhubAdapter = {
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      listAvailableSkills: vi.fn().mockResolvedValue([]),
+      searchSkills,
+    };
+
+    const results = await store.searchSkills('qa', 'deep');
+
+    expect(results.some((item) => item.id === 'deep-research')).toBe(true);
+    expect(searchSkills).not.toHaveBeenCalled();
+  });
+});
+
+describe('RemoteSkillStore.listSkillInfos perf guard', () => {
+  beforeEach(() => {
+    sshMocks.acquire.mockReset();
+    sshMocks.release.mockReset();
+    sshMocks.exec.mockReset();
+    sshMocks.acquire.mockResolvedValue({ id: 'conn-1' });
+    delete process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST;
+    (RemoteSkillStore as any).catalogCache.clear();
+  });
+
+  it('registry 已知且未安装技能不读取远端 SKILL.md', async () => {
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
+      if (command.includes('.mycc-manifest.json')) return ok('{}');
+      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) {
+        return ok('/catalog/deep-research/SKILL.md\n');
+      }
+      return ok('');
+    });
+
+    const result = await store.listSkillInfos(linuxUser);
+
+    expect(result.skills.some((skill) => skill.id === 'deep-research')).toBe(true);
+    expect(
+      sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
+        command.includes("cat '/catalog/deep-research/SKILL.md'")
+      )
+    ).toBe(false);
   });
 });

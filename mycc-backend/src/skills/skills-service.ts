@@ -8,9 +8,19 @@ import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListRe
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 250;
+const parsedSkillsListCacheTtl = Number.parseInt(process.env.SKILLS_LIST_CACHE_TTL_MS || '10000', 10);
+const LIST_CACHE_TTL_MS = Number.isFinite(parsedSkillsListCacheTtl) && parsedSkillsListCacheTtl > 0
+  ? parsedSkillsListCacheTtl
+  : 10_000;
+
+type CachedListResult = {
+  data: SkillsListResult;
+  expiresAt: number;
+};
 
 export class SkillsService implements ISkillsService {
   private static listInFlight = new Map<string, Promise<SkillsListResult>>();
+  private static listCache = new Map<string, CachedListResult>();
 
   constructor(private readonly store: RemoteSkillStore) {}
 
@@ -20,16 +30,23 @@ export class SkillsService implements ISkillsService {
 
   async ensureBuiltinSkills(context: SkillsContext): Promise<number> {
     this.validateContext(context);
-    return this.executeSkillOperation(
+    const seeded = await this.executeSkillOperation(
       () => this.store.ensureBuiltinSkills(context.linuxUser),
       ACTION_TIMEOUT_MS,
-      '初始化内置技能超时，请稍后重试'
+      '内置技能初始化超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
+    return seeded;
   }
 
   async listSkills(context: SkillsContext): Promise<SkillsListResult> {
     this.validateContext(context);
     const cacheKey = context.linuxUser;
+    const cached = SkillsService.listCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const existing = SkillsService.listInFlight.get(cacheKey);
     if (existing) {
       return existing;
@@ -40,11 +57,18 @@ export class SkillsService implements ISkillsService {
       LIST_TIMEOUT_MS,
       '技能列表加载超时，请稍后重试'
     )
-      .then((result) => ({
-        skills: result.skills,
-        total: result.skills.length,
-        catalogAvailable: result.catalogAvailable,
-      }))
+      .then((result) => {
+        const data = {
+          skills: result.skills,
+          total: result.skills.length,
+          catalogAvailable: result.catalogAvailable,
+        };
+        SkillsService.listCache.set(cacheKey, {
+          data,
+          expiresAt: Date.now() + LIST_CACHE_TTL_MS,
+        });
+        return data;
+      })
       .finally(() => {
         SkillsService.listInFlight.delete(cacheKey);
       });
@@ -72,6 +96,7 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '安装技能超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
     return {
       skillId,
       installed: true,
@@ -87,6 +112,7 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '升级技能超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
     return { skillId, success: true, version };
   }
 
@@ -98,6 +124,7 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '启用技能超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
     return { skillId, success: true, enabled: true };
   }
 
@@ -109,6 +136,7 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '禁用技能超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
     return { skillId, success: true, enabled: false };
   }
 
@@ -120,7 +148,13 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '卸载技能超时，请稍后重试'
     );
+    this.invalidateUserListCache(context.linuxUser);
     return { skillId, success: true, uninstalled: true };
+  }
+
+  private invalidateUserListCache(linuxUser: string): void {
+    SkillsService.listCache.delete(linuxUser);
+    SkillsService.listInFlight.delete(linuxUser);
   }
 
   private validateContext(context: SkillsContext): void {

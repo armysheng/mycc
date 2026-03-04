@@ -11,6 +11,11 @@ import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuil
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
 
+function shouldIncludeClawHubInList(): boolean {
+  const raw = process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST?.trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function isValidSkillId(skillId: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(skillId);
 }
@@ -49,6 +54,36 @@ function toSkillInfo(
     source,
     legacy: versionMeta.legacy,
     enabled: status !== 'disabled',
+    upgradable: false,
+  };
+}
+
+function toRegistrySkillInfo(
+  skillId: string,
+  status: SkillInfo['status'],
+  version: string,
+  source: string,
+  installed: boolean,
+  enabled: boolean
+): SkillInfo | null {
+  const registryEntry = getSkillById(skillId);
+  if (!registryEntry) {
+    return null;
+  }
+  return {
+    id: skillId,
+    name: registryEntry.name,
+    description: registryEntry.description,
+    trigger: registryEntry.trigger,
+    icon: registryEntry.icon,
+    status,
+    installed,
+    version,
+    installedVersion: installed ? version : null,
+    latestVersion: version,
+    source,
+    legacy: false,
+    enabled,
     upgradable: false,
   };
 }
@@ -132,6 +167,14 @@ export class RemoteSkillStore {
           .map((p) => extractSkillIdFromPath(p))
           .filter((id): id is string => Boolean(id))
       );
+      const availablePathById = new Map<string, string>();
+      for (const filePath of availablePaths) {
+        const skillId = extractSkillIdFromPath(filePath);
+        if (!skillId || !isValidSkillId(skillId) || availablePathById.has(skillId)) {
+          continue;
+        }
+        availablePathById.set(skillId, filePath);
+      }
       const hasMissingBuiltin = getBuiltinSkills().some((skill) => !installedIds.has(skill.id));
 
       if ((!manifest && installedPaths.length === 0) || (installedPaths.length > 0 && hasMissingBuiltin)) {
@@ -145,52 +188,99 @@ export class RemoteSkillStore {
         }
       }
 
-      for (const path of availablePaths) {
-        const skill = await this.readSkillInfo(run, path, 'catalog', 'available');
-        if (skill) {
-          map.set(skill.id, skill);
+      for (const [skillId, filePath] of availablePathById) {
+        const registrySkill = getSkillById(skillId);
+        const shouldParseSkillFile = installedIds.has(skillId) || !registrySkill;
+
+        if (shouldParseSkillFile) {
+          const skill = await this.readSkillInfo(run, filePath, 'catalog', 'available');
+          if (skill) {
+            map.set(skill.id, skill);
+          }
+          continue;
+        }
+
+        const fromRegistry = toRegistrySkillInfo(skillId, 'available', '1.0.0', 'catalog', false, false);
+        if (fromRegistry) {
+          map.set(skillId, fromRegistry);
         }
       }
 
       for (const path of installedPaths) {
-        const skill = await this.readSkillInfo(runAsUser, path, 'user', 'installed');
-        if (skill) {
-          const existed = map.get(skill.id);
-          if (existed) {
-            const installedVersion = skill.version;
-            const latestVersion = existed.latestVersion || installedVersion;
-            const disabled = Boolean(manifest?.skills?.[skill.id]?.disabled);
-            map.set(skill.id, {
-              ...existed,
-              status: disabled ? 'disabled' : 'installed',
-              installed: true,
-              installedVersion,
-              version: installedVersion,
-              enabled: !disabled,
-              upgradable: installedVersion !== latestVersion,
-              legacy: existed.legacy && skill.legacy,
-            });
-          } else {
-            const disabled = Boolean(manifest?.skills?.[skill.id]?.disabled);
-            skill.status = disabled ? 'disabled' : 'installed';
-            skill.enabled = !disabled;
-            skill.upgradable = false;
-            map.set(skill.id, skill);
-          }
+        const skillId = extractSkillIdFromPath(path);
+        if (!skillId || !isValidSkillId(skillId)) {
+          continue;
         }
+
+        const manifestEntry = manifest?.skills?.[skillId];
+        const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
+        const status: SkillInfo['status'] = disabled ? 'disabled' : 'installed';
+        const existed = map.get(skillId);
+        const manifestVersion = typeof manifestEntry?.version === 'string'
+          ? normalizeVersion(manifestEntry.version).version
+          : null;
+        let installedVersion =
+          manifestVersion ||
+          existed?.installedVersion ||
+          existed?.version ||
+          existed?.latestVersion ||
+          null;
+
+        if (existed && installedVersion) {
+          const latestVersion = existed.latestVersion || installedVersion;
+          map.set(skillId, {
+            ...existed,
+            status,
+            installed: true,
+            installedVersion,
+            version: installedVersion,
+            enabled: !disabled,
+            upgradable: installedVersion !== latestVersion,
+            legacy: existed.legacy,
+          });
+          continue;
+        }
+
+        const fromRegistry = toRegistrySkillInfo(
+          skillId,
+          status,
+          installedVersion || '0.0.0-legacy',
+          manifestEntry?.source || 'user',
+          true,
+          !disabled
+        );
+        if (fromRegistry && installedVersion) {
+          map.set(skillId, fromRegistry);
+          continue;
+        }
+
+        const parsedInstalled = await this.readSkillInfo(runAsUser, path, 'user', 'installed');
+        if (!parsedInstalled) {
+          continue;
+        }
+        installedVersion = parsedInstalled.version;
+        parsedInstalled.status = status;
+        parsedInstalled.installed = true;
+        parsedInstalled.installedVersion = installedVersion;
+        parsedInstalled.version = installedVersion;
+        parsedInstalled.enabled = !disabled;
+        parsedInstalled.upgradable = false;
+        map.set(skillId, parsedInstalled);
       }
 
-      // 合并 ClawHub 技能（如果可用）
-      try {
-        const clawhubSkills = await this.clawhubAdapter.listAvailableSkills(linuxUser);
-        for (const skill of clawhubSkills) {
-          if (!map.has(skill.id)) {
-            map.set(skill.id, skill);
+      // 可选合并 ClawHub 技能（默认关闭，避免拖慢技能列表首屏）
+      if (shouldIncludeClawHubInList()) {
+        try {
+          const clawhubSkills = await this.clawhubAdapter.listAvailableSkills(linuxUser);
+          for (const skill of clawhubSkills) {
+            if (!map.has(skill.id)) {
+              map.set(skill.id, skill);
+            }
           }
+        } catch (error) {
+          console.warn('[RemoteSkillStore] ClawHub 技能加载失败:', error);
+          // 不阻断主流程，继续返回其他技能
         }
-      } catch (error) {
-        console.warn('[RemoteSkillStore] ClawHub 技能加载失败:', error);
-        // 不阻断主流程，继续返回其他技能
       }
 
       // 合并 registry 中的市场技能
@@ -573,12 +663,15 @@ export class RemoteSkillStore {
     }
 
     const candidates = this.buildCatalogCandidates(linuxUser);
-
-    for (const candidate of candidates) {
-      const check = await exec(`[ -d ${escapeShellArg(candidate)} ] && echo ${escapeShellArg(candidate)} || true`);
-      if (check.stdout.trim()) {
-        this.cacheCatalogPath(linuxUser, candidate);
-        return candidate;
+    if (candidates.length > 0) {
+      const batchCheckScript = candidates
+        .map((candidate) => `[ -d ${escapeShellArg(candidate)} ] && echo ${escapeShellArg(candidate)} && exit 0`)
+        .join('\n');
+      const batchCheck = await exec(`${batchCheckScript}\ntrue`);
+      const matched = batchCheck.stdout.trim().split('\n').filter(Boolean)[0];
+      if (matched) {
+        this.cacheCatalogPath(linuxUser, matched);
+        return matched;
       }
     }
 
