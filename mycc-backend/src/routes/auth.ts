@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { register, login, getCurrentUser } from '../auth/service.js';
+import { register, login, getCurrentUser, updateCurrentUserProfile } from '../auth/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 
 // 注册请求验证
@@ -8,7 +8,6 @@ const registerSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email().optional(),
   password: z.string().min(6),
-  nickname: z.string().optional(),
 }).refine(data => data.phone || data.email, {
   message: '手机号或邮箱必须提供一个',
 });
@@ -17,6 +16,18 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   credential: z.string(), // 手机号或邮箱
   password: z.string(),
+});
+
+const profileUpdateSchema = z.object({
+  assistantName: z.preprocess(
+    (val) => {
+      if (val === undefined) return undefined;
+      if (val === null) return '';
+      if (typeof val !== 'string') return val;
+      return val.trim();
+    },
+    z.string().max(50)
+  ),
 });
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -94,6 +105,43 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: err instanceof Error ? err.message : '获取用户信息失败',
+      });
+    }
+  });
+
+  // PUT /api/auth/profile - 更新当前用户资料（需要认证）
+  fastify.put('/api/auth/profile', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    try {
+      if (!request.user) {
+        return reply.status(401).send({
+          success: false,
+          error: '未认证',
+        });
+      }
+
+      const body = profileUpdateSchema.parse(request.body);
+      const user = await updateCurrentUserProfile(request.user.userId, {
+        assistantName: body.assistantName,
+      });
+
+      return reply.send({
+        success: true,
+        data: user,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: '请求参数错误',
+          details: err.errors,
+        });
+      }
+
+      return reply.status(400).send({
+        success: false,
+        error: err instanceof Error ? err.message : '更新资料失败',
       });
     }
   });

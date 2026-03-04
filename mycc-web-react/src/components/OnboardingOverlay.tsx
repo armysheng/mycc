@@ -5,7 +5,6 @@ import { initializeOnboarding } from '../api/auth';
 
 interface OnboardingOverlayProps {
   onComplete: () => Promise<void>;
-  userNickname?: string;
 }
 
 interface DialogMessage {
@@ -13,7 +12,7 @@ interface DialogMessage {
   content: string;
 }
 
-export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverlayProps) {
+export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
   const { token } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -32,7 +31,7 @@ export function OnboardingOverlay({ onComplete, userNickname }: OnboardingOverla
   const cancelledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const defaultOwnerName = (userNickname || '用户').slice(0, 20);
+  const defaultOwnerName = '用户';
   const defaultAssistantName = 'cc';
 
   const scrollToBottom = useCallback(() => {

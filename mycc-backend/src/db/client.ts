@@ -28,7 +28,7 @@ export interface User {
   phone?: string;
   email?: string;
   password_hash: string;
-  nickname?: string;
+  assistant_name?: string;
   linux_user: string;
   status: string;
   is_initialized: boolean;
@@ -88,7 +88,6 @@ export async function createUser(params: {
   phone?: string;
   email?: string;
   password_hash: string;
-  nickname?: string;
 }): Promise<User> {
   const client = await pool.connect();
   try {
@@ -96,10 +95,10 @@ export async function createUser(params: {
 
     // 生成 Linux 用户名
     const result = await client.query<User>(
-      `INSERT INTO users (phone, email, password_hash, nickname, linux_user)
-       VALUES ($1, $2, $3, $4, 'mycc_u' || currval(pg_get_serial_sequence('users', 'id')))
+      `INSERT INTO users (phone, email, password_hash, linux_user)
+       VALUES ($1, $2, $3, 'mycc_u' || currval(pg_get_serial_sequence('users', 'id')))
        RETURNING *`,
-      [params.phone, params.email, params.password_hash, params.nickname]
+      [params.phone, params.email, params.password_hash]
     );
 
     const user = result.rows[0];
@@ -123,8 +122,13 @@ export async function createUser(params: {
 
 // 根据手机号或邮箱查找用户
 export async function findUserByCredential(credential: string): Promise<User | null> {
+  const hasAssistantName = await hasUserColumn('assistant_name');
+  const assistantColumn = hasAssistantName ? 'assistant_name' : 'NULL::VARCHAR(50) AS assistant_name';
   const result = await pool.query<User>(
-    `SELECT * FROM users WHERE phone = $1 OR email = $1 LIMIT 1`,
+    `SELECT id, phone, email, password_hash, ${assistantColumn}, linux_user, status, is_initialized, created_at, updated_at
+     FROM users
+     WHERE phone = $1 OR email = $1
+     LIMIT 1`,
     [credential]
   );
   return result.rows[0] || null;
@@ -132,8 +136,12 @@ export async function findUserByCredential(credential: string): Promise<User | n
 
 // 根据 ID 查找用户
 export async function findUserById(userId: number): Promise<User | null> {
+  const hasAssistantName = await hasUserColumn('assistant_name');
+  const assistantColumn = hasAssistantName ? 'assistant_name' : 'NULL::VARCHAR(50) AS assistant_name';
   const result = await pool.query<User>(
-    `SELECT * FROM users WHERE id = $1`,
+    `SELECT id, phone, email, password_hash, ${assistantColumn}, linux_user, status, is_initialized, created_at, updated_at
+     FROM users
+     WHERE id = $1`,
     [userId]
   );
   return result.rows[0] || null;
@@ -324,12 +332,74 @@ export async function upgradePlan(userId: number, plan: 'basic' | 'pro'): Promis
   );
 }
 
-export async function markUserInitialized(userId: number): Promise<boolean> {
-  const result = await pool.query(
-    `UPDATE users SET is_initialized = true WHERE id = $1 AND is_initialized = false`,
-    [userId]
+export async function hasUserColumn(columnName: string): Promise<boolean> {
+  const result = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'users' AND column_name = $1
+    ) AS exists`,
+    [columnName]
   );
-  return (result.rowCount || 0) > 0;
+  return result.rows[0]?.exists ?? false;
+}
+
+export async function updateUserProfile(
+  userId: number,
+  updates: {
+    assistantName?: string;
+  }
+): Promise<User | null> {
+  const hasAssistantName = await hasUserColumn('assistant_name');
+  const values: Array<string | number> = [userId];
+  const sets: string[] = [];
+
+  if (updates.assistantName !== undefined && hasAssistantName) {
+    values.push(updates.assistantName);
+    sets.push(`assistant_name = $${values.length}`);
+  }
+
+  if (sets.length === 0) {
+    return findUserById(userId);
+  }
+
+  const result = await pool.query<User>(
+    `UPDATE users
+     SET ${sets.join(', ')}, updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    values
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function markUserInitialized(params: {
+  userId: number;
+  assistantName: string;
+}): Promise<boolean> {
+  const hasAssistantName = await hasUserColumn('assistant_name');
+
+  if (hasAssistantName) {
+    const result = await pool.query(
+      `UPDATE users
+       SET assistant_name = $2,
+           is_initialized = true,
+           updated_at = NOW()
+       WHERE id = $1 AND is_initialized = false`,
+      [params.userId, params.assistantName]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  const fallbackResult = await pool.query(
+    `UPDATE users
+     SET is_initialized = true,
+         updated_at = NOW()
+     WHERE id = $1 AND is_initialized = false`,
+    [params.userId]
+  );
+  return (fallbackResult.rowCount || 0) > 0;
 }
 
 export async function listActiveUsers(

@@ -1,4 +1,4 @@
-import type { LoginRequest, RegisterRequest, AuthResponse, User } from '../types/auth';
+import type { LoginRequest, RegisterRequest, AuthResponse, User, UpdateProfileRequest } from '../types/auth';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 const apiUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
@@ -34,6 +34,21 @@ export async function initializeOnboarding(
 ): Promise<{ success: boolean; data?: { sessionId: string }; error?: string }> {
   const res = await fetch(apiUrl('/api/onboarding/initialize'), {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateProfile(
+  token: string,
+  data: UpdateProfileRequest
+): Promise<{ success: boolean; data?: User; error?: string }> {
+  const res = await fetch(apiUrl('/api/auth/profile'), {
+    method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,

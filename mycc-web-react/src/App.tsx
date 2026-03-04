@@ -45,7 +45,6 @@ function App() {
         {user.is_initialized === false && (
           <OnboardingOverlay
             onComplete={refreshUser}
-            userNickname={user.nickname}
           />
         )}
         <Routes>

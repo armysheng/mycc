@@ -8,6 +8,7 @@ CREATE TABLE users (
   email VARCHAR(255) UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   nickname VARCHAR(50),
+  assistant_name VARCHAR(50),
   linux_user VARCHAR(50) UNIQUE NOT NULL,  -- mycc_u{id}
   status VARCHAR(20) DEFAULT 'active',
   is_initialized BOOLEAN DEFAULT false,

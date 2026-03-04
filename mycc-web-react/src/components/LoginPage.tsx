@@ -14,7 +14,6 @@ export function LoginPage() {
   const [credential, setCredential] = useState(isDev ? "+8613800138000" : "");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState(isDev ? "test123456" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,7 +48,7 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await apiRegister({ phone, email, password, nickname });
+      const res = await apiRegister({ phone, email, password });
       if (res.success && res.data) {
         clearStaleSessionQuery();
         login(res.data.token, res.data.user);
@@ -247,19 +246,6 @@ export function LoginPage() {
                   placeholder="选填"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className={inputClassName}
-                  style={{ borderColor: "var(--surface-border)" }}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
-                  昵称
-                </label>
-                <input
-                  type="text"
-                  placeholder="用于页面展示"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
                   className={inputClassName}
                   style={{ borderColor: "var(--surface-border)" }}
                 />

@@ -50,7 +50,10 @@ export function ChatPage() {
   const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  const assistantDisplayName = user?.assistant_name?.trim() || "cc";
+  const assistantAvatarText = assistantDisplayName.trim().slice(0, 2) || "cc";
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -726,7 +729,12 @@ export function ChatPage() {
           </div>
         ) : (
           <>
-            <ChatMessages messages={messages} isLoading={isLoading} />
+            <ChatMessages
+              messages={messages}
+              isLoading={isLoading}
+              assistantDisplayName={assistantDisplayName}
+              assistantAvatarText={assistantAvatarText}
+            />
             <ChatInput
               input={input}
               isLoading={isLoading}

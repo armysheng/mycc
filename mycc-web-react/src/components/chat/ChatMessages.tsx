@@ -25,9 +25,16 @@ import { useSettings } from "../../hooks/useSettings";
 interface ChatMessagesProps {
   messages: AllMessage[];
   isLoading: boolean;
+  assistantDisplayName: string;
+  assistantAvatarText: string;
 }
 
-export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  isLoading,
+  assistantDisplayName,
+  assistantAvatarText,
+}: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const { showToolCalls, autoExpandThinking, fontSize } = useSettings();
@@ -79,7 +86,14 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     } else if (isTodoMessage(message)) {
       return <TodoMessageComponent key={key} message={message} />;
     } else if (isChatMessage(message)) {
-      return <ChatMessageComponent key={key} message={message} />;
+      return (
+        <ChatMessageComponent
+          key={key}
+          message={message}
+          assistantDisplayName={assistantDisplayName}
+          assistantAvatarText={assistantAvatarText}
+        />
+      );
     }
     return null;
   };
@@ -107,13 +121,18 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
       }}
     >
       {visibleMessages.length === 0 ? (
-        <EmptyState />
+        <EmptyState assistantDisplayName={assistantDisplayName} />
       ) : (
         <>
           {/* Spacer div to push messages to the bottom */}
           <div className="flex-1" aria-hidden="true"></div>
           {visibleMessages.map(renderMessage)}
-          {isLoading && <LoadingComponent />}
+          {isLoading && (
+            <LoadingComponent
+              assistantDisplayName={assistantDisplayName}
+              assistantAvatarText={assistantAvatarText}
+            />
+          )}
           <div ref={messagesEndRef} />
         </>
       )}
@@ -121,7 +140,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ assistantDisplayName }: { assistantDisplayName: string }) {
   return (
     <div className="flex-1 flex items-center justify-center text-center text-[var(--text-secondary)]">
       <div>
@@ -130,7 +149,7 @@ function EmptyState() {
             💬
           </span>
         </div>
-        <p className="text-base font-medium">开始与 Claude 对话</p>
+        <p className="text-base font-medium">开始与 {assistantDisplayName} 对话</p>
         <p className="text-sm mt-2 opacity-80">
           在下方输入内容即可开始
         </p>

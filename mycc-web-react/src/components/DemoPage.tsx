@@ -429,7 +429,12 @@ export function DemoPage() {
         )}
 
         {/* Chat Messages */}
-        <ChatMessages messages={messages} isLoading={isLoading} />
+        <ChatMessages
+          messages={messages}
+          isLoading={isLoading}
+          assistantDisplayName="cc"
+          assistantAvatarText="cc"
+        />
 
         {/* Input */}
         <ChatInput

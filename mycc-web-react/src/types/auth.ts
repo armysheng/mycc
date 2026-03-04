@@ -2,10 +2,14 @@ export interface User {
   id: number;
   phone?: string;
   email?: string;
-  nickname?: string;
+  assistant_name?: string;
   linux_user: string;
   plan: 'free' | 'basic' | 'pro';
   is_initialized?: boolean;
+}
+
+export interface UpdateProfileRequest {
+  assistantName?: string;
 }
 
 export interface LoginRequest {
@@ -17,7 +21,6 @@ export interface RegisterRequest {
   phone?: string;
   email?: string;
   password: string;
-  nickname?: string;
 }
 
 export interface AuthResponse {

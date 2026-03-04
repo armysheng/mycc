@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { createUser, findUserByCredential, findUserById, getSubscription } from '../db/client.js';
+import { createUser, findUserByCredential, findUserById, getSubscription, updateUserProfile } from '../db/client.js';
 import { vpsUserManager } from '../vps/user-manager.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
@@ -20,7 +20,6 @@ export async function register(params: {
   phone?: string;
   email?: string;
   password: string;
-  nickname?: string;
 }): Promise<{ token: string; user: any }> {
   // 验证输入
   if (!params.phone && !params.email) {
@@ -46,7 +45,6 @@ export async function register(params: {
     phone: params.phone,
     email: params.email,
     password_hash,
-    nickname: params.nickname,
   });
 
   // 获取订阅信息
@@ -65,7 +63,7 @@ export async function register(params: {
   );
 
   // 异步创建 VPS 用户（不阻塞注册流程）
-  vpsUserManager.createUser(user.linux_user, user.nickname || '用户').catch(err => {
+  vpsUserManager.createUser(user.linux_user, '用户').catch(err => {
     console.error(`❌ 异步创建 VPS 用户失败 (${user.linux_user}):`, err);
   });
 
@@ -75,7 +73,7 @@ export async function register(params: {
       id: user.id,
       phone: user.phone,
       email: user.email,
-      nickname: user.nickname,
+      assistant_name: user.assistant_name,
       linux_user: user.linux_user,
       plan: subscription?.plan,
       is_initialized: user.is_initialized,
@@ -121,7 +119,7 @@ export async function login(params: {
       id: user.id,
       phone: user.phone,
       email: user.email,
-      nickname: user.nickname,
+      assistant_name: user.assistant_name,
       linux_user: user.linux_user,
       plan: subscription?.plan,
       is_initialized: user.is_initialized,
@@ -151,10 +149,42 @@ export async function getCurrentUser(userId: number) {
     id: user.id,
     phone: user.phone,
     email: user.email,
-    nickname: user.nickname,
+    assistant_name: user.assistant_name,
     linux_user: user.linux_user,
     status: user.status,
     is_initialized: user.is_initialized,
+    plan: subscription?.plan || 'free',
+    subscription: subscription ? {
+      plan: subscription.plan,
+      tokens_limit: subscription.tokens_limit,
+      tokens_used: subscription.tokens_used,
+      tokens_remaining: subscription.tokens_limit - subscription.tokens_used,
+      reset_at: subscription.reset_at,
+      expires_at: subscription.expires_at,
+    } : null,
+  };
+}
+
+export async function updateCurrentUserProfile(
+  userId: number,
+  updates: { assistantName?: string }
+) {
+  const user = await updateUserProfile(userId, updates);
+  if (!user) {
+    throw new Error('用户不存在');
+  }
+
+  const subscription = await getSubscription(userId);
+
+  return {
+    id: user.id,
+    phone: user.phone,
+    email: user.email,
+    assistant_name: user.assistant_name,
+    linux_user: user.linux_user,
+    status: user.status,
+    is_initialized: user.is_initialized,
+    plan: subscription?.plan || 'free',
     subscription: subscription ? {
       plan: subscription.plan,
       tokens_limit: subscription.tokens_limit,

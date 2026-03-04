@@ -87,13 +87,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     [updateSettings],
   );
 
-  const setProfileNickname = useCallback(
-    (profileNickname: string) => {
-      updateSettings({ profileNickname });
-    },
-    [updateSettings],
-  );
-
   const value = useMemo(
     (): SettingsContextType => ({
       settings,
@@ -103,7 +96,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       showToolCalls: settings.showToolCalls,
       autoExpandThinking: settings.autoExpandThinking,
       fontSize: settings.fontSize,
-      profileNickname: settings.profileNickname,
       sidebarDefaultOpen: settings.sidebarDefaultOpen,
       setTheme,
       toggleTheme,
@@ -111,7 +103,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       toggleShowToolCalls,
       toggleAutoExpandThinking,
       setFontSize,
-      setProfileNickname,
       updateSettings,
     }),
     [
@@ -123,7 +114,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       toggleShowToolCalls,
       toggleAutoExpandThinking,
       setFontSize,
-      setProfileNickname,
       updateSettings,
     ],
   );
