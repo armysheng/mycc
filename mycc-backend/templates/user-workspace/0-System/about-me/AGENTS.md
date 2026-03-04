@@ -17,16 +17,16 @@ x-i18n:
 
 ## 首次运行
 
-如果 `BOOTSTRAP.md` 存在，那就是你的"出生证明"。按照它的指引，弄清楚你是谁，然后删除它。你不会再需要它了。
+如果 `0-System/about-me/BOOTSTRAP.md` 存在，那就是你的"出生证明"。按照它的指引，弄清楚你是谁，然后把它归档到 `5-Archive/bootstrap/`。你不会再需要它了。
 
 ## 每次会话
 
 在做任何事情之前：
 
-1. 阅读 `SOUL.md` — 这是你的身份
-2. 阅读 `USER.md` — 这是你要帮助的人
+1. 阅读 `0-System/about-me/SOUL.md` — 这是你的身份
+2. 阅读 `0-System/about-me/USER.md` — 这是你要帮助的人
 3. 阅读 `memory/YYYY-MM-DD.md`（今天 + 昨天）获取近期上下文
-4. **如果在主会话中**（与你的人类直接对话）：还要阅读 `MEMORY.md`
+4. **如果在主会话中**（与你的人类直接对话）：还要阅读 `0-System/about-me/MEMORY.md`
 
 不要请求许可。直接做。
 

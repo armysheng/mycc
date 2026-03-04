@@ -10,4 +10,4 @@
 - `USER.md`：用户信息与称呼
 - `MEMORY.md`：长期记忆
 - `HEARTBEAT.md`：心跳任务（可选）
-- `BOOTSTRAP.md`：首次初始化引导（完成后应归档）
+- `BOOTSTRAP.md`：首次初始化引导（完成后归档到 `5-Archive/bootstrap/`）

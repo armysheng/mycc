@@ -21,6 +21,7 @@ import {
   validatePathPrefix,
 } from '../utils/validation.js';
 import { getSSHPool } from '../ssh/pool.js';
+import { createSkillsService } from '../skills/index.js';
 import {
   buildBootstrapContextFiles,
   buildProjectContextPrompt,
@@ -68,6 +69,13 @@ type CachedContextPrompt = {
 
 const contextPromptCache = new Map<string, CachedContextPrompt>();
 const sessionInjectionMarks = new Map<string, number>();
+const skillsService = createSkillsService();
+const SKILL_INSTALL_SKIP_KEYWORDS = ['如何', '怎么', '怎样', '为什么', '无法', '失败', '报错', '不能', '教程', '文档'];
+const SKILL_INSTALL_PATTERNS: RegExp[] = [
+  /(?:^|[\s，,。.!！?？])(?:请\s*)?(?:帮我\s*)?(?:麻烦\s*)?(?:安装|装上|添加)\s*([^\s，,。.!！?？]{2,64})\s*(?:技能|skill)/i,
+  /(?:安装|添加)\s*(?:技能|skill)\s*[:：]?\s*([^\s，,。.!！?？]{2,64})/i,
+  /\binstall\s+([a-z0-9._-]{2,64})\s+skill\b/i,
+];
 
 function isHistoryMessage(value: unknown): value is HistoryMessage {
   if (!value || typeof value !== 'object') return false;
@@ -86,6 +94,46 @@ function extractConversationTitle(message: string): string {
   const source = cleaned || normalized;
   const maxLength = 40;
   return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
+}
+
+function normalizeInstallSkillKeyword(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[`"'“”‘’《》【\[]+/, '')
+    .replace(/[`"'“”‘’》】\]]+$/, '')
+    .slice(0, 64);
+}
+
+export function extractSkillInstallKeyword(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed || trimmed.startsWith('/')) return null;
+  if (!/(安装|添加|install)/i.test(trimmed) || !/(技能|skill)/i.test(trimmed)) return null;
+  if (SKILL_INSTALL_SKIP_KEYWORDS.some((keyword) => trimmed.includes(keyword))) return null;
+
+  for (const pattern of SKILL_INSTALL_PATTERNS) {
+    const matched = trimmed.match(pattern);
+    const keyword = normalizeInstallSkillKeyword(matched?.[1] || '');
+    if (keyword) {
+      return keyword;
+    }
+  }
+
+  return null;
+}
+
+export function buildSkillInstallerBootstrapMessage(keyword: string, originalMessage: string): string {
+  return [
+    '/skill-installer',
+    '',
+    `目标技能关键词：${keyword}`,
+    '请按以下流程执行并直接安装：',
+    '1. 先搜索可安装来源（优先已配置市场，其次社区仓库）。',
+    '2. 找到最匹配项后直接安装，并确认 SKILL.md 已落到 .claude/skills/<skill-id>/。',
+    '3. 回答中给出最终 skill-id、来源地址、安装结果。',
+    '4. 如未找到精确匹配，返回前 3 个候选并说明差异。',
+    '',
+    `用户原始请求：${originalMessage}`,
+  ].join('\n');
 }
 
 async function loadWorkspaceBootstrapFilesFromRemote(params: {
@@ -282,6 +330,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
       // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
       const cwd = path.join('/home', linuxUser, 'workspace');
       let enhancedMessage = body.message;
+      const installSkillKeyword = extractSkillInstallKeyword(body.message);
+      if (installSkillKeyword) {
+        try {
+          await skillsService.ensureBuiltinSkills({ userId, linuxUser });
+        } catch (seedErr) {
+          console.warn(`[Chat] ensure builtin skills skipped userId=${userId}:`, seedErr);
+        }
+        enhancedMessage = buildSkillInstallerBootstrapMessage(installSkillKeyword, body.message);
+      }
+
       let didInjectProjectContext = false;
       try {
         const shouldInjectProjectContext = !hasInjectedProjectContextForSession(userId, body.sessionId);
@@ -291,8 +349,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
             linuxUser,
             workspaceDir: cwd,
           });
-          const mergedMessage = injectProjectContextPrompt(body.message, projectContextPrompt);
-          didInjectProjectContext = mergedMessage !== body.message;
+          const mergedMessage = injectProjectContextPrompt(enhancedMessage, projectContextPrompt);
+          didInjectProjectContext = mergedMessage !== enhancedMessage;
           enhancedMessage = mergedMessage;
         }
       } catch (bootstrapErr) {
