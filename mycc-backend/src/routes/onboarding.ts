@@ -187,7 +187,10 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         sessionId: bootstrapSessionId,
         title: '初始化助手',
       });
-      await markUserInitialized(request.user.userId);
+      await markUserInitialized({
+        userId: request.user.userId,
+        assistantName: body.assistantName,
+      });
 
       return reply.send({
         success: true,
