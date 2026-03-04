@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { findUserById, markUserInitialized, upsertConversation } from '../db/client.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
-import { extractSessionId } from '../adapters/stream-parser.js';
+import { extractSessionId, type SSEEvent } from '../adapters/stream-parser.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
@@ -41,6 +41,24 @@ export function buildBootstrapPrompt(params: { assistantName: string; ownerName:
     '',
     '输出要求：最后用简洁中文汇报“已完成初始化”，并列出你实际修改的文件路径。',
   ].join('\n');
+}
+
+export function extractBootstrapError(event: SSEEvent): string | null {
+  if (event.type === 'error') {
+    return typeof event.error === 'string' ? event.error : 'bootstrap 执行失败';
+  }
+
+  if (event.type === 'result' && event.is_error === true) {
+    if (typeof event.result === 'string' && event.result.trim()) {
+      return event.result;
+    }
+    if (typeof event.error === 'string' && event.error.trim()) {
+      return event.error;
+    }
+    return 'bootstrap 执行失败';
+  }
+
+  return null;
 }
 
 export async function onboardingRoutes(fastify: FastifyInstance) {
@@ -141,8 +159,9 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         if (sessionId) {
           bootstrapSessionId = sessionId;
         }
-        if (event.type === 'error') {
-          bootstrapError = typeof event.error === 'string' ? event.error : 'bootstrap 执行失败';
+        const eventError = extractBootstrapError(event);
+        if (eventError) {
+          bootstrapError = eventError;
           break;
         }
       }
