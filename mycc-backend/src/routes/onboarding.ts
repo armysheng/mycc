@@ -1,7 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { findUserById, markUserInitialized } from '../db/client.js';
+import { findUserById, markUserInitialized, upsertConversation } from '../db/client.js';
+import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
+import { extractSessionId, type SSEEvent } from '../adapters/stream-parser.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
@@ -15,6 +17,49 @@ const initializeSchema = z.object({
     z.string().min(1, '称呼不能为空').max(20, '称呼最长 20 字符')
   ),
 });
+
+type InitializeSuccessResponse = {
+  success: true;
+  data: {
+    sessionId: string;
+  };
+};
+
+export function buildBootstrapPrompt(params: { assistantName: string; ownerName: string }): string {
+  const assistantName = params.assistantName.trim();
+  const ownerName = params.ownerName.trim();
+  return [
+    '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。',
+    '',
+    '请按顺序执行：',
+    '1. 阅读并遵循 0-System/about-me/BOOTSTRAP.md。',
+    '2. 按以下信息个性化初始化：',
+    `   - 助手名称：${assistantName}`,
+    `   - 用户称呼：${ownerName}`,
+    '3. 更新 0-System/about-me/IDENTITY.md、0-System/about-me/USER.md、0-System/about-me/MEMORY.md。',
+    '4. 初始化完成后，把 0-System/about-me/BOOTSTRAP.md 归档到 5-Archive/bootstrap/，不要保留在原位置。',
+    '',
+    '输出要求：最后用简洁中文汇报“已完成初始化”，并列出你实际修改的文件路径。',
+  ].join('\n');
+}
+
+export function extractBootstrapError(event: SSEEvent): string | null {
+  if (event.type === 'error') {
+    return typeof event.error === 'string' ? event.error : 'bootstrap 执行失败';
+  }
+
+  if (event.type === 'result' && event.is_error === true) {
+    if (typeof event.result === 'string' && event.result.trim()) {
+      return event.result;
+    }
+    if (typeof event.error === 'string' && event.error.trim()) {
+      return event.error;
+    }
+    return 'bootstrap 执行失败';
+  }
+
+  return null;
+}
 
 export async function onboardingRoutes(fastify: FastifyInstance) {
   fastify.post('/api/onboarding/initialize', {
@@ -37,43 +82,8 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
 
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
       const workspaceDir = `/home/${linuxUser}/workspace`;
-      const claudeMdPath = `/home/${linuxUser}/workspace/CLAUDE.md`;
+      const claudeMdPath = `${workspaceDir}/CLAUDE.md`;
       const templateDir = '/opt/mycc/templates/user-workspace';
-
-      // 使用 node -e 做文件替换，避免 shell 插值注入风险
-      // 将用户输入 Base64 编码后传入，在 node 内部解码并做纯字符串替换
-      const assistantB64 = Buffer.from(body.assistantName).toString('base64');
-      const ownerB64 = Buffer.from(body.ownerName).toString('base64');
-
-      const nodeScript = [
-        `const fs=require("fs");`,
-        `const a=Buffer.from("${assistantB64}","base64").toString();`,
-        `const o=Buffer.from("${ownerB64}","base64").toString();`,
-        `const f="${claudeMdPath}";`,
-        `const ws="${workspaceDir}";`,
-        `let c=fs.readFileSync(f,"utf8");`,
-        `c=c.split("{{USERNAME}}").join(o);`,
-        `if(c.includes("{{ASSISTANT_NAME}}")||c.includes("{{OWNER_NAME}}")){`,
-        `  c=c.split("{{ASSISTANT_NAME}}").join(a);`,
-        `  c=c.split("{{OWNER_NAME}}").join(o);`,
-        `}else{`,
-        `  c=c.replace(/我叫\\s+\\*\\*[^*]+\\*\\*，是\\s+.*?\\s+的个人助手（Claude Code 的简称）。/g,"我叫 **"+a+"**，是 "+o+" 的个人助手（Claude Code 的简称）。");`,
-        `  c=c.replace(/我和\\s+.*?\\s+是搭档，一起写代码、做项目、把事情做成。/g,"我和 "+o+" 是搭档，一起写代码、做项目、把事情做成。");`,
-        `}`,
-        `fs.writeFileSync(f,c);`,
-        `const identityPath=ws+"/IDENTITY.md";`,
-        `const userPath=ws+"/USER.md";`,
-        `const memoryPath=ws+"/MEMORY.md";`,
-        `if(!fs.existsSync(identityPath)){`,
-        `  fs.writeFileSync(identityPath,["# IDENTITY.md - 我是谁？","","- **名称：** "+a,"- **生物类型：** AI 助手","- **气质：** 可靠、直接、务实","- **表情符号：** 🤖",""].join("\\n"));`,
-        `}`,
-        `if(!fs.existsSync(userPath)){`,
-        `  fs.writeFileSync(userPath,["# USER.md - 关于你的用户","","- **姓名：** "+o,"- **称呼方式：** "+o,"- **代词：** （可选）","- **时区：** Asia/Shanghai","- **备注：**",""].join("\\n"));`,
-        `}`,
-        `if(!fs.existsSync(memoryPath) || !fs.readFileSync(memoryPath,"utf8").trim()){`,
-        `  fs.writeFileSync(memoryPath,["# MEMORY.md","","## 长期偏好","- 助手名称："+a,"- 对用户称呼："+o,"- 回复风格：先结论，后细节，保持简洁。",""].join("\\n"));`,
-        `}`,
-      ].join('');
 
       const sshPool = getSSHPool();
       const connection = await sshPool.acquire();
@@ -88,9 +98,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         let preflight = await sshPool.exec(connection, preflightCmd);
         if (preflight.exitCode !== 0) {
           // 尝试一次自愈：补齐 workspace 和模板，再次校验。
-          const safeNickname = (user.nickname || '用户')
-            .replace(/[/&\\]/g, '\\$&')
-            .replace(/'/g, `'\"'\"'`);
           const repairCmd = [
             // 容错注册并发创建：避免「id 检查通过时序变化导致 useradd 报已存在」中断整条命令
             `(id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)} || true)`,
@@ -99,7 +106,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
             `sudo test -d "${templateDir}"`,
             `sudo cp -rn "${templateDir}/." "${workspaceDir}/"`,
             `sudo cp "${templateDir}/CLAUDE.md" "${claudeMdPath}"`,
-            `sudo find "${workspaceDir}" -type f \\( -name '*.md' -o -name '*.json' \\) -exec sed -i 's/{{USERNAME}}/${safeNickname}/g' {} +`,
             `sudo chown -R ${escapeShellArg(linuxUser)}:mycc /home/${escapeShellArg(linuxUser)}`,
           ].join(' && ');
 
@@ -132,24 +138,63 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
             error: '初始化目录权限异常，请联系管理员',
           });
         }
-
-        const cmd = `sudo -n -u ${escapeShellArg(linuxUser)} node -e '${nodeScript}'`;
-        const result = await sshPool.exec(connection, cmd);
-        if (result.exitCode !== 0) {
-          console.error(`❌ Onboarding 变量替换失败: ${result.stderr}`);
-          return reply.status(500).send({
-            success: false,
-            error: '初始化文件写入失败，请重试',
-          });
-        }
       } finally {
         sshPool.release(connection);
       }
 
-      // 只有文件替换成功才标记初始化完成
+      const bootstrapPrompt = buildBootstrapPrompt({
+        assistantName: body.assistantName,
+        ownerName: body.ownerName,
+      });
+
+      const adapter = new RemoteClaudeAdapter();
+      let bootstrapSessionId: string | null = null;
+      let bootstrapError: string | null = null;
+      for await (const event of adapter.chat({
+        message: bootstrapPrompt,
+        cwd: workspaceDir,
+        linuxUser,
+      })) {
+        const sessionId = extractSessionId(event);
+        if (sessionId) {
+          bootstrapSessionId = sessionId;
+        }
+        const eventError = extractBootstrapError(event);
+        if (eventError) {
+          bootstrapError = eventError;
+          break;
+        }
+      }
+
+      if (bootstrapError) {
+        console.error(`❌ Onboarding bootstrap 失败 userId=${request.user.userId}: ${bootstrapError}`);
+        return reply.status(500).send({
+          success: false,
+          error: '初始化执行失败，请重试',
+        });
+      }
+
+      if (!bootstrapSessionId) {
+        console.error(`❌ Onboarding bootstrap 未生成会话 userId=${request.user.userId}`);
+        return reply.status(500).send({
+          success: false,
+          error: '初始化未完成，请重试',
+        });
+      }
+
+      await upsertConversation({
+        userId: request.user.userId,
+        sessionId: bootstrapSessionId,
+        title: '初始化助手',
+      });
       await markUserInitialized(request.user.userId);
 
-      return reply.send({ success: true });
+      return reply.send({
+        success: true,
+        data: {
+          sessionId: bootstrapSessionId,
+        },
+      } satisfies InitializeSuccessResponse);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return reply.status(400).send({
