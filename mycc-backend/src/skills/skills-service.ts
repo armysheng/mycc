@@ -18,6 +18,15 @@ export class SkillsService implements ISkillsService {
     return registryMarketSkills();
   }
 
+  async ensureBuiltinSkills(context: SkillsContext): Promise<number> {
+    this.validateContext(context);
+    return this.executeSkillOperation(
+      () => this.store.ensureBuiltinSkills(context.linuxUser),
+      ACTION_TIMEOUT_MS,
+      '初始化内置技能超时，请稍后重试'
+    );
+  }
+
   async listSkills(context: SkillsContext): Promise<SkillsListResult> {
     this.validateContext(context);
     const cacheKey = context.linuxUser;

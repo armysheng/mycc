@@ -2,6 +2,7 @@ import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListRe
 
 export interface ISkillsService {
   getMarketSkills(): SkillDefinition[];
+  ensureBuiltinSkills(context: SkillsContext): Promise<number>;
   listSkills(context: SkillsContext): Promise<SkillsListResult>;
   searchSkills(context: SkillsContext, query: string): Promise<SkillInfo[]>;
   installSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult>;
