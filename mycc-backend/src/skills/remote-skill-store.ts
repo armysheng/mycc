@@ -85,6 +85,21 @@ export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
   private clawhubAdapter = new ClawHubAdapter();
 
+  async ensureBuiltinSkills(linuxUser: string): Promise<number> {
+    const sshPool = getSSHPool();
+    const connection = await sshPool.acquire();
+
+    try {
+      const run: ExecFn = (command) => sshPool.exec(connection, command);
+      const runAsUser: ExecFn = (command) =>
+        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+      const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
+      return this.seedBuiltinSkills(run, runAsUser, linuxUser, catalogDir);
+    } finally {
+      sshPool.release(connection);
+    }
+  }
+
   async listSkillInfos(linuxUser: string): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
     const sshPool = getSSHPool();
     const connection = await sshPool.acquire();

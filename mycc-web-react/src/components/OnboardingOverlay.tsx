@@ -174,14 +174,21 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     setError('');
 
     try {
+      const finalAssistantName = assistantName || defaultAssistantName;
+      const finalOwnerName = ownerName || defaultOwnerName;
       const res = await initializeOnboarding(token, {
-        assistantName: assistantName || defaultAssistantName,
-        ownerName: ownerName || defaultOwnerName,
+        assistantName: finalAssistantName,
+        ownerName: finalOwnerName,
       });
       if (res.success) {
         await onComplete();
-        if (res.data?.sessionId) {
-          navigate(`/?sessionId=${encodeURIComponent(res.data.sessionId)}`, { replace: true });
+        if (res.data?.bootstrapPrompt) {
+          navigate('/', {
+            replace: true,
+            state: { onboardingBootstrapPrompt: res.data.bootstrapPrompt },
+          });
+        } else {
+          navigate('/', { replace: true });
         }
       } else {
         setError(res.error || '初始化失败，请重试');
@@ -199,14 +206,21 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     setError('');
 
     try {
+      const finalAssistantName = defaultAssistantName;
+      const finalOwnerName = defaultOwnerName;
       const res = await initializeOnboarding(token, {
-        assistantName: defaultAssistantName,
-        ownerName: defaultOwnerName,
+        assistantName: finalAssistantName,
+        ownerName: finalOwnerName,
       });
       if (res.success) {
         await onComplete();
-        if (res.data?.sessionId) {
-          navigate(`/?sessionId=${encodeURIComponent(res.data.sessionId)}`, { replace: true });
+        if (res.data?.bootstrapPrompt) {
+          navigate('/', {
+            replace: true,
+            state: { onboardingBootstrapPrompt: res.data.bootstrapPrompt },
+          });
+        } else {
+          navigate('/', { replace: true });
         }
       } else {
         setError(res.error || '初始化失败，请重试');

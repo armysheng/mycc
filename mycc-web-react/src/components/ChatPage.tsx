@@ -51,6 +51,7 @@ export function ChatPage() {
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
   const { token, user } = useAuth();
+  const onboardingBootstrapStartedRef = useRef(false);
 
   const assistantDisplayName = user?.assistant_name?.trim() || "cc";
   const assistantAvatarText = assistantDisplayName.trim().slice(0, 2) || "cc";
@@ -558,6 +559,42 @@ export function ChatPage() {
     setCurrentSessionId(null);
     navigate({ search: "" }, { replace: true });
   }, [sessionId, historyError, navigate, setCurrentSessionId]);
+
+  useEffect(() => {
+    const state = location.state as { onboardingBootstrapPrompt?: string } | null;
+    const bootstrapPrompt =
+      typeof state?.onboardingBootstrapPrompt === "string"
+        ? state.onboardingBootstrapPrompt.trim()
+        : "";
+    if (!bootstrapPrompt) return;
+    if (onboardingBootstrapStartedRef.current) return;
+    if (isHistoryView || historyLoading || isLoading) return;
+    if (sessionId || currentSessionId) return;
+    if (messages.length > 0) return;
+
+    onboardingBootstrapStartedRef.current = true;
+    navigate(location.pathname + location.search, { replace: true, state: null });
+    addMessage({
+      type: "chat",
+      role: "assistant",
+      content: "正在初始化你的助手配置，请稍候，我会实时汇报进度。",
+      timestamp: Date.now(),
+    });
+    void sendMessage(bootstrapPrompt, undefined, true);
+  }, [
+    location.state,
+    location.pathname,
+    location.search,
+    navigate,
+    isHistoryView,
+    historyLoading,
+    isLoading,
+    sessionId,
+    currentSessionId,
+    messages.length,
+    addMessage,
+    sendMessage,
+  ]);
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">

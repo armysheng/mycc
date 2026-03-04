@@ -31,7 +31,7 @@ export async function getCurrentUser(token: string): Promise<{ success: boolean;
 export async function initializeOnboarding(
   token: string,
   data: { assistantName: string; ownerName: string }
-): Promise<{ success: boolean; data?: { sessionId: string }; error?: string }> {
+): Promise<{ success: boolean; data?: { bootstrapPrompt: string }; error?: string }> {
   const res = await fetch(apiUrl('/api/onboarding/initialize'), {
     method: 'POST',
     headers: {
