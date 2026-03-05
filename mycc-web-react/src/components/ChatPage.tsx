@@ -25,7 +25,9 @@ import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
+import { getCurrentUser } from "../api/auth";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
+import { setOnboardingBootstrapPending } from "../utils/onboardingBootstrapState";
 
 export function ChatPage() {
   const location = useLocation();
@@ -50,7 +52,7 @@ export function ChatPage() {
   const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
-  const { token, user } = useAuth();
+  const { token, user, refreshUser } = useAuth();
   const onboardingBootstrapStartedRef = useRef(false);
 
   const assistantDisplayName = user?.assistant_name?.trim() || "cc";
@@ -580,7 +582,23 @@ export function ChatPage() {
       content: "正在初始化你的助手配置，请稍候，我会实时汇报进度。",
       timestamp: Date.now(),
     });
-    void sendMessage(bootstrapPrompt, undefined, true);
+    void (async () => {
+      await sendMessage(bootstrapPrompt, undefined, true);
+      try {
+        if (token) {
+          const me = await getCurrentUser(token);
+          if (me.success && me.data?.is_initialized) {
+            await refreshUser();
+            setOnboardingBootstrapPending(false);
+            return;
+          }
+        }
+      } catch (_err) {
+        // ignore
+      }
+      // 初始化未完成时恢复 onboarding 引导，允许用户重试
+      setOnboardingBootstrapPending(false);
+    })();
   }, [
     location.state,
     location.pathname,
@@ -594,6 +612,8 @@ export function ChatPage() {
     messages.length,
     addMessage,
     sendMessage,
+    token,
+    refreshUser,
   ]);
 
   return (

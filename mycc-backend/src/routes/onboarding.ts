@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { findUserById, markUserInitialized } from '../db/client.js';
+import { findUserById } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
@@ -165,10 +165,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         assistantName: body.assistantName,
         ownerName: body.ownerName,
         linuxUser,
-      });
-      await markUserInitialized({
-        userId: request.user.userId,
-        assistantName: body.assistantName,
       });
 
       return reply.send({

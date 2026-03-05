@@ -7,6 +7,7 @@ import {
   checkQuota,
   findUserById,
   logUsage,
+  markUserInitialized,
   renameConversation,
   upsertConversation,
   updateConversationStats,
@@ -77,6 +78,7 @@ const SKILL_INSTALL_PATTERNS: RegExp[] = [
   /(?:安装|添加)\s*(?:技能|skill)\s*[:：]?\s*([^\s，,。.!！?？]{2,64})/i,
   /\binstall\s+([a-z0-9._-]{2,64})\s+skill\b/i,
 ];
+const ONBOARDING_BOOTSTRAP_MARKER = '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。';
 
 function isHistoryMessage(value: unknown): value is HistoryMessage {
   if (!value || typeof value !== 'object') return false;
@@ -135,6 +137,71 @@ export function buildSkillInstallerBootstrapMessage(keyword: string, originalMes
     '',
     `用户原始请求：${originalMessage}`,
   ].join('\n');
+}
+
+export type OnboardingBootstrapRequest = {
+  assistantName: string;
+};
+
+export function parseOnboardingBootstrapRequest(message: string): OnboardingBootstrapRequest | null {
+  if (!message.includes(ONBOARDING_BOOTSTRAP_MARKER)) return null;
+  const assistantMatched = message.match(/-\s*助手名称：([^\n\r]+)/);
+  const assistantName = assistantMatched?.[1]?.trim();
+  if (!assistantName) return null;
+  return { assistantName };
+}
+
+async function verifyOnboardingWorkspaceState(params: {
+  linuxUser: string;
+  workspaceDir: string;
+}): Promise<{ ok: boolean; reason?: string }> {
+  const sshPool = getSSHPool();
+  const connection = await sshPool.acquire();
+  try {
+    const aboutMeDir = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+    const script = [
+      'const fs=require("fs");',
+      `const aboutMeDir=${JSON.stringify(aboutMeDir)};`,
+      'const checks=[',
+      '  `${aboutMeDir}/README.md`,',
+      '  `${aboutMeDir}/AGENTS.md`,',
+      '  `${aboutMeDir}/IDENTITY.md`,',
+      '  `${aboutMeDir}/USER.md`,',
+      '  `${aboutMeDir}/MEMORY.md`,',
+      '  `${aboutMeDir}/SOUL.md`,',
+      '  `${aboutMeDir}/TOOLS.md`,',
+      '  `${aboutMeDir}/HEARTBEAT.md`,',
+      '  `${aboutMeDir}/../memory`,',
+      '];',
+      'for(const p of checks){',
+      '  if(!fs.existsSync(p)){',
+      '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
+      '    process.exit(0);',
+      '  }',
+      '}',
+      'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
+      'if(fs.existsSync(bootstrapPath)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));',
+      '  process.exit(0);',
+      '}',
+      'process.stdout.write(JSON.stringify({ok:true}));',
+    ].join('');
+
+    const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
+    const result = await sshPool.exec(connection, cmd);
+    if (result.exitCode !== 0) {
+      return { ok: false, reason: result.stderr || 'verify_failed' };
+    }
+    const parsed = JSON.parse(result.stdout || '{}') as { ok?: boolean; reason?: string };
+    return {
+      ok: Boolean(parsed.ok),
+      reason: parsed.reason,
+    };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  } finally {
+    sshPool.release(connection);
+  }
 }
 
 async function loadWorkspaceBootstrapFilesFromRemote(params: {
@@ -331,6 +398,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
       const cwd = path.join('/home', linuxUser, 'workspace');
       let enhancedMessage = body.message;
+      const onboardingBootstrapRequest = parseOnboardingBootstrapRequest(body.message);
       const installSkillKeyword = extractSkillInstallKeyword(body.message);
       if (installSkillKeyword) {
         try {
@@ -377,6 +445,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
       let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+      let streamHasError = false;
+      let streamResultHasError = false;
 
       try {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
@@ -408,6 +478,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
             model = modelName;
           }
 
+          if (event.type === 'error') {
+            streamHasError = true;
+          }
+          if (event.type === 'result' && event.is_error === true) {
+            streamResultHasError = true;
+          }
+
           // 发送事件
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
@@ -425,6 +502,26 @@ export async function chatRoutes(fastify: FastifyInstance) {
           }
           if (didInjectProjectContext) {
             markProjectContextInjectedForSession(userId, currentSessionId);
+          }
+        }
+
+        if (onboardingBootstrapRequest) {
+          if (!streamHasError && !streamResultHasError) {
+            const verification = await verifyOnboardingWorkspaceState({
+              linuxUser,
+              workspaceDir: cwd,
+            });
+            if (verification.ok) {
+              await markUserInitialized({
+                userId,
+                assistantName: onboardingBootstrapRequest.assistantName,
+              });
+            } else {
+              const message = `初始化尚未完成：${verification.reason || '关键文件缺失或 BOOTSTRAP 未归档'}`;
+              reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+            }
+          } else {
+            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: '初始化流程执行失败，请重试 onboarding。' })}\n\n`);
           }
         }
 
