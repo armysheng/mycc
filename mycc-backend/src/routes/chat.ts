@@ -47,6 +47,7 @@ type HistoryMessage = {
 };
 
 const REQUIRED_BOOTSTRAP_FILE_NAMES = [
+  'README.md',
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',

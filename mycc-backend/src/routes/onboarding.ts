@@ -46,6 +46,7 @@ export function buildBootstrapPrompt(params: { assistantName: string; ownerName:
     `   - 助手名称：${assistantName}`,
     `   - 用户称呼：${ownerName}`,
     '3. 更新 0-System/about-me/IDENTITY.md、0-System/about-me/USER.md、0-System/about-me/MEMORY.md。',
+    '   - 确保存在 0-System/memory/ 目录，并写入一条当天初始化记录（YYYY-MM-DD.md）。',
     '4. 执行冲突对齐（必须）：',
     `   - 校验并修正 ${workspaceDir}/CLAUDE.md：保持 bridge-only，不要写死助手名/用户称呼。`,
     `   - 若 ${legacyGlobalMemoryPath} 存在：将“助手名称/对用户称呼/交互角色设定”同步为与 about-me 一致。`,
