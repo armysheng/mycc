@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBootstrapPrompt } from './onboarding.js';
+import { buildBootstrapPrompt, resolveOnboardingReplayMode } from './onboarding.js';
 
 describe('onboarding bootstrap prompt', () => {
   it('embeds assistant and owner names into first-turn bootstrap message', () => {
@@ -19,5 +19,21 @@ describe('onboarding bootstrap prompt', () => {
     expect(prompt).toContain('确保存在 0-System/memory/ 目录');
     expect(prompt).toContain('初始化票据：ticket-123');
     expect(prompt).toContain('已完成初始化');
+  });
+});
+
+describe('resolveOnboardingReplayMode', () => {
+  it('defaults to keep when user is already initialized', () => {
+    expect(resolveOnboardingReplayMode({ userInitialized: true })).toBe('keep');
+  });
+
+  it('defaults to modify when user is not initialized', () => {
+    expect(resolveOnboardingReplayMode({ userInitialized: false })).toBe('modify');
+  });
+
+  it('respects explicit replay mode', () => {
+    expect(resolveOnboardingReplayMode({ userInitialized: true, requestedMode: 'modify' })).toBe('modify');
+    expect(resolveOnboardingReplayMode({ userInitialized: true, requestedMode: 'reset' })).toBe('reset');
+    expect(resolveOnboardingReplayMode({ userInitialized: false, requestedMode: 'keep' })).toBe('modify');
   });
 });

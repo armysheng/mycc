@@ -386,7 +386,7 @@ export async function markUserInitialized(params: {
        SET assistant_name = $2,
            is_initialized = true,
            updated_at = NOW()
-       WHERE id = $1 AND is_initialized = false`,
+       WHERE id = $1`,
       [params.userId, params.assistantName]
     );
     return (result.rowCount || 0) > 0;
@@ -396,10 +396,21 @@ export async function markUserInitialized(params: {
     `UPDATE users
      SET is_initialized = true,
          updated_at = NOW()
-     WHERE id = $1 AND is_initialized = false`,
+     WHERE id = $1`,
     [params.userId]
   );
   return (fallbackResult.rowCount || 0) > 0;
+}
+
+export async function markUserUninitialized(userId: number): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE users
+     SET is_initialized = false,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [userId]
+  );
+  return (result.rowCount || 0) > 0;
 }
 
 export async function listActiveUsers(

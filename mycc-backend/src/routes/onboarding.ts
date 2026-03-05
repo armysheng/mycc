@@ -1,10 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { findUserById } from '../db/client.js';
+import { findUserById, markUserUninitialized } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 import { clearExpiredOnboardingBootstrapTickets, issueOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
+
+export const onboardingReplayModeSchema = z.enum(['keep', 'modify', 'reset']);
+export type OnboardingReplayMode = z.infer<typeof onboardingReplayModeSchema>;
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -15,18 +18,35 @@ const initializeSchema = z.object({
     (val) => typeof val === 'string' ? val.trim() : val,
     z.string().min(1, '称呼不能为空').max(20, '称呼最长 20 字符')
   ),
+  mode: onboardingReplayModeSchema.optional(),
 });
 
 type InitializeSuccessResponse = {
   success: true;
-  data: {
-    bootstrapPrompt: string;
+  message?: string;
+  data?: {
+    mode: OnboardingReplayMode;
+    replayed: boolean;
+    bootstrapPrompt?: string;
   };
 };
 
 function buildLegacyGlobalMemoryPath(linuxUser: string): string {
   const projectUserSegment = linuxUser.replace(/_/g, '-');
   return `/home/${linuxUser}/.claude/projects/-home-${projectUserSegment}-workspace/memory/MEMORY.md`;
+}
+
+export function resolveOnboardingReplayMode(params: {
+  userInitialized: boolean;
+  requestedMode?: OnboardingReplayMode;
+}): OnboardingReplayMode {
+  if (params.requestedMode) {
+    if (params.requestedMode === 'keep' && !params.userInitialized) {
+      return 'modify';
+    }
+    return params.requestedMode;
+  }
+  return params.userInitialized ? 'keep' : 'modify';
 }
 
 export function buildBootstrapPrompt(params: {
@@ -79,8 +99,20 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ success: false, error: '用户不存在' });
       }
 
-      if (user.is_initialized) {
-        return reply.send({ success: true, message: '已初始化' });
+      const replayMode = resolveOnboardingReplayMode({
+        userInitialized: user.is_initialized,
+        requestedMode: body.mode,
+      });
+
+      if (replayMode === 'keep') {
+        return reply.send({
+          success: true,
+          message: '已初始化',
+          data: {
+            mode: replayMode,
+            replayed: false,
+          },
+        } satisfies InitializeSuccessResponse);
       }
 
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
@@ -89,6 +121,10 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const aboutMeDir = `${workspaceDir}/0-System/about-me`;
       const aboutMeBootstrapPath = `${aboutMeDir}/BOOTSTRAP.md`;
       const templateDir = '/opt/mycc/templates/user-workspace';
+      const systemDir = `${workspaceDir}/0-System`;
+      const systemMemoryDir = `${systemDir}/memory`;
+      const systemStatusPath = `${systemDir}/status.md`;
+      const systemContextPath = `${systemDir}/context.md`;
 
       const sshPool = getSSHPool();
       const connection = await sshPool.acquire();
@@ -155,6 +191,25 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
           });
         }
 
+        if (replayMode === 'reset') {
+          const resetCmd = [
+            `sudo rm -rf "${aboutMeDir}" "${systemMemoryDir}"`,
+            `sudo mkdir -p "${systemDir}" "${systemMemoryDir}"`,
+            `sudo cp -r "${templateDir}/0-System/about-me" "${aboutMeDir}"`,
+            `sudo cp "${templateDir}/0-System/status.md" "${systemStatusPath}"`,
+            `sudo cp "${templateDir}/0-System/context.md" "${systemContextPath}"`,
+            `sudo cp "${templateDir}/CLAUDE.md" "${claudeMdPath}"`,
+          ].join(' && ');
+          const resetRes = await sshPool.exec(connection, resetCmd);
+          if (resetRes.exitCode !== 0) {
+            console.error(`❌ Onboarding reset 失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${resetRes.stderr}`);
+            return reply.status(500).send({
+              success: false,
+              error: '初始化重置失败，请重试',
+            });
+          }
+        }
+
         const ensureOwnerCmd = `sudo chown -R ${escapeShellArg(linuxUser)}:mycc "${workspaceDir}"`;
         const ensureOwner = await sshPool.exec(connection, ensureOwnerCmd);
         if (ensureOwner.exitCode !== 0) {
@@ -166,6 +221,10 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         }
       } finally {
         sshPool.release(connection);
+      }
+
+      if (replayMode === 'reset') {
+        await markUserUninitialized(request.user.userId);
       }
 
       clearExpiredOnboardingBootstrapTickets();
@@ -184,6 +243,8 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
+          mode: replayMode,
+          replayed: true,
           bootstrapPrompt,
         },
       } satisfies InitializeSuccessResponse);
