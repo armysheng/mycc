@@ -13,6 +13,7 @@ const BOOTSTRAP_HEAD_RATIO = 0.7;
 const BOOTSTRAP_TAIL_RATIO = 0.2;
 
 export type WorkspaceBootstrapFileName =
+  | 'README.md'
   | 'AGENTS.md'
   | 'SOUL.md'
   | 'TOOLS.md'
@@ -106,6 +107,8 @@ export function buildProjectContextPrompt(contextFiles: EmbeddedContextFile[]): 
     '# Project Context',
     '',
     'The following project context files have been loaded:',
+    'Identity consistency rule: `0-System/about-me/` is the single source of truth.',
+    'If any legacy/global memory conflicts (for example `~/.claude/projects/.../memory/MEMORY.md`), follow `about-me` values and ignore conflicting aliases.',
   ];
   if (hasSoulFile) {
     lines.push(

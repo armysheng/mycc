@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { ChatPage } from "./components/ChatPage";
 import { LoginPage } from "./components/LoginPage";
 import { SkillsPage } from "./components/SkillsPage";
@@ -8,6 +8,11 @@ import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
 import { isDevelopment } from "./utils/environment";
+import {
+  getOnboardingBootstrapPending,
+  setOnboardingBootstrapPending,
+  subscribeOnboardingBootstrapPending,
+} from "./utils/onboardingBootstrapState";
 
 // Lazy load DemoPage only in development
 const DemoPage = isDevelopment()
@@ -26,6 +31,21 @@ const WorkspacePage = lazy(() =>
 
 function App() {
   const { user, refreshUser, isLoading } = useAuth();
+  const [onboardingBootstrapPending, setOnboardingBootstrapPendingState] = useState(
+    getOnboardingBootstrapPending(),
+  );
+
+  useEffect(() => {
+    return subscribeOnboardingBootstrapPending((pending) => {
+      setOnboardingBootstrapPendingState(pending);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (user?.is_initialized) {
+      setOnboardingBootstrapPending(false);
+    }
+  }, [user?.is_initialized]);
 
   if (isLoading) {
     return (
@@ -42,9 +62,17 @@ function App() {
   return (
     <SettingsProvider>
       <Router>
-        {user.is_initialized === false && (
+        {user.is_initialized === false && !onboardingBootstrapPending && (
           <OnboardingOverlay
-            onComplete={refreshUser}
+            onComplete={async () => {
+              setOnboardingBootstrapPending(true);
+              try {
+                await refreshUser();
+              } catch (err) {
+                setOnboardingBootstrapPending(false);
+                throw err;
+              }
+            }}
           />
         )}
         <Routes>

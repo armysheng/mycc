@@ -7,6 +7,7 @@ import {
   checkQuota,
   findUserById,
   logUsage,
+  markUserInitialized,
   renameConversation,
   upsertConversation,
   updateConversationStats,
@@ -28,6 +29,7 @@ import {
   injectProjectContextPrompt,
   type WorkspaceBootstrapFile,
 } from '../chat/openclaw-context.js';
+import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 // 发送消息请求验证
 const chatSchema = z.object({
@@ -47,6 +49,7 @@ type HistoryMessage = {
 };
 
 const REQUIRED_BOOTSTRAP_FILE_NAMES = [
+  'README.md',
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
@@ -76,6 +79,7 @@ const SKILL_INSTALL_PATTERNS: RegExp[] = [
   /(?:安装|添加)\s*(?:技能|skill)\s*[:：]?\s*([^\s，,。.!！?？]{2,64})/i,
   /\binstall\s+([a-z0-9._-]{2,64})\s+skill\b/i,
 ];
+const ONBOARDING_BOOTSTRAP_MARKER = '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。';
 
 function isHistoryMessage(value: unknown): value is HistoryMessage {
   if (!value || typeof value !== 'object') return false;
@@ -134,6 +138,100 @@ export function buildSkillInstallerBootstrapMessage(keyword: string, originalMes
     '',
     `用户原始请求：${originalMessage}`,
   ].join('\n');
+}
+
+export type OnboardingBootstrapRequest = {
+  bootstrapToken: string;
+  assistantName: string;
+  ownerName: string;
+};
+
+export function parseOnboardingBootstrapRequest(message: string): OnboardingBootstrapRequest | null {
+  if (!message.includes(ONBOARDING_BOOTSTRAP_MARKER)) return null;
+  const tokenMatched = message.match(/-\s*初始化票据：([^\n\r]+)/);
+  const assistantMatched = message.match(/-\s*助手名称：([^\n\r]+)/);
+  const ownerMatched = message.match(/-\s*用户称呼：([^\n\r]+)/);
+  const bootstrapToken = tokenMatched?.[1]?.trim();
+  const assistantName = assistantMatched?.[1]?.trim();
+  const ownerName = ownerMatched?.[1]?.trim();
+  if (!bootstrapToken || !assistantName || !ownerName) return null;
+  return {
+    bootstrapToken,
+    assistantName,
+    ownerName,
+  };
+}
+
+async function verifyOnboardingWorkspaceState(params: {
+  linuxUser: string;
+  workspaceDir: string;
+  assistantName: string;
+  ownerName: string;
+}): Promise<{ ok: boolean; reason?: string }> {
+  const sshPool = getSSHPool();
+  const connection = await sshPool.acquire();
+  try {
+    const aboutMeDir = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+    const script = [
+      'const fs=require("fs");',
+      `const aboutMeDir=${JSON.stringify(aboutMeDir)};`,
+      `const expectedAssistant=${JSON.stringify(params.assistantName)};`,
+      `const expectedOwner=${JSON.stringify(params.ownerName)};`,
+      'const checks=[',
+      '  `${aboutMeDir}/README.md`,',
+      '  `${aboutMeDir}/AGENTS.md`,',
+      '  `${aboutMeDir}/IDENTITY.md`,',
+      '  `${aboutMeDir}/USER.md`,',
+      '  `${aboutMeDir}/MEMORY.md`,',
+      '  `${aboutMeDir}/SOUL.md`,',
+      '  `${aboutMeDir}/TOOLS.md`,',
+      '  `${aboutMeDir}/HEARTBEAT.md`,',
+      '  `${aboutMeDir}/../memory`,',
+      '];',
+      'for(const p of checks){',
+      '  if(!fs.existsSync(p)){',
+      '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
+      '    process.exit(0);',
+      '  }',
+      '}',
+      'const identity=fs.readFileSync(`${aboutMeDir}/IDENTITY.md`,"utf8");',
+      'const user=fs.readFileSync(`${aboutMeDir}/USER.md`,"utf8");',
+      'const memory=fs.readFileSync(`${aboutMeDir}/MEMORY.md`,"utf8");',
+      'if(!identity.includes(expectedAssistant)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"identity_missing_assistant_name"}));',
+      '  process.exit(0);',
+      '}',
+      'if(!user.includes(expectedOwner)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"user_missing_owner_name"}));',
+      '  process.exit(0);',
+      '}',
+      'if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"memory_missing_identity_fields"}));',
+      '  process.exit(0);',
+      '}',
+      'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
+      'if(fs.existsSync(bootstrapPath)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));',
+      '  process.exit(0);',
+      '}',
+      'process.stdout.write(JSON.stringify({ok:true}));',
+    ].join('');
+
+    const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
+    const result = await sshPool.exec(connection, cmd);
+    if (result.exitCode !== 0) {
+      return { ok: false, reason: result.stderr || 'verify_failed' };
+    }
+    const parsed = JSON.parse(result.stdout || '{}') as { ok?: boolean; reason?: string };
+    return {
+      ok: Boolean(parsed.ok),
+      reason: parsed.reason,
+    };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  } finally {
+    sshPool.release(connection);
+  }
 }
 
 async function loadWorkspaceBootstrapFilesFromRemote(params: {
@@ -330,6 +428,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
       const cwd = path.join('/home', linuxUser, 'workspace');
       let enhancedMessage = body.message;
+      const onboardingBootstrapRequest = parseOnboardingBootstrapRequest(body.message);
       const installSkillKeyword = extractSkillInstallKeyword(body.message);
       if (installSkillKeyword) {
         try {
@@ -376,6 +475,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
       let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+      let streamHasError = false;
+      let streamResultHasError = false;
 
       try {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
@@ -407,6 +508,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
             model = modelName;
           }
 
+          if (event.type === 'error') {
+            streamHasError = true;
+          }
+          if (event.type === 'result' && event.is_error === true) {
+            streamResultHasError = true;
+          }
+
           // 发送事件
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
@@ -424,6 +532,43 @@ export async function chatRoutes(fastify: FastifyInstance) {
           }
           if (didInjectProjectContext) {
             markProjectContextInjectedForSession(userId, currentSessionId);
+          }
+        }
+
+        if (onboardingBootstrapRequest) {
+          if (!streamHasError && !streamResultHasError) {
+            const ticketValidation = consumeOnboardingBootstrapTicket({
+              userId,
+              token: onboardingBootstrapRequest.bootstrapToken,
+              assistantName: onboardingBootstrapRequest.assistantName,
+              ownerName: onboardingBootstrapRequest.ownerName,
+            });
+            if (!ticketValidation.ok) {
+              streamHasError = true;
+              reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: `初始化票据无效：${ticketValidation.reason}` })}\n\n`);
+            }
+
+            if (!streamHasError) {
+              const verification = await verifyOnboardingWorkspaceState({
+                linuxUser,
+                workspaceDir: cwd,
+                assistantName: onboardingBootstrapRequest.assistantName,
+                ownerName: onboardingBootstrapRequest.ownerName,
+              });
+              if (verification.ok) {
+                await markUserInitialized({
+                  userId,
+                  assistantName: onboardingBootstrapRequest.assistantName,
+                });
+              } else {
+                streamHasError = true;
+                const message = `初始化尚未完成：${verification.reason || '关键文件缺失或 BOOTSTRAP 未归档'}`;
+                reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+              }
+            }
+          } else {
+            streamHasError = true;
+            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: '初始化流程执行失败，请重试 onboarding。' })}\n\n`);
           }
         }
 
@@ -446,16 +591,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
           console.log(`[Chat] 用户 ${userId} 使用 ${totalInputTokens + totalOutputTokens} tokens (成本: $${costUsd.toFixed(4)})`);
         }
 
-        // 发送完成事件
-        reply.raw.write(`data: ${JSON.stringify({
-          type: 'done',
-          sessionId: currentSessionId,
-          usage: {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            total_tokens: totalInputTokens + totalOutputTokens,
-          }
-        })}\n\n`);
+        // 发送完成事件（出现错误时不再发送 done，避免前端误判成功）
+        if (!streamHasError) {
+          reply.raw.write(`data: ${JSON.stringify({
+            type: 'done',
+            sessionId: currentSessionId,
+            usage: {
+              input_tokens: totalInputTokens,
+              output_tokens: totalOutputTokens,
+              total_tokens: totalInputTokens + totalOutputTokens,
+            }
+          })}\n\n`);
+        }
         reply.raw.end();
 
       } catch (error) {

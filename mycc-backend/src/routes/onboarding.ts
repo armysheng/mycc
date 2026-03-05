@@ -1,9 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { findUserById, markUserInitialized } from '../db/client.js';
+import { findUserById } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
+import { clearExpiredOnboardingBootstrapTickets, issueOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -23,21 +24,43 @@ type InitializeSuccessResponse = {
   };
 };
 
-export function buildBootstrapPrompt(params: { assistantName: string; ownerName: string }): string {
+function buildLegacyGlobalMemoryPath(linuxUser: string): string {
+  const projectUserSegment = linuxUser.replace(/_/g, '-');
+  return `/home/${linuxUser}/.claude/projects/-home-${projectUserSegment}-workspace/memory/MEMORY.md`;
+}
+
+export function buildBootstrapPrompt(params: {
+  assistantName: string;
+  ownerName: string;
+  linuxUser: string;
+  bootstrapToken: string;
+}): string {
   const assistantName = params.assistantName.trim();
   const ownerName = params.ownerName.trim();
+  const workspaceDir = `/home/${params.linuxUser}/workspace`;
+  const legacyGlobalMemoryPath = buildLegacyGlobalMemoryPath(params.linuxUser);
   return [
     '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。',
+    '',
+    '关键原则（必须遵守）：',
+    '- 以 `0-System/about-me/` 作为唯一身份真相源。',
+    '- 如果发现任何历史文件与本次输入冲突，统一以本次输入为准并覆盖冲突值。',
     '',
     '请按顺序执行：',
     '1. 阅读并遵循 0-System/about-me/BOOTSTRAP.md。',
     '2. 按以下信息个性化初始化：',
     `   - 助手名称：${assistantName}`,
     `   - 用户称呼：${ownerName}`,
+    `   - 初始化票据：${params.bootstrapToken}`,
     '3. 更新 0-System/about-me/IDENTITY.md、0-System/about-me/USER.md、0-System/about-me/MEMORY.md。',
-    '4. 初始化完成后，把 0-System/about-me/BOOTSTRAP.md 归档到 5-Archive/bootstrap/，不要保留在原位置。',
+    '   - 确保存在 0-System/memory/ 目录，并写入一条当天初始化记录（YYYY-MM-DD.md）。',
+    '4. 执行冲突对齐（必须）：',
+    `   - 校验并修正 ${workspaceDir}/CLAUDE.md：保持 bridge-only，不要写死助手名/用户称呼。`,
+    `   - 若 ${legacyGlobalMemoryPath} 存在：将“助手名称/对用户称呼/交互角色设定”同步为与 about-me 一致。`,
+    '   - 清理别名或旧称呼（如“小花”“大辉哥”等）带来的同字段多真值。',
+    '5. 初始化完成后，把 0-System/about-me/BOOTSTRAP.md 归档到 5-Archive/bootstrap/，不要保留在原位置。',
     '',
-    '输出要求：最后用简洁中文汇报“已完成初始化”，并列出你实际修改的文件路径。',
+    '输出要求：最后用简洁中文汇报“已完成初始化”，并列出你实际修改的文件路径与“冲突对齐结果”。',
   ].join('\n');
 }
 
@@ -145,13 +168,17 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         sshPool.release(connection);
       }
 
+      clearExpiredOnboardingBootstrapTickets();
+      const ticket = issueOnboardingBootstrapTicket({
+        userId: request.user.userId,
+        assistantName: body.assistantName.trim(),
+        ownerName: body.ownerName.trim(),
+      });
       const bootstrapPrompt = buildBootstrapPrompt({
         assistantName: body.assistantName,
         ownerName: body.ownerName,
-      });
-      await markUserInitialized({
-        userId: request.user.userId,
-        assistantName: body.assistantName,
+        linuxUser,
+        bootstrapToken: ticket.token,
       });
 
       return reply.send({
