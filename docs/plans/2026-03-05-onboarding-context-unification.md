@@ -184,7 +184,9 @@
 2. 若检测到 `~/.claude/projects/.../memory/MEMORY.md` 与 about-me 冲突：
    - 以 about-me 为准
    - 进行同步或标注忽略
-3. 后续可提供管理员批处理脚本做全量对齐（建议 follow-up）。
+3. 管理员可执行批处理脚本做全量对齐：
+   - `npm -C mycc-backend run reconcile:legacy-identity -- --dry-run`
+   - `npm -C mycc-backend run reconcile:legacy-identity`
 
 ---
 
