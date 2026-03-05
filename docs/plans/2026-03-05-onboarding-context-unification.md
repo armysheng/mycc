@@ -126,14 +126,15 @@
 2. 预检 workspace 与关键模板。
 3. 失败则自愈（建用户、补模板、修权限）。
 4. 执行 legacy 根目录 markdown 迁移到 `0-System/about-me/`。
-5. 生成 bootstrapPrompt（包含冲突对齐规则 + memory 目录初始化要求）。
-6. 标记 `users.is_initialized=true`，并落 `assistant_name`。
+5. 生成 bootstrapPrompt（包含冲突对齐规则 + memory 目录初始化要求 + 初始化票据）。
+6. 不在 initialize 阶段标记 `is_initialized`，仅保存待完成状态。
 
 ## 6.2 前端触发 bootstrap
 
 1. onboarding 成功后进入 chat。
 2. 首轮自动发送 `bootstrapPrompt`（隐藏用户消息）。
 3. 模型在会话内完成初始化文件写入。
+4. 后端在 bootstrap 成功校验后才执行 `markUserInitialized`。
 
 ## 6.3 chat 上下文注入
 
@@ -203,4 +204,3 @@
 2. `is_initialized` 标记时机是否应后移到 bootstrap 成功后。
 3. 对老用户冲突文件是否需要自动修复脚本立即落地。
 4. 是否要把“字段写入边界”加入自动化 lint/检查。
-

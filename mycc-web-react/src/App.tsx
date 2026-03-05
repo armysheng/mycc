@@ -66,7 +66,12 @@ function App() {
           <OnboardingOverlay
             onComplete={async () => {
               setOnboardingBootstrapPending(true);
-              await refreshUser();
+              try {
+                await refreshUser();
+              } catch (err) {
+                setOnboardingBootstrapPending(false);
+                throw err;
+              }
             }}
           />
         )}

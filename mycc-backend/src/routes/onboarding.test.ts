@@ -7,6 +7,7 @@ describe('onboarding bootstrap prompt', () => {
       assistantName: '  cc  ',
       ownerName: '  婷妈  ',
       linuxUser: 'mycc_u2',
+      bootstrapToken: 'ticket-123',
     });
 
     expect(prompt).toContain('助手名称：cc');
@@ -16,6 +17,7 @@ describe('onboarding bootstrap prompt', () => {
     expect(prompt).toContain('/home/mycc_u2/.claude/projects/-home-mycc-u2-workspace/memory/MEMORY.md');
     expect(prompt).toContain('以 `0-System/about-me/` 作为唯一身份真相源');
     expect(prompt).toContain('确保存在 0-System/memory/ 目录');
+    expect(prompt).toContain('初始化票据：ticket-123');
     expect(prompt).toContain('已完成初始化');
   });
 });

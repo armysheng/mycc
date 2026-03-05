@@ -4,6 +4,7 @@ import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { findUserById } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
+import { clearExpiredOnboardingBootstrapTickets, issueOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -28,7 +29,12 @@ function buildLegacyGlobalMemoryPath(linuxUser: string): string {
   return `/home/${linuxUser}/.claude/projects/-home-${projectUserSegment}-workspace/memory/MEMORY.md`;
 }
 
-export function buildBootstrapPrompt(params: { assistantName: string; ownerName: string; linuxUser: string }): string {
+export function buildBootstrapPrompt(params: {
+  assistantName: string;
+  ownerName: string;
+  linuxUser: string;
+  bootstrapToken: string;
+}): string {
   const assistantName = params.assistantName.trim();
   const ownerName = params.ownerName.trim();
   const workspaceDir = `/home/${params.linuxUser}/workspace`;
@@ -45,6 +51,7 @@ export function buildBootstrapPrompt(params: { assistantName: string; ownerName:
     '2. 按以下信息个性化初始化：',
     `   - 助手名称：${assistantName}`,
     `   - 用户称呼：${ownerName}`,
+    `   - 初始化票据：${params.bootstrapToken}`,
     '3. 更新 0-System/about-me/IDENTITY.md、0-System/about-me/USER.md、0-System/about-me/MEMORY.md。',
     '   - 确保存在 0-System/memory/ 目录，并写入一条当天初始化记录（YYYY-MM-DD.md）。',
     '4. 执行冲突对齐（必须）：',
@@ -161,10 +168,17 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         sshPool.release(connection);
       }
 
+      clearExpiredOnboardingBootstrapTickets();
+      const ticket = issueOnboardingBootstrapTicket({
+        userId: request.user.userId,
+        assistantName: body.assistantName.trim(),
+        ownerName: body.ownerName.trim(),
+      });
       const bootstrapPrompt = buildBootstrapPrompt({
         assistantName: body.assistantName,
         ownerName: body.ownerName,
         linuxUser,
+        bootstrapToken: ticket.token,
       });
 
       return reply.send({

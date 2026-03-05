@@ -29,6 +29,8 @@ import { getCurrentUser } from "../api/auth";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 import { setOnboardingBootstrapPending } from "../utils/onboardingBootstrapState";
 
+const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
+
 export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -583,7 +585,29 @@ export function ChatPage() {
       timestamp: Date.now(),
     });
     void (async () => {
-      await sendMessage(bootstrapPrompt, undefined, true);
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        await Promise.race([
+          sendMessage(bootstrapPrompt, undefined, true),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              reject(new Error("onboarding_bootstrap_timeout"));
+            }, ONBOARDING_BOOTSTRAP_TIMEOUT_MS);
+          }),
+        ]);
+      } catch (err) {
+        console.error("[OnboardingBootstrap] send bootstrap prompt failed:", err);
+        addMessage({
+          type: "chat",
+          role: "assistant",
+          content: "初始化执行超时或失败，已恢复引导，请重试。",
+          timestamp: Date.now(),
+        });
+        setOnboardingBootstrapPending(false);
+        return;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       try {
         if (token) {
           const me = await getCurrentUser(token);
@@ -593,10 +617,24 @@ export function ChatPage() {
             return;
           }
         }
-      } catch (_err) {
-        // ignore
+      } catch (err) {
+        console.error("[OnboardingBootstrap] confirm init status failed:", err);
+        addMessage({
+          type: "chat",
+          role: "assistant",
+          content: "初始化状态确认失败，已恢复引导，请重试。",
+          timestamp: Date.now(),
+        });
+        setOnboardingBootstrapPending(false);
+        return;
       }
       // 初始化未完成时恢复 onboarding 引导，允许用户重试
+      addMessage({
+        type: "chat",
+        role: "assistant",
+        content: "初始化尚未完成，已恢复引导，请重试。",
+        timestamp: Date.now(),
+      });
       setOnboardingBootstrapPending(false);
     })();
   }, [

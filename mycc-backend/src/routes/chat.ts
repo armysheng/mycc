@@ -29,6 +29,7 @@ import {
   injectProjectContextPrompt,
   type WorkspaceBootstrapFile,
 } from '../chat/openclaw-context.js';
+import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 // 发送消息请求验证
 const chatSchema = z.object({
@@ -140,20 +141,32 @@ export function buildSkillInstallerBootstrapMessage(keyword: string, originalMes
 }
 
 export type OnboardingBootstrapRequest = {
+  bootstrapToken: string;
   assistantName: string;
+  ownerName: string;
 };
 
 export function parseOnboardingBootstrapRequest(message: string): OnboardingBootstrapRequest | null {
   if (!message.includes(ONBOARDING_BOOTSTRAP_MARKER)) return null;
+  const tokenMatched = message.match(/-\s*初始化票据：([^\n\r]+)/);
   const assistantMatched = message.match(/-\s*助手名称：([^\n\r]+)/);
+  const ownerMatched = message.match(/-\s*用户称呼：([^\n\r]+)/);
+  const bootstrapToken = tokenMatched?.[1]?.trim();
   const assistantName = assistantMatched?.[1]?.trim();
-  if (!assistantName) return null;
-  return { assistantName };
+  const ownerName = ownerMatched?.[1]?.trim();
+  if (!bootstrapToken || !assistantName || !ownerName) return null;
+  return {
+    bootstrapToken,
+    assistantName,
+    ownerName,
+  };
 }
 
 async function verifyOnboardingWorkspaceState(params: {
   linuxUser: string;
   workspaceDir: string;
+  assistantName: string;
+  ownerName: string;
 }): Promise<{ ok: boolean; reason?: string }> {
   const sshPool = getSSHPool();
   const connection = await sshPool.acquire();
@@ -162,6 +175,8 @@ async function verifyOnboardingWorkspaceState(params: {
     const script = [
       'const fs=require("fs");',
       `const aboutMeDir=${JSON.stringify(aboutMeDir)};`,
+      `const expectedAssistant=${JSON.stringify(params.assistantName)};`,
+      `const expectedOwner=${JSON.stringify(params.ownerName)};`,
       'const checks=[',
       '  `${aboutMeDir}/README.md`,',
       '  `${aboutMeDir}/AGENTS.md`,',
@@ -178,6 +193,21 @@ async function verifyOnboardingWorkspaceState(params: {
       '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
       '    process.exit(0);',
       '  }',
+      '}',
+      'const identity=fs.readFileSync(`${aboutMeDir}/IDENTITY.md`,"utf8");',
+      'const user=fs.readFileSync(`${aboutMeDir}/USER.md`,"utf8");',
+      'const memory=fs.readFileSync(`${aboutMeDir}/MEMORY.md`,"utf8");',
+      'if(!identity.includes(expectedAssistant)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"identity_missing_assistant_name"}));',
+      '  process.exit(0);',
+      '}',
+      'if(!user.includes(expectedOwner)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"user_missing_owner_name"}));',
+      '  process.exit(0);',
+      '}',
+      'if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){',
+      '  process.stdout.write(JSON.stringify({ok:false,reason:"memory_missing_identity_fields"}));',
+      '  process.exit(0);',
       '}',
       'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
       'if(fs.existsSync(bootstrapPath)){',
@@ -507,20 +537,37 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
         if (onboardingBootstrapRequest) {
           if (!streamHasError && !streamResultHasError) {
-            const verification = await verifyOnboardingWorkspaceState({
-              linuxUser,
-              workspaceDir: cwd,
+            const ticketValidation = consumeOnboardingBootstrapTicket({
+              userId,
+              token: onboardingBootstrapRequest.bootstrapToken,
+              assistantName: onboardingBootstrapRequest.assistantName,
+              ownerName: onboardingBootstrapRequest.ownerName,
             });
-            if (verification.ok) {
-              await markUserInitialized({
-                userId,
+            if (!ticketValidation.ok) {
+              streamHasError = true;
+              reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: `初始化票据无效：${ticketValidation.reason}` })}\n\n`);
+            }
+
+            if (!streamHasError) {
+              const verification = await verifyOnboardingWorkspaceState({
+                linuxUser,
+                workspaceDir: cwd,
                 assistantName: onboardingBootstrapRequest.assistantName,
+                ownerName: onboardingBootstrapRequest.ownerName,
               });
-            } else {
-              const message = `初始化尚未完成：${verification.reason || '关键文件缺失或 BOOTSTRAP 未归档'}`;
-              reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+              if (verification.ok) {
+                await markUserInitialized({
+                  userId,
+                  assistantName: onboardingBootstrapRequest.assistantName,
+                });
+              } else {
+                streamHasError = true;
+                const message = `初始化尚未完成：${verification.reason || '关键文件缺失或 BOOTSTRAP 未归档'}`;
+                reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+              }
             }
           } else {
+            streamHasError = true;
             reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: '初始化流程执行失败，请重试 onboarding。' })}\n\n`);
           }
         }
@@ -544,16 +591,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
           console.log(`[Chat] 用户 ${userId} 使用 ${totalInputTokens + totalOutputTokens} tokens (成本: $${costUsd.toFixed(4)})`);
         }
 
-        // 发送完成事件
-        reply.raw.write(`data: ${JSON.stringify({
-          type: 'done',
-          sessionId: currentSessionId,
-          usage: {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            total_tokens: totalInputTokens + totalOutputTokens,
-          }
-        })}\n\n`);
+        // 发送完成事件（出现错误时不再发送 done，避免前端误判成功）
+        if (!streamHasError) {
+          reply.raw.write(`data: ${JSON.stringify({
+            type: 'done',
+            sessionId: currentSessionId,
+            usage: {
+              input_tokens: totalInputTokens,
+              output_tokens: totalOutputTokens,
+              total_tokens: totalInputTokens + totalOutputTokens,
+            }
+          })}\n\n`);
+        }
         reply.raw.end();
 
       } catch (error) {
