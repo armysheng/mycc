@@ -6,11 +6,15 @@ describe('onboarding bootstrap prompt', () => {
     const prompt = buildBootstrapPrompt({
       assistantName: '  cc  ',
       ownerName: '  婷妈  ',
+      linuxUser: 'mycc_u2',
     });
 
     expect(prompt).toContain('助手名称：cc');
     expect(prompt).toContain('用户称呼：婷妈');
     expect(prompt).toContain('0-System/about-me/BOOTSTRAP.md');
+    expect(prompt).toContain('/home/mycc_u2/workspace/CLAUDE.md');
+    expect(prompt).toContain('/home/mycc_u2/.claude/projects/-home-mycc-u2-workspace/memory/MEMORY.md');
+    expect(prompt).toContain('以 `0-System/about-me/` 作为唯一身份真相源');
     expect(prompt).toContain('已完成初始化');
   });
 });

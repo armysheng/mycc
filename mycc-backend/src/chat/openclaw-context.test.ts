@@ -29,6 +29,7 @@ describe('openclaw-context', () => {
 
     expect(prompt).toContain('# Project Context');
     expect(prompt).toContain('If SOUL.md is present, embody its persona and tone.');
+    expect(prompt).toContain('`0-System/about-me/` is the single source of truth.');
     expect(merged).toContain('## User Request');
     expect(merged).toContain('你好');
   });

@@ -106,6 +106,8 @@ export function buildProjectContextPrompt(contextFiles: EmbeddedContextFile[]): 
     '# Project Context',
     '',
     'The following project context files have been loaded:',
+    'Identity consistency rule: `0-System/about-me/` is the single source of truth.',
+    'If any legacy/global memory conflicts (for example `~/.claude/projects/.../memory/MEMORY.md`), follow `about-me` values and ignore conflicting aliases.',
   ];
   if (hasSoulFile) {
     lines.push(
