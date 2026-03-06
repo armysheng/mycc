@@ -69,8 +69,7 @@ function App() {
               try {
                 await refreshUser();
               } catch (err) {
-                setOnboardingBootstrapPending(false);
-                throw err;
+                console.error("[Onboarding] refreshUser failed after initialize:", err);
               }
             }}
           />

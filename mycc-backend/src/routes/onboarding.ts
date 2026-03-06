@@ -1,10 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { findUserById } from '../db/client.js';
+import { findUserById, markUserInitialized } from '../db/client.js';
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 import { clearExpiredOnboardingBootstrapTickets, issueOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
+
+const CLAUDE_BOOTSTRAP_SENTINEL = '<!-- MYCC_BOOTSTRAP_REQUIRED -->';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -56,6 +58,7 @@ export function buildBootstrapPrompt(params: {
     '   - 确保存在 0-System/memory/ 目录，并写入一条当天初始化记录（YYYY-MM-DD.md）。',
     '4. 执行冲突对齐（必须）：',
     `   - 校验并修正 ${workspaceDir}/CLAUDE.md：保持 bridge-only，不要写死助手名/用户称呼。`,
+    `   - 若 ${workspaceDir}/CLAUDE.md 中仍存在 ${CLAUDE_BOOTSTRAP_SENTINEL}，初始化成功后删除这一行；若未完成则保留。`,
     `   - 若 ${legacyGlobalMemoryPath} 存在：将“助手名称/对用户称呼/交互角色设定”同步为与 about-me 一致。`,
     '   - 清理别名或旧称呼（如“小花”“大辉哥”等）带来的同字段多真值。',
     '5. 初始化完成后，把 0-System/about-me/BOOTSTRAP.md 归档到 5-Archive/bootstrap/，不要保留在原位置。',
@@ -86,8 +89,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
       const linuxUser = sanitizeLinuxUsername(user.linux_user);
       const workspaceDir = `/home/${linuxUser}/workspace`;
       const claudeMdPath = `${workspaceDir}/CLAUDE.md`;
-      const aboutMeDir = `${workspaceDir}/0-System/about-me`;
-      const aboutMeBootstrapPath = `${aboutMeDir}/BOOTSTRAP.md`;
       const templateDir = '/opt/mycc/templates/user-workspace';
 
       const sshPool = getSSHPool();
@@ -98,7 +99,6 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         const preflightCmd = [
           `sudo test -d "${workspaceDir}"`,
           `sudo test -f "${claudeMdPath}"`,
-          `sudo test -f "${aboutMeBootstrapPath}"`,
         ].join(' && ');
 
         let preflight = await sshPool.exec(connection, preflightCmd);
@@ -133,25 +133,33 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
           }
         }
 
-        const migrateLegacyMarkdownCmd = `
-          sudo mkdir -p "${aboutMeDir}" &&
-          for f in AGENTS.md BOOTSTRAP.md HEARTBEAT.md IDENTITY.md SOUL.md TOOLS.md USER.md MEMORY.md; do
-            if [ -f "${workspaceDir}/$f" ]; then
-              if [ -f "${aboutMeDir}/$f" ]; then
-                sudo rm -f "${workspaceDir}/$f";
-              else
-                sudo mv "${workspaceDir}/$f" "${aboutMeDir}/$f";
-              fi
-            fi
-          done &&
-          sudo cp "${templateDir}/CLAUDE.md" "${claudeMdPath}"
-        `.trim();
-        const migrated = await sshPool.exec(connection, migrateLegacyMarkdownCmd);
-        if (migrated.exitCode !== 0) {
-          console.error(`❌ Onboarding 目录迁移失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${migrated.stderr}`);
+        const assistantB64 = Buffer.from(body.assistantName.trim()).toString('base64');
+        const ownerB64 = Buffer.from(body.ownerName.trim()).toString('base64');
+        const sentinelB64 = Buffer.from(CLAUDE_BOOTSTRAP_SENTINEL).toString('base64');
+        const prepareClaudeScript = [
+          'const fs=require("fs");',
+          `const file=${JSON.stringify(claudeMdPath)};`,
+          `const assistant=Buffer.from(${JSON.stringify(assistantB64)},"base64").toString();`,
+          `const owner=Buffer.from(${JSON.stringify(ownerB64)},"base64").toString();`,
+          `const sentinel=Buffer.from(${JSON.stringify(sentinelB64)},"base64").toString();`,
+          'let content=fs.readFileSync(file,"utf8");',
+          'content=content.split("{{ASSISTANT_NAME}}").join(assistant);',
+          'content=content.split("{{OWNER_NAME}}").join(owner);',
+          'content=content.split("{{USERNAME}}").join(owner);',
+          'if(!content.includes(sentinel)){',
+          '  content=`${sentinel}\n${content}`;',
+          '}',
+          'fs.writeFileSync(file,content);',
+        ].join('');
+        const prepared = await sshPool.exec(
+          connection,
+          `sudo -n -u ${escapeShellArg(linuxUser)} node -e '${prepareClaudeScript}'`
+        );
+        if (prepared.exitCode !== 0) {
+          console.error(`❌ Onboarding CLAUDE 准备失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${prepared.stderr}`);
           return reply.status(500).send({
             success: false,
-            error: '初始化目录迁移失败，请重试',
+            error: '初始化文件写入失败，请重试',
           });
         }
 
@@ -173,6 +181,10 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         userId: request.user.userId,
         assistantName: body.assistantName.trim(),
         ownerName: body.ownerName.trim(),
+      });
+      await markUserInitialized({
+        userId: request.user.userId,
+        assistantName: body.assistantName.trim(),
       });
       const bootstrapPrompt = buildBootstrapPrompt({
         assistantName: body.assistantName,
