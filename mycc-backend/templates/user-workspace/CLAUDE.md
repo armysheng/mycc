@@ -1,7 +1,15 @@
 # CLAUDE.md
 
+<!-- MYCC_BOOTSTRAP_REQUIRED -->
+
 > 入口文件：Claude 启动后先读本文件，再按下方“读取顺序”进入工作区上下文。
 > 工作流、人格、记忆、工具约定以 `0-System/about-me/` 为主真相源。
+
+## 初始化哨兵
+
+- 如果本文件中仍存在 `<!-- MYCC_BOOTSTRAP_REQUIRED -->`，说明工作区尚未完成初始化。
+- 此时在处理普通请求前，优先执行 bootstrap：读取 `0-System/about-me/BOOTSTRAP.md`（若存在）并完成 `about-me` 身份文件初始化。
+- 初始化真正完成后，删除这一行哨兵；若尚未完成，保留它以便后续对话继续初始化。
 
 ## 全局硬约束
 

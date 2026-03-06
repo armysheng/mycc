@@ -25,7 +25,6 @@ import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
-import { getCurrentUser } from "../api/auth";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 import { setOnboardingBootstrapPending } from "../utils/onboardingBootstrapState";
 
@@ -581,7 +580,7 @@ export function ChatPage() {
     addMessage({
       type: "chat",
       role: "assistant",
-      content: "正在初始化你的助手配置，请稍候，我会实时汇报进度。",
+      content: "正在为你启动初始化流程。你现在可以继续对话，我会在这个会话里完成配置。",
       timestamp: Date.now(),
     });
     void (async () => {
@@ -600,7 +599,7 @@ export function ChatPage() {
         addMessage({
           type: "chat",
           role: "assistant",
-          content: "初始化执行超时或失败，已恢复引导，请重试。",
+          content: "初始化提示发送超时或失败，但你可以继续对话；只要 CLAUDE.md 里的初始化标识还在，助手会继续完成初始化。",
           timestamp: Date.now(),
         });
         setOnboardingBootstrapPending(false);
@@ -608,32 +607,8 @@ export function ChatPage() {
       } finally {
         if (timer) clearTimeout(timer);
       }
-      try {
-        if (token) {
-          const me = await getCurrentUser(token);
-          if (me.success && me.data?.is_initialized) {
-            await refreshUser();
-            setOnboardingBootstrapPending(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("[OnboardingBootstrap] confirm init status failed:", err);
-        addMessage({
-          type: "chat",
-          role: "assistant",
-          content: "初始化状态确认失败，已恢复引导，请重试。",
-          timestamp: Date.now(),
-        });
-        setOnboardingBootstrapPending(false);
-        return;
-      }
-      // 初始化未完成时恢复 onboarding 引导，允许用户重试
-      addMessage({
-        type: "chat",
-        role: "assistant",
-        content: "初始化尚未完成，已恢复引导，请重试。",
-        timestamp: Date.now(),
+      void refreshUser().catch((err) => {
+        console.error("[OnboardingBootstrap] refresh user after initialize failed:", err);
       });
       setOnboardingBootstrapPending(false);
     })();
@@ -650,7 +625,6 @@ export function ChatPage() {
     messages.length,
     addMessage,
     sendMessage,
-    token,
     refreshUser,
   ]);
 

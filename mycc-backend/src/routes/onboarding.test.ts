@@ -19,5 +19,7 @@ describe('onboarding bootstrap prompt', () => {
     expect(prompt).toContain('确保存在 0-System/memory/ 目录');
     expect(prompt).toContain('初始化票据：ticket-123');
     expect(prompt).toContain('已完成初始化');
+    expect(prompt).toContain('<!-- MYCC_BOOTSTRAP_REQUIRED -->');
+    expect(prompt).toContain('初始化成功后删除这一行');
   });
 });
