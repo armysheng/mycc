@@ -129,23 +129,11 @@ curl -X POST http://YOUR_VPS_IP:8080/api/auth/register \
 
 ---
 
-## 简化版（跳过 Linux 用户隔离）
+## 说明
 
-测试阶段可以暂时跳过 Linux 用户隔离，直接用当前用户执行：
+当前代码已统一使用远端 `RemoteClaudeAdapter` + Linux 用户隔离执行，不再保留本地 `MultiUserAdapter` 简化模式。
 
-**修改 `src/multi-user-adapter.ts`**:
-
-```typescript
-// 强制使用开发模式（不创建 Linux 用户）
-constructor(linuxUser: string) {
-  this.linuxUser = linuxUser;
-  this.isDev = true;  // 强制开发模式
-}
-```
-
-这样所有用户共享同一个执行环境，但有独立的工作目录：
-- `/tmp/mycc_test/mycc_u1001/workspace`
-- `/tmp/mycc_test/mycc_u1002/workspace`
+如需本地调试，请在独立分支中显式新增执行模式开关，不要通过修改线上主链路源码来绕过隔离。
 
 ---
 
