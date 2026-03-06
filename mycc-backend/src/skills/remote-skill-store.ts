@@ -162,7 +162,7 @@ export class RemoteSkillStore {
 
       // 首次访问（无 manifest 且无已安装技能）时，自动补齐内置技能。
       // 同时兼容老账号：若检测到缺失内置技能，也执行一次补齐。
-      const installedIds = new Set(
+      let installedIds = new Set(
         installedPaths
           .map((p) => extractSkillIdFromPath(p))
           .filter((id): id is string => Boolean(id))
@@ -184,6 +184,11 @@ export class RemoteSkillStore {
             `find ${escapeShellArg(installedDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
           );
           installedPaths = refreshedInstalled.stdout.trim().split('\n').filter(Boolean);
+          installedIds = new Set(
+            installedPaths
+              .map((p) => extractSkillIdFromPath(p))
+              .filter((id): id is string => Boolean(id))
+          );
           manifest = await this.readManifest(runAsUser, linuxUser);
         }
       }

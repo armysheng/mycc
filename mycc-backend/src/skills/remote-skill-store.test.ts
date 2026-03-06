@@ -420,3 +420,77 @@ describe('RemoteSkillStore.listSkillInfos perf guard', () => {
     ).toBe(false);
   });
 });
+
+describe('RemoteSkillStore.listSkillInfos auto-seed first load', () => {
+  beforeEach(() => {
+    sshMocks.acquire.mockReset();
+    sshMocks.release.mockReset();
+    sshMocks.exec.mockReset();
+    sshMocks.acquire.mockResolvedValue({ id: 'conn-1' });
+    delete process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST;
+    (RemoteSkillStore as any).catalogCache.clear();
+  });
+
+  it('auto-seed 后首刷已安装内置技能版本与状态正确', async () => {
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    let installedFindCount = 0;
+    let manifestReadCount = 0;
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo ok || true")) return ok('ok\n');
+      if (command.includes('.mycc-manifest.json')) {
+        manifestReadCount += 1;
+        return manifestReadCount === 1
+          ? ok('')
+          : ok('{"skills":{"browser":{"version":"1.2.3","source":"catalog","disabled":false}}}');
+      }
+      if (command.includes('/home/qa/workspace/.claude/skills') && command.includes('-name SKILL.md')) {
+        installedFindCount += 1;
+        return installedFindCount === 1 ? ok('') : ok('/home/qa/workspace/.claude/skills/browser/SKILL.md\n');
+      }
+      if (command.includes('/catalog') && command.includes('-name SKILL.md')) {
+        return ok('/catalog/browser/SKILL.md\n');
+      }
+      if (hasDirCheck(command, '/catalog/browser')) {
+        return ok('ok\n');
+      }
+      if (hasDirCheck(command, '/home/qa/workspace/.claude/skills/browser')) {
+        return ok('');
+      }
+      if (command.includes("cp -a '/catalog/browser' '/home/qa/workspace/.claude/skills/browser'")) {
+        return ok('');
+      }
+      if (hasCat(command, '/catalog/browser/SKILL.md')) {
+        return ok(skillMd('1.2.3'));
+      }
+      if (command.includes("MANIFEST='/home/qa/workspace/.claude/skills/.mycc-manifest.json'")) {
+        return ok('');
+      }
+      return ok('');
+    });
+
+    const result = await store.listSkillInfos(linuxUser);
+    const deepResearch = result.skills.find((skill) => skill.id === 'browser');
+
+    expect(deepResearch).toMatchObject({
+      status: 'installed',
+      installed: true,
+      version: '1.2.3',
+      installedVersion: '1.2.3',
+      latestVersion: '1.2.3',
+      enabled: true,
+      upgradable: false,
+    });
+    expect(
+      sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
+        command.includes("cat '/catalog/browser/SKILL.md'")
+      )
+    ).toBe(true);
+  });
+});
