@@ -14,7 +14,6 @@ const BOOTSTRAP_TAIL_RATIO = 0.2;
 
 export type WorkspaceBootstrapFileName =
   | 'README.md'
-  | 'AGENTS.md'
   | 'SOUL.md'
   | 'TOOLS.md'
   | 'IDENTITY.md'

@@ -38,8 +38,8 @@ describe('openclaw-context', () => {
     const giant = 'A'.repeat(500);
     const files: WorkspaceBootstrapFile[] = [
       {
-        name: 'AGENTS.md',
-        path: '/home/u/workspace/AGENTS.md',
+        name: 'README.md',
+        path: '/home/u/workspace/0-System/about-me/README.md',
         missing: true,
       },
       {
@@ -54,7 +54,7 @@ describe('openclaw-context', () => {
       maxChars: 100,
       totalMaxChars: 200,
     });
-    expect(contextFiles[0].content).toContain('[MISSING] Expected at: /home/u/workspace/AGENTS.md');
+    expect(contextFiles[0].content).toContain('[MISSING] Expected at: /home/u/workspace/0-System/about-me/README.md');
     expect(contextFiles[1].content).toContain('[...truncated, read SOUL.md for full content...]');
   });
 });

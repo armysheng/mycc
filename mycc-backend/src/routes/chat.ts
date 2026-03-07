@@ -50,7 +50,6 @@ type HistoryMessage = {
 
 const REQUIRED_BOOTSTRAP_FILE_NAMES = [
   'README.md',
-  'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
   'IDENTITY.md',
@@ -179,7 +178,6 @@ async function verifyOnboardingWorkspaceState(params: {
       `const expectedOwner=${JSON.stringify(params.ownerName)};`,
       'const checks=[',
       '  `${aboutMeDir}/README.md`,',
-      '  `${aboutMeDir}/AGENTS.md`,',
       '  `${aboutMeDir}/IDENTITY.md`,',
       '  `${aboutMeDir}/USER.md`,',
       '  `${aboutMeDir}/MEMORY.md`,',

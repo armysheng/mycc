@@ -1,16 +1,3 @@
----
-read_when:
-  - 手动引导工作区
-summary: TOOLS.md 的工作区模板
-x-i18n:
-  generated_at: "2026-02-01T21:38:05Z"
-  model: claude-opus-4-5
-  provider: pi
-  source_hash: 3ed08cd537620749c40ab363f5db40a058d8ddab4d0192a1f071edbfcf37a739
-  source_path: reference/templates/TOOLS.md
-  workflow: 15
----
-
 # TOOLS.md - 本地备注
 
 Skills 定义了工具的*工作方式*。此文件用于记录*你的*具体信息——那些你的环境中独有的内容。

@@ -1,16 +1,3 @@
----
-read_when:
-  - 手动引导工作区
-summary: 智能体身份记录
-x-i18n:
-  generated_at: "2026-02-01T21:37:32Z"
-  model: claude-opus-4-5
-  provider: pi
-  source_hash: 3d60209c36adf7219ec95ecc2031c1f2c8741763d16b73fe7b30835b1d384de0
-  source_path: reference/templates/IDENTITY.md
-  workflow: 15
----
-
 # IDENTITY.md - 我是谁？
 
 _在你的第一次对话中填写此文件。让它属于你。_

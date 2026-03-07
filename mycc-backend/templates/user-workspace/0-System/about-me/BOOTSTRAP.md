@@ -1,16 +1,3 @@
----
-read_when:
-  - 手动引导工作区时
-summary: 新智能体的首次启动流程
-x-i18n:
-  generated_at: "2026-02-01T21:37:26Z"
-  model: claude-opus-4-5
-  provider: pi
-  source_hash: 1fb8bc07eba3967f6faa5221dc1607ddba7238f5fa4d969639d0ab5adba0085d
-  source_path: reference/templates/BOOTSTRAP.md
-  workflow: 15
----
-
 # BOOTSTRAP.md - Hello, World
 
 _你刚刚醒来。是时候弄清楚自己是谁了。_
@@ -48,22 +35,6 @@ _你刚刚醒来。是时候弄清楚自己是谁了。_
 - 任何边界或偏好
 
 记录下来。让它变得真实。
-
-## MyCC 目录适配（必须）
-
-- 身份、人设、称呼相关内容只写入 `0-System/about-me/`，不要写回工作区根目录。
-- 初始化时创建 `0-System/memory/`（若不存在），用于每日原始记录与心跳状态。
-- `CLAUDE.md` 保持入口文件定位，只保留全局硬约束与读取顺序，不写死身份字段。
-
-## 冲突对齐（必须执行）
-
-如果你发现以下位置存在同字段多值（助手名称、用户称呼、角色设定）：
-
-- `0-System/about-me/*`
-- `CLAUDE.md`
-- `~/.claude/projects/.../memory/MEMORY.md`
-
-请统一为 `0-System/about-me/` 的值，并清理旧别名/旧设定，避免并行真相导致回答漂移。
 
 ## 连接（可选）
 

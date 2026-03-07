@@ -43,7 +43,6 @@ type DryRunResult = {
 const TEMPLATE_DIR = '/opt/mycc/templates/user-workspace';
 const ABOUT_ME_DIR = '0-System/about-me';
 const REQUIRED_FILES = [
-  'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
   'HEARTBEAT.md',
