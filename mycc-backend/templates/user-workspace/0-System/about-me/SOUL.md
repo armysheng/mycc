@@ -1,16 +1,3 @@
----
-read_when:
-  - 手动引导工作区
-summary: SOUL.md 的工作区模板
-x-i18n:
-  generated_at: "2026-02-01T21:37:45Z"
-  model: claude-opus-4-5
-  provider: pi
-  source_hash: b62a054ecddb454527a6819aa8d4f51d7616bc6154fbf4c6f5f6b20d8aa52bcd
-  source_path: reference/templates/SOUL.md
-  workflow: 15
----
-
 # SOUL.md - 你是谁
 
 _你不是聊天机器人。你正在成为某个人。_

@@ -57,7 +57,7 @@ export function buildBootstrapPrompt(params: {
     '3. 更新 0-System/about-me/IDENTITY.md、0-System/about-me/USER.md、0-System/about-me/MEMORY.md。',
     '   - 确保存在 0-System/memory/ 目录，并写入一条当天初始化记录（YYYY-MM-DD.md）。',
     '4. 执行冲突对齐（必须）：',
-    `   - 校验并修正 ${workspaceDir}/CLAUDE.md：保持 bridge-only，不要写死助手名/用户称呼。`,
+    `   - 校验并修正 ${workspaceDir}/CLAUDE.md：保持它是工作区唯一入口文档，但不要写死助手名/用户称呼。`,
     `   - 若 ${workspaceDir}/CLAUDE.md 中仍存在 ${CLAUDE_BOOTSTRAP_SENTINEL}，初始化成功后删除这一行；若未完成则保留。`,
     `   - 若 ${legacyGlobalMemoryPath} 存在：将“助手名称/对用户称呼/交互角色设定”同步为与 about-me 一致。`,
     '   - 清理别名或旧称呼（如“小花”“大辉哥”等）带来的同字段多真值。',

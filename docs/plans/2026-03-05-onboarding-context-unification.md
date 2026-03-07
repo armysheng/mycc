@@ -50,7 +50,6 @@
     │   └── heartbeat-state.json
     └── about-me/
         ├── README.md
-        ├── AGENTS.md
         ├── SOUL.md
         ├── TOOLS.md
         ├── IDENTITY.md
@@ -110,9 +109,8 @@
 
 1. `CLAUDE.md`
 2. `0-System/about-me/README.md`
-3. `0-System/about-me/AGENTS.md`
-4. `SOUL.md / USER.md / IDENTITY.md / MEMORY.md / TOOLS.md / HEARTBEAT.md`
-5. `0-System/status.md` + `0-System/context.md` + `0-System/memory/*`
+3. `SOUL.md / USER.md / IDENTITY.md / MEMORY.md / TOOLS.md / HEARTBEAT.md`
+4. `0-System/status.md` + `0-System/context.md` + `0-System/memory/*`
 
 要求：任何关键规则都必须能从 `CLAUDE.md` 追溯到源文件。
 
@@ -161,7 +159,7 @@
 
 1. `about-me` 多文件人格体系。
 2. `BOOTSTRAP.md` 会话内初始化思路。
-3. `AGENTS/SOUL/TOOLS` 的行为约束框架。
+3. `CLAUDE/SOUL/TOOLS` 的行为约束框架。
 
 ## 8.2 MyCC 本地化改造
 
