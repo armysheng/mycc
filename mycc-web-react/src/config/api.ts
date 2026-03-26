@@ -10,6 +10,7 @@ export const API_CONFIG = {
     SKILLS: withBase("/api/skills"),
     AUTOMATIONS: withBase("/api/automations"),
     WORKSPACE: withBase("/api/workspace"),
+    BILLING: withBase("/api/billing"),
   },
 } as const;
 
@@ -108,6 +109,18 @@ export const getWorkspaceSaveFileUrl = () => {
 
 export const getWorkspaceExecUrl = () => {
   return `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`;
+};
+
+export const getBillingSubscriptionUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/subscription`;
+};
+
+export const getBillingPlansUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/plans`;
+};
+
+export const getBillingUpgradeUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.BILLING}/upgrade`;
 };
 
 // Helper function to get session messages URL

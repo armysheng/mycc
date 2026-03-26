@@ -41,6 +41,12 @@ curl -s "$BASE_URL/api/billing/subscription" \
   -H "Authorization: Bearer $TOKEN" | jq .
 echo ""
 
+# 4.1 获取套餐列表
+echo "4️⃣-1 获取套餐列表"
+curl -s "$BASE_URL/api/billing/plans" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+echo ""
+
 # 5. 发送消息（SSE 流式响应）
 echo "5️⃣ 发送消息（前 10 行）"
 curl -s -X POST "$BASE_URL/api/chat" \

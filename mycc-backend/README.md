@@ -155,9 +155,11 @@ Authorization: Bearer <token>
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |
-| PLAN_FREE_TOKENS | 免费版额度 | 10000 |
-| PLAN_BASIC_TOKENS | 基础版额度 | 100000 |
-| PLAN_PRO_TOKENS | 专业版额度 | 500000 |
+| PLAN_FREE_TOKENS | 免费版额度 | 300000 |
+| PLAN_BASIC_TOKENS | 基础版额度 | 3000000 |
+| PLAN_PRO_TOKENS | 专业版额度 | 12000000 |
+| PLAN_BASIC_PRICE_CNY | 基础版月费（人民币） | 39 |
+| PLAN_PRO_PRICE_CNY | 专业版月费（人民币） | 99 |
 
 ## 开发说明
 
