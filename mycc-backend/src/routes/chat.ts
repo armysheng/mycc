@@ -482,6 +482,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
         // 流式处理响应
         for await (const event of runtime.chat({
+          userId,
           message: enhancedMessage,
           sessionId: body.sessionId,
           cwd,

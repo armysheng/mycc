@@ -75,6 +75,14 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         return reply.status(401).send({ error: '未提供认证 token' });
       }
 
+      const reusableSession = await sessionStore.findReusableByUser(user.userId);
+      if (reusableSession) {
+        return reply.status(200).send({
+          success: true,
+          data: toPublicSession(reusableSession),
+        });
+      }
+
       const linuxUser = sanitizeLinuxUsername(user.linuxUser);
       const plan = buildE2bCodeServerSessionPlan({
         userId: user.userId,
@@ -102,6 +110,14 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       const user = request.user;
       if (!user) {
         return reply.status(401).send({ error: '未提供认证 token' });
+      }
+
+      const reusableSession = await sessionStore.findReusableByUser(user.userId);
+      if (reusableSession) {
+        return reply.status(200).send({
+          success: true,
+          data: toPublicSession(reusableSession),
+        });
       }
 
       const linuxUser = sanitizeLinuxUsername(user.linuxUser);

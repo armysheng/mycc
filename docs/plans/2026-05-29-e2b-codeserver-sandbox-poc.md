@@ -17,8 +17,8 @@
 - mycc 后端代理时注入 `e2b-traffic-access-token`，用户侧只拿一次性 mycc token。
 - code-server POC 启动为 `--auth none`，但只允许在上述反代链路内使用。
 - code-server 固定内部端口 `18080`，避免和用户应用常用的 `3000/8080` 冲突。
-- Agent SDK 和 code-server 的 cwd 都限定在 `/home/{linuxUser}/workspace`。
-- Agent SDK 子进程的 `HOME` / `CLAUDE_CONFIG_DIR` 不继承服务进程，默认写到 `/home/{linuxUser}/.mycc`。
+- 非 E2B Agent SDK runtime 的 cwd 限定在 `/home/{linuxUser}/workspace`，子进程 `HOME` / `CLAUDE_CONFIG_DIR` 默认写到 `/home/{linuxUser}/.mycc`。
+- E2B template 内部默认 Linux 用户是 `mycc`，Remote IDE 和 E2B Claude CLI runtime 都使用 `/home/mycc/workspace`；业务用户隔离依赖独立 sandbox/session，而不是在 sandbox 内复刻 `mycc_u{id}` 用户。
 
 ## 后端接口骨架
 
@@ -33,6 +33,8 @@
 - `PostgresIdeSessionStore`：生产默认将 IDE session 元数据写入 `ide_sessions`，测试仍可注入内存 store。
 - `mycc-web-react` 工作区页已提供 “打开 Remote IDE” 最小入口。
 - `npm run smoke:e2b-ide`：提供真实 E2B/code-server 端到端 smoke，失败也会 cleanup session。
+- `MYCC_AGENT_RUNTIME=e2b-claude-cli`：新增 Claude CLI bridge runtime，复用当前用户的 running IDE session，通过 `sandboxId` 连接 E2B，并在同一个 `/home/mycc/workspace` 执行 `claude --print --output-format stream-json`。
+- `POST /api/ide/sessions`：同一用户已有未过期 running session 时直接复用，避免重复创建 E2B sandbox。
 
 当前实现刻意不把内部 `startCommand`、E2B host 或 traffic token 返回给客户端，避免前端依赖服务端执行细节或绕过后端代理。
 
@@ -63,7 +65,7 @@ WORKDIR /home/mycc/workspace
 ## 下一步实现切片
 
 1. 用真实 `MYCC_E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
-2. 把 Claude Agent SDK runtime 切到同一个 sandbox provider，确保 IDE 和 agent 共享同一 workspace。
-3. 增加 session 复用策略，避免用户重复点击创建多个 running sandbox。
-4. 增加过期 session 清理任务，生产环境对 `traffic_access_token` 做加密或改为 token reference。
+2. 在测试环境设置 `MYCC_AGENT_RUNTIME=e2b-claude-cli`，验证 chat 和 Remote IDE 共享 `/home/mycc/workspace`。
+3. 增加过期 session 清理任务，生产环境对 `traffic_access_token` 做加密或改为 token reference。
+4. 后续如果确实需要 SDK 级事件能力，再在 sandbox 内增加 Agent SDK bridge；当前优先使用 Claude CLI `stream-json`，与现有协议兼容。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。

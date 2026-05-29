@@ -111,6 +111,7 @@ export async function automationsRoutes(fastify: FastifyInstance) {
       const runAsUser = (command: string) =>
         sshPool.exec(connection, AutomationStore.buildUserCommand(linuxUser, command));
       const store = new AutomationStore(linuxUser, run, runAsUser, {
+        userId,
         checkQuota: () => checkQuota(userId),
         recordUsage: async (input) => {
           const totalTokens = input.inputTokens + input.outputTokens;

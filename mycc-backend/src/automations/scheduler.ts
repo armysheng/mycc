@@ -349,6 +349,7 @@ export class AutomationScheduler {
       const runAsUser = (command: string) =>
         sshPool.exec(connection, AutomationStore.buildUserCommand(linuxUser, command));
       const store = new AutomationStore(linuxUser, run, runAsUser, {
+        userId,
         checkQuota: () => checkQuota(userId),
         recordUsage: async (input) => {
           const totalTokens = input.inputTokens + input.outputTokens;
@@ -415,6 +416,7 @@ export class AutomationScheduler {
       const runAsUser = (command: string) =>
         sshPool.exec(connection, AutomationStore.buildUserCommand(job.linuxUser, command));
       const store = new AutomationStore(job.linuxUser, run, runAsUser, {
+        userId: job.userId,
         checkQuota: () => checkQuota(job.userId),
         recordUsage: async (input) => {
           const totalTokens = input.inputTokens + input.outputTokens;

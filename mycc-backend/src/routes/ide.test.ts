@@ -83,8 +83,8 @@ describe('ide routes', () => {
         provider: 'e2b',
         template: 'mycc-code-server-dev',
         userId: 42,
-        linuxUser: 'tester',
-        workspaceDir: '/home/tester/workspace',
+        linuxUser: 'mycc',
+        workspaceDir: '/home/mycc/workspace',
         port: 18080,
         sessionTtlSeconds: 3600,
         allowPublicTraffic: false,
@@ -104,7 +104,7 @@ describe('ide routes', () => {
       trafficAccessToken: 'secret-token',
       port: 18080,
       accessMode: 'mycc-proxy',
-      expiresAt: '2026-05-29T14:00:00.000Z',
+      expiresAt: '2099-05-29T14:00:00.000Z',
     });
     const app = await buildApp({ e2bProvider: { startCodeServer } });
 
@@ -126,12 +126,44 @@ describe('ide routes', () => {
         port: 18080,
         accessMode: 'mycc-proxy',
         status: 'running',
-        expiresAt: '2026-05-29T14:00:00.000Z',
+        expiresAt: '2099-05-29T14:00:00.000Z',
         openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/open\?token=.+/),
       },
     });
     expect(JSON.stringify(body)).not.toContain('secret-token');
     expect(JSON.stringify(body)).not.toContain('18080-sbx_123.e2b.app');
+    expect(startCodeServer).toHaveBeenCalledOnce();
+  });
+
+  it('reuses an existing running IDE session for the same user', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_123',
+      codeServerPid: 1234,
+      host: '18080-sbx_123.e2b.app',
+      trafficAccessToken: 'secret-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const app = await buildApp({ e2bProvider: { startCodeServer } });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().data.id).toBe(first.json().data.id);
+    expect(second.json().data.openPath).toBe(first.json().data.openPath);
     expect(startCodeServer).toHaveBeenCalledOnce();
   });
 

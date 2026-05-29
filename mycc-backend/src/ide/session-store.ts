@@ -14,6 +14,7 @@ export type StoredIdeSession = StartedCodeServerSession & {
 export type IdeSessionStore = {
   get(sessionId: string): Promise<StoredIdeSession | null>;
   set(session: StoredIdeSession): Promise<void>;
+  findReusableByUser(userId: number): Promise<StoredIdeSession | null>;
 };
 
 type IdeSessionQuery = {
@@ -47,6 +48,15 @@ export class InMemoryIdeSessionStore implements IdeSessionStore {
 
   async set(session: StoredIdeSession): Promise<void> {
     this.sessions.set(session.id, session);
+  }
+
+  async findReusableByUser(userId: number): Promise<StoredIdeSession | null> {
+    const now = Date.now();
+    const candidates = Array.from(this.sessions.values())
+      .filter((session) => session.userId === userId)
+      .filter((session) => session.status === 'running')
+      .filter((session) => new Date(session.expiresAt).getTime() > now);
+    return candidates.at(-1) ?? null;
   }
 }
 
@@ -125,6 +135,33 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
         session.status === 'stopped' ? new Date().toISOString() : null,
       ],
     );
+  }
+
+  async findReusableByUser(userId: number): Promise<StoredIdeSession | null> {
+    const result = await this.db.query<IdeSessionRow>(
+      `SELECT id,
+              user_id,
+              provider,
+              sandbox_id,
+              code_server_pid,
+              host,
+              traffic_access_token,
+              port,
+              access_mode,
+              status,
+              proxy_token,
+              expires_at
+       FROM ide_sessions
+       WHERE user_id = $1
+         AND status = $2
+         AND expires_at > NOW()
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [userId, 'running'],
+    );
+
+    const row = result.rows[0];
+    return row ? fromRow(row) : null;
   }
 }
 

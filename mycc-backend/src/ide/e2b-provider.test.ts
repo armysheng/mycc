@@ -36,7 +36,7 @@ describe('E2bSandboxProvider', () => {
       metadata: {
         app: 'mycc',
         capability: 'code-server',
-        linuxUser: 'tester',
+        linuxUser: 'mycc',
         userId: '42',
       },
       network: {
@@ -45,7 +45,7 @@ describe('E2bSandboxProvider', () => {
     });
     expect(run).toHaveBeenCalledWith(plan.startCommand, {
       background: true,
-      cwd: '/home/tester/workspace',
+      cwd: '/home/mycc/workspace',
     });
     expect(session).toEqual({
       provider: 'e2b',

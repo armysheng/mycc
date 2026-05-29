@@ -47,6 +47,7 @@ interface RecordUsageInput {
 }
 
 interface AutomationStoreDeps {
+  userId?: number;
   checkQuota?: () => Promise<QuotaResult>;
   recordUsage?: (input: RecordUsageInput) => Promise<void>;
 }
@@ -754,6 +755,7 @@ NODE
 
     let runtimeError: string | null = null;
     for await (const event of runtime.chat({
+      userId: this.deps.userId,
       message,
       cwd,
       linuxUser: this.linuxUser,

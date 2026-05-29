@@ -5,11 +5,19 @@ type CommandHandleLike = {
   pid: number;
 };
 
+type CommandResultLike = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  error?: string;
+};
+
 type E2bSandboxLike = {
   sandboxId: string;
   trafficAccessToken?: string;
   commands: {
-    run(command: string, options: { background: true; cwd: string }): Promise<CommandHandleLike>;
+    run(command: string, options: E2bCommandRunOptions & { background: true }): Promise<CommandHandleLike>;
+    run(command: string, options?: E2bCommandRunOptions & { background?: false }): Promise<CommandResultLike>;
     kill?(pid: number): Promise<boolean>;
   };
   getHost(port: number): string;
@@ -31,6 +39,16 @@ export type StartedCodeServerSession = {
   port: number;
   accessMode: IdeAccessMode;
   expiresAt: string;
+};
+
+export type E2bCommandRunOptions = {
+  background?: boolean;
+  cwd?: string;
+  envs?: Record<string, string>;
+  onStdout?: (data: string) => void | Promise<void>;
+  onStderr?: (data: string) => void | Promise<void>;
+  timeoutMs?: number;
+  user?: string;
 };
 
 export class E2bSandboxProvider {
@@ -90,6 +108,18 @@ export class E2bSandboxProvider {
       ...session,
       expiresAt: new Date(Date.now() + timeoutMs).toISOString(),
     };
+  }
+
+  async runCommandInSession(
+    session: StartedCodeServerSession,
+    command: string,
+    options: E2bCommandRunOptions = {},
+  ): Promise<CommandResultLike> {
+    const sandbox = await this.connect(session.sandboxId);
+    return sandbox.commands.run(command, {
+      ...options,
+      background: false,
+    });
   }
 
   private async connect(sandboxId: string): Promise<E2bSandboxLike> {

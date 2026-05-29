@@ -1,6 +1,7 @@
-export type AgentRuntimeKind = 'remote-claude' | 'claude-agent-sdk';
+export type AgentRuntimeKind = 'remote-claude' | 'claude-agent-sdk' | 'e2b-claude-cli';
 
 export interface AgentChatParams {
+  userId?: number;
   message: string;
   sessionId?: string;
   cwd: string;

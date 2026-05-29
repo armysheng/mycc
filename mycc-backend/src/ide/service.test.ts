@@ -11,6 +11,8 @@ describe('IDE session service config', () => {
     delete process.env.MYCC_E2B_ALLOW_PUBLIC_TRAFFIC;
     delete process.env.MYCC_IDE_PORT;
     delete process.env.MYCC_IDE_SESSION_TTL_SECONDS;
+    delete process.env.MYCC_E2B_LINUX_USER;
+    delete process.env.MYCC_E2B_WORKSPACE_DIR;
   });
 
   it('keeps remote IDE disabled by default', () => {
@@ -35,14 +37,29 @@ describe('IDE session service config', () => {
       provider: 'e2b',
       template: 'mycc-code-server-dev',
       userId: 42,
-      linuxUser: 'tester',
-      workspaceDir: '/home/tester/workspace',
+      linuxUser: 'mycc',
+      workspaceDir: '/home/mycc/workspace',
       port: 18080,
       sessionTtlSeconds: 3600,
       allowPublicTraffic: false,
       accessMode: 'mycc-proxy',
       startCommand: expect.stringContaining("'code-server'"),
     });
+  });
+
+  it('uses the E2B template linux user instead of the product linux user', () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_LINUX_USER = 'mycc';
+
+    const plan = buildE2bCodeServerSessionPlan({
+      linuxUser: 'tester',
+      userId: 42,
+      workspaceDir: '/home/tester/workspace',
+    });
+
+    expect(plan.linuxUser).toBe('mycc');
+    expect(plan.workspaceDir).toBe('/home/mycc/workspace');
+    expect(plan.startCommand).toContain("'/home/mycc/workspace'");
   });
 
   it('rejects public E2B traffic for product IDE sessions', () => {

@@ -37,6 +37,7 @@ export type BuildE2bCodeServerSessionPlanParams = {
 
 const DEFAULT_E2B_TEMPLATE = 'mycc-code-server-dev';
 const DEFAULT_IDE_SESSION_TTL_SECONDS = 3600;
+const DEFAULT_E2B_LINUX_USER = 'mycc';
 
 export function resolveIdeConfig(env: NodeJS.ProcessEnv = process.env): IdeConfig {
   const provider = resolveProviderKind(env.MYCC_IDE_PROVIDER);
@@ -72,8 +73,8 @@ export function buildE2bCodeServerSessionPlan(
     throw new Error('IDE provider is disabled');
   }
 
-  const linuxUser = sanitizeLinuxUsername(params.linuxUser);
-  const workspaceDir = validateIdeWorkspaceDir(linuxUser, params.workspaceDir);
+  const linuxUser = resolveE2bLinuxUser(env);
+  const workspaceDir = resolveE2bWorkspaceDir(env, linuxUser);
   const port = config.codeServerPort;
 
   return {
@@ -92,6 +93,14 @@ export function buildE2bCodeServerSessionPlan(
       workspaceDir,
     }),
   };
+}
+
+function resolveE2bLinuxUser(env: NodeJS.ProcessEnv): string {
+  return sanitizeLinuxUsername(env.MYCC_E2B_LINUX_USER || DEFAULT_E2B_LINUX_USER);
+}
+
+function resolveE2bWorkspaceDir(env: NodeJS.ProcessEnv, linuxUser: string): string {
+  return validateIdeWorkspaceDir(linuxUser, env.MYCC_E2B_WORKSPACE_DIR || `/home/${linuxUser}/workspace`);
 }
 
 function resolveProviderKind(raw: string | undefined): IdeProviderKind {
