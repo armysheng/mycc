@@ -123,7 +123,7 @@ describe('ide routes', () => {
         accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2026-05-29T14:00:00.000Z',
-        openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/proxy\/$/),
+        openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/open\?token=.+/),
       },
     });
     expect(JSON.stringify(body)).not.toContain('secret-token');
@@ -172,9 +172,45 @@ describe('ide routes', () => {
         accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2026-05-29T14:00:00.000Z',
-        openPath: `/api/ide/sessions/${id}/proxy/`,
+        openPath: expect.stringMatching(new RegExp(`^/api/ide/sessions/${id}/open\\?token=.+`)),
       },
     });
+  });
+
+  it('exchanges an IDE open token for an httpOnly proxy cookie', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+      },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const openPath = created.json().data.openPath;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: openPath,
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe(openPath.replace(/\/open\?token=.+$/, '/proxy/'));
+    expect(response.headers['set-cookie']).toEqual(expect.stringContaining('HttpOnly'));
+    expect(response.headers['set-cookie']).toEqual(expect.stringContaining('Path=/api/ide/sessions/'));
+    expect(JSON.stringify(response.headers)).not.toContain('secret-token');
+    expect(JSON.stringify(response.headers)).not.toContain('18080-sbx_123.e2b.app');
   });
 
   it('renews a running IDE session', async () => {
@@ -407,5 +443,50 @@ describe('ide routes', () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('proxies browser requests authorized by the IDE proxy cookie', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const web = vi.fn((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+      },
+      proxyServer: { web },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+    const open = await app.inject({
+      method: 'GET',
+      url: created.json().data.openPath,
+    });
+    const cookie = Array.isArray(open.headers['set-cookie'])
+      ? open.headers['set-cookie'][0]
+      : open.headers['set-cookie'];
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/ide/sessions/${id}/proxy/healthz`,
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(web).toHaveBeenCalledOnce();
   });
 });
