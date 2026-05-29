@@ -251,6 +251,10 @@ export function WorkspacePage() {
     setIdeOpening(true);
     setError(null);
     setNotice(null);
+    const ideWindow = window.open("about:blank", "_blank");
+    if (ideWindow) {
+      ideWindow.opener = null;
+    }
     try {
       const configJson = await apiFetch(getIdeConfigUrl());
       const config = configJson?.data as IdeConfigData | undefined;
@@ -264,9 +268,15 @@ export function WorkspacePage() {
         throw new Error("Remote IDE 会话创建成功，但缺少打开地址");
       }
 
-      window.open(resolveIdeOpenUrl(session.openPath), "_blank", "noopener,noreferrer");
+      const openUrl = resolveIdeOpenUrl(session.openPath);
+      if (ideWindow) {
+        ideWindow.location.href = openUrl;
+      } else {
+        window.open(openUrl, "_blank", "noopener,noreferrer");
+      }
       setNotice("Remote IDE 已在新标签页打开");
     } catch (err) {
+      ideWindow?.close();
       setError(err instanceof Error ? err.message : "打开 Remote IDE 失败");
     } finally {
       setIdeOpening(false);
