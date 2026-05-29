@@ -1,13 +1,18 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { parseStreamLine } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provider.js';
+import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
+type E2bClaudeCliProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
+  & Partial<Pick<E2bSandboxProvider, 'startCodeServer'>>;
+
 export type E2bClaudeCliRuntimeOptions = {
   sessionStore?: IdeSessionStore;
-  e2bProvider?: Pick<E2bSandboxProvider, 'runCommandInSession'>;
+  e2bProvider?: E2bClaudeCliProvider;
 };
 
 const DEFAULT_SANDBOX_LINUX_USER = 'mycc';
@@ -15,7 +20,7 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
 export class E2bClaudeCliRuntime implements AgentRuntime {
   private readonly sessionStore: IdeSessionStore;
-  private readonly e2bProvider: Pick<E2bSandboxProvider, 'runCommandInSession'>;
+  private readonly e2bProvider: E2bClaudeCliProvider;
 
   constructor(options: E2bClaudeCliRuntimeOptions = {}) {
     this.sessionStore = options.sessionStore ?? new PostgresIdeSessionStore();
@@ -36,11 +41,7 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
       sanitizeLinuxUsername(params.linuxUser);
       const sandboxUser = resolveSandboxLinuxUser();
       const cwd = resolveSandboxWorkspaceCwd(sandboxUser);
-      const session = await this.sessionStore.findReusableByUser(params.userId);
-      if (!session) {
-        yield { type: 'error', error: '请先打开 Remote IDE 以创建 E2B 沙箱会话' };
-        return;
-      }
+      const session = await this.findOrCreateSession(params, cwd);
 
       yield* this.runClaudeCommand(session, params, cwd, sandboxUser);
     } catch (error) {
@@ -49,6 +50,33 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  private async findOrCreateSession(params: AgentChatParams, workspaceDir: string): Promise<StoredIdeSession> {
+    const userId = params.userId as number;
+    const reusable = await this.sessionStore.findReusableByUser(userId);
+    if (reusable) {
+      return reusable;
+    }
+    if (!this.e2bProvider.startCodeServer) {
+      throw new Error('E2B runtime provider cannot create IDE sessions');
+    }
+
+    const plan = buildE2bCodeServerSessionPlan({
+      userId,
+      linuxUser: params.linuxUser,
+      workspaceDir,
+    });
+    const started = await this.e2bProvider.startCodeServer(plan);
+    const session: StoredIdeSession = {
+      ...started,
+      id: randomUUID(),
+      proxyToken: randomUUID(),
+      userId,
+      status: 'running',
+    };
+    await this.sessionStore.set(session);
+    return session;
   }
 
   private async *runClaudeCommand(

@@ -1,9 +1,7 @@
 import dotenv from 'dotenv';
 import { Template } from 'e2b';
-import { randomUUID } from 'node:crypto';
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
-import { buildE2bCodeServerSessionPlan } from '../src/ide/service.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 import { escapeShellArg } from '../src/utils/validation.js';
 
@@ -43,47 +41,40 @@ async function main() {
     throw new Error(`E2B template does not exist: ${TEMPLATE_NAME}`);
   }
 
-  const plan = buildE2bCodeServerSessionPlan({
-    userId: SMOKE_USER_ID,
-    linuxUser: PRODUCT_LINUX_USER,
-    workspaceDir: `/home/${PRODUCT_LINUX_USER}/workspace`,
+  const store = new InMemoryIdeSessionStore();
+  const runtime = new E2bClaudeCliRuntime({
+    sessionStore: store,
+    e2bProvider: provider,
   });
-  const started = await provider.startCodeServer(plan);
-  session = {
-    ...started,
-    id: randomUUID(),
-    proxyToken: randomUUID(),
-    userId: SMOKE_USER_ID,
-    status: 'running',
-  };
 
   try {
+    await runAgentPrompt(runtime, [
+      '你正在 E2B smoke test 的工作区内。',
+      `请创建文件 ${AGENT_MARKER_FILE}，内容必须精确等于 ${MARKER}`,
+      '请直接完成文件写入，不要只解释。',
+    ].join('\n'));
+    session = await store.findReusableByUser(SMOKE_USER_ID) ?? undefined;
+    if (!session) {
+      throw new Error('E2B runtime did not persist a reusable IDE session');
+    }
+
     await assertCodeServerLocalHealth(session);
-    await writeWorkspaceFile(session, IDE_MARKER_FILE, MARKER);
-    await runAgentRoundTrip(session);
-    await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
     await assertWorkspaceFileEquals(session, AGENT_MARKER_FILE, MARKER);
+    await writeWorkspaceFile(session, IDE_MARKER_FILE, MARKER);
+    await runAgentPrompt(runtime, [
+      '你正在 E2B smoke test 的工作区内。',
+      `请读取当前目录的 ${IDE_MARKER_FILE}，然后创建文件 ${AGENT_READBACK_FILE}，内容必须精确等于 ${MARKER}`,
+      '请直接完成文件写入，不要只解释。',
+    ].join('\n'));
+    await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
     console.log(`[ok] E2B Agent+IDE workspace smoke passed: sandbox=${session.sandboxId}, marker=${MARKER}`);
   } finally {
     await cleanup();
   }
 }
 
-async function runAgentRoundTrip(activeSession: StoredIdeSession): Promise<void> {
-  const store = new InMemoryIdeSessionStore();
-  await store.set(activeSession);
-  const runtime = new E2bClaudeCliRuntime({
-    sessionStore: store,
-    e2bProvider: provider,
-  });
+async function runAgentPrompt(runtime: E2bClaudeCliRuntime, prompt: string): Promise<void> {
   const events = [];
-  const prompt = [
-    '你正在 E2B smoke test 的工作区内。',
-    `请读取当前目录的 ${IDE_MARKER_FILE}，然后创建两个文件：`,
-    `1. ${AGENT_READBACK_FILE}，内容必须精确等于 ${MARKER}`,
-    `2. ${AGENT_MARKER_FILE}，内容必须精确等于 ${MARKER}`,
-    '请直接完成文件写入，不要只解释。',
-  ].join('\n');
 
   for await (const event of runtime.chat({
     userId: SMOKE_USER_ID,

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { E2bClaudeCliRuntime } from './e2b-claude-cli-runtime.js';
 import type { IdeSessionStore, StoredIdeSession } from '../ide/session-store.js';
 
@@ -35,6 +35,10 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe('E2bClaudeCliRuntime', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('runs Claude CLI in the reusable E2B IDE sandbox workspace', async () => {
     const runCommand = vi.fn().mockImplementation(async (_session, _command, options) => {
       await options.onStdout('{"type":"system","session_id":"session-1","model":"claude-sonnet-4-6"}\n');
@@ -74,11 +78,26 @@ describe('E2bClaudeCliRuntime', () => {
     expect(runCommand.mock.calls[0][1]).toContain("'hello'");
   });
 
-  it('returns an error when no reusable E2B IDE session exists', async () => {
-    const runCommand = vi.fn();
+  it('creates and stores an E2B IDE sandbox when chat starts before Remote IDE opens', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const store = createStore(null);
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_new',
+      codeServerPid: 4321,
+      host: '18080-sbx_new.e2b.app',
+      trafficAccessToken: 'new-secret-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const runCommand = vi.fn().mockImplementation(async (_session, _command, options) => {
+      await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-2"}\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
     const runtime = new E2bClaudeCliRuntime({
-      sessionStore: createStore(null),
-      e2bProvider: { runCommandInSession: runCommand },
+      sessionStore: store,
+      e2bProvider: { startCodeServer, runCommandInSession: runCommand },
     });
 
     const events = await collect(runtime.chat({
@@ -89,9 +108,27 @@ describe('E2bClaudeCliRuntime', () => {
     }));
 
     expect(events).toEqual([
-      { type: 'error', error: '请先打开 Remote IDE 以创建 E2B 沙箱会话' },
+      { type: 'result', subtype: 'success', is_error: false, session_id: 'session-2' },
     ]);
-    expect(runCommand).not.toHaveBeenCalled();
+    expect(startCodeServer).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'e2b',
+      userId: 42,
+      linuxUser: 'mycc',
+      workspaceDir: '/home/mycc/workspace',
+      accessMode: 'mycc-proxy',
+    }));
+    expect(store.set).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'e2b',
+      sandboxId: 'sbx_new',
+      userId: 42,
+      status: 'running',
+      proxyToken: expect.any(String),
+    }));
+    expect(runCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ sandboxId: 'sbx_new' }),
+      expect.stringContaining('claude'),
+      expect.objectContaining({ cwd: '/home/mycc/workspace' }),
+    );
   });
 
   it('requires chat routes to pass userId for E2B sandbox lookup', async () => {
