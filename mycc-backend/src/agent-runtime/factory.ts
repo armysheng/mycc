@@ -1,9 +1,9 @@
 import { ClaudeAgentSdkRuntime } from './claude-agent-sdk-runtime.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
-import type { AgentRuntime } from './types.js';
+import type { AgentRuntime, AgentRuntimeKind } from './types.js';
 
 export type AgentRuntimeFactoryOptions = {
-  kind?: string;
+  kind?: AgentRuntimeKind | string;
 };
 
 export function createAgentRuntime(options: AgentRuntimeFactoryOptions = {}): AgentRuntime {

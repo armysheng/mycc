@@ -168,13 +168,22 @@ Authorization: Bearer <token>
 | MYCC_AGENT_SDK_ALLOWED_TOOLS | Agent SDK 自动允许工具，逗号分隔 | Read,Glob,Grep |
 | MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | dontAsk |
 | MYCC_AGENT_SDK_PARTIAL_MESSAGES | 是否输出 SDK partial stream event | false |
+| MYCC_AGENT_SDK_CONFIG_ROOT | Agent SDK 每用户 HOME/Claude 配置根目录；为空时使用 `/home/{linux_user}/.mycc` | - |
+| MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
+| MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
+| MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
+| MYCC_E2B_API_KEY | E2B API key，后续真实 provider 使用 | - |
+| MYCC_E2B_TEMPLATE | E2B code-server 模板名 | mycc-code-server-dev |
+| MYCC_E2B_ALLOW_PUBLIC_TRAFFIC | 是否允许 E2B host 直接公网访问；产品路径必须为 false | false |
 
 ### Agent Runtime
 
 后端聊天和自动化都通过 `src/agent-runtime` 工厂创建运行时，方便逐步接入不同底层：
 
 - `remote-claude`：默认稳定路径，保持现有行为，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
-- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: dontAsk`、`allowedTools: Read,Glob,Grep`，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: dontAsk`、`allowedTools: Read,Glob,Grep`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+
+`claude-agent-sdk` runtime 会覆盖传给 SDK 子进程的 `HOME`、`CLAUDE_CONFIG_DIR`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`。默认每个用户写到 `/home/{linux_user}/.mycc`；如果运行在 E2B/容器沙箱或希望挂载专用 runtime 卷，可设置 `MYCC_AGENT_SDK_CONFIG_ROOT=/srv/mycc/runtime`，最终目录为 `/srv/mycc/runtime/{linux_user}/{home,.claude}`。
 
 如果要让 Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再配置：
 
@@ -187,6 +196,18 @@ MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 ```
 
 注意：`claude-agent-sdk` runtime 当前是 opt-in 实验能力，适合沙箱/单用户隔离环境验证；生产多用户默认仍使用 `remote-claude`。
+
+### Remote IDE / code-server POC
+
+后端已预留 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions` 和 `/api/ide/sessions/:id/status`，用于下一阶段接 E2B sandbox + code-server。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会生成 proxy-only session plan，并可通过 `E2bSandboxProvider` 创建 POC 会话。当前响应会隐藏 E2B host 与 traffic token，等待反向代理层接入。
+
+```bash
+MYCC_IDE_PROVIDER=e2b
+MYCC_E2B_TEMPLATE=mycc-code-server-dev
+MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
+```
+
+安全默认值是：code-server 只作为 mycc 反向代理后的能力暴露，沙箱内部固定端口 `18080`，启动命令使用 `--auth none` 但必须配合 `E2B allowPublicTraffic:false + mycc 一次性访问 token + 后端注入 e2b-traffic-access-token`。不要把 E2B public host 或裸 code-server password 页面直接给产品用户。
 
 ## 开发说明
 

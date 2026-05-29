@@ -1,4 +1,4 @@
-export type AgentRuntimeKind = 'remote-claude';
+export type AgentRuntimeKind = 'remote-claude' | 'claude-agent-sdk';
 
 export interface AgentChatParams {
   message: string;

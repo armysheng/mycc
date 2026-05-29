@@ -46,6 +46,12 @@ describe('ClaudeAgentSdkRuntime', () => {
       options: expect.objectContaining({
         allowedTools: ['Read', 'Glob', 'Grep'],
         cwd: '/home/tester/workspace',
+        env: expect.objectContaining({
+          CLAUDE_CONFIG_DIR: '/home/tester/.mycc/claude',
+          HOME: '/home/tester/.mycc/home',
+          XDG_CONFIG_HOME: '/home/tester/.mycc/home/.config',
+          XDG_DATA_HOME: '/home/tester/.mycc/home/.local/share',
+        }),
         includePartialMessages: false,
         model: 'claude-sonnet-4-6',
         permissionMode: 'dontAsk',
@@ -71,5 +77,73 @@ describe('ClaudeAgentSdkRuntime', () => {
     expect(events).toEqual([
       { type: 'error', error: 'sdk boom' },
     ]);
+  });
+
+  it('uses a configurable per-user runtime config root', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_CONFIG_ROOT', '/srv/mycc/runtime');
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(query).toHaveBeenCalledWith({
+      prompt: 'hello',
+      options: expect.objectContaining({
+        env: expect.objectContaining({
+          CLAUDE_CONFIG_DIR: '/srv/mycc/runtime/tester/.claude',
+          HOME: '/srv/mycc/runtime/tester/home',
+        }),
+      }),
+    });
+  });
+
+  it('rejects relative runtime config roots', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_CONFIG_ROOT', 'runtime/claude');
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    const events = await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'MYCC_AGENT_SDK_CONFIG_ROOT must be an absolute path' },
+    ]);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects working directories outside the user workspace', async () => {
+    const runtime = new ClaudeAgentSdkRuntime();
+    const events = await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/other/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'Invalid working directory: /home/other/workspace' },
+    ]);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects working directories that escape through parent segments', async () => {
+    const runtime = new ClaudeAgentSdkRuntime();
+    const events = await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace/../../other/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'Invalid working directory: /home/tester/workspace/../../other/workspace' },
+    ]);
+    expect(query).not.toHaveBeenCalled();
   });
 });
