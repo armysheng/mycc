@@ -632,7 +632,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({
           success: false,
           error: '请求参数错误',
-          details: err.errors,
+          details: err.issues,
         });
       }
 

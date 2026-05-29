@@ -57,7 +57,7 @@ function sendAutomationError(reply: { status: (statusCode: number) => { send: (p
     return reply.status(400).send({
       success: false,
       error: '参数错误',
-      details: err.errors,
+      details: err.issues,
     });
   }
   if (err instanceof AutomationStoreError) {

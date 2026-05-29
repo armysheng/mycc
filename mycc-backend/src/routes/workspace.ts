@@ -175,7 +175,7 @@ function sendWorkspaceError(reply: FastifyReply, err: unknown) {
     return reply.status(400).send({
       success: false,
       error: '参数错误',
-      details: err.errors,
+      details: err.issues,
     });
   }
   if (err instanceof WorkspaceRouteError) {

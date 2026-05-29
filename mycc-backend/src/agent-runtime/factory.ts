@@ -1,3 +1,4 @@
+import { ClaudeAgentSdkRuntime } from './claude-agent-sdk-runtime.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import type { AgentRuntime } from './types.js';
 
@@ -9,6 +10,8 @@ export function createAgentRuntime(options: AgentRuntimeFactoryOptions = {}): Ag
   const kind = (options.kind ?? process.env.MYCC_AGENT_RUNTIME ?? 'remote-claude').trim();
 
   switch (kind) {
+    case 'claude-agent-sdk':
+      return new ClaudeAgentSdkRuntime();
     case 'remote-claude':
       return new RemoteClaudeAdapter();
     default:

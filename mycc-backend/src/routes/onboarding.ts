@@ -206,7 +206,7 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({
           success: false,
           error: '参数错误',
-          details: err.errors,
+          details: err.issues,
         });
       }
       console.error('❌ Onboarding 失败:', err);
