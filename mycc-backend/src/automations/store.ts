@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { escapeShellArg } from '../utils/validation.js';
-import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
+import { createAgentRuntime } from '../agent-runtime/index.js';
 import { extractModel, extractUsage } from '../adapters/stream-parser.js';
 import type {
   AutomationDocument,
@@ -745,7 +745,7 @@ NODE
   }
 
   private async executeAutomation(record: AutomationRecord): Promise<RunExecutionUsage> {
-    const adapter = new RemoteClaudeAdapter();
+    const runtime = createAgentRuntime();
     const message = this.buildRunMessage(record);
     const cwd = `/home/${this.linuxUser}/workspace`;
     let totalInputTokens = 0;
@@ -753,7 +753,7 @@ NODE
     let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
     let runtimeError: string | null = null;
-    for await (const event of adapter.chat({
+    for await (const event of runtime.chat({
       message,
       cwd,
       linuxUser: this.linuxUser,

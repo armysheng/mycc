@@ -8,24 +8,16 @@ import { vpsUserManager } from '../vps/user-manager.js';
 import type { SSHConnection } from '../ssh/types.js';
 import { parseStreamLine } from './stream-parser.js';
 import { sanitizeLinuxUsername, validatePathPrefix } from '../utils/validation.js';
+import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from '../agent-runtime/types.js';
 
-export interface ChatParams {
-  message: string;
-  sessionId?: string;
-  cwd: string;
-  linuxUser: string;
-  images?: Array<{ data: string; mediaType: string }>;
-}
+export type ChatParams = AgentChatParams;
 
-export interface SSEEvent {
-  type: string;
-  [key: string]: any;
-}
+export type SSEEvent = AgentRuntimeEvent;
 
 /**
  * 远程 Claude 适配器
  */
-export class RemoteClaudeAdapter {
+export class RemoteClaudeAdapter implements AgentRuntime {
   /**
    * 发送消息，返回 SSE 事件流
    */

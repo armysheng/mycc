@@ -13,7 +13,7 @@ import {
   updateConversationStats,
   userOwnsConversation,
 } from '../db/client.js';
-import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
+import { createAgentRuntime } from '../agent-runtime/index.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import {
   escapeShellArg,
@@ -460,8 +460,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Invalid path' });
       }
 
-      // 创建 RemoteClaudeAdapter
-      const adapter = new RemoteClaudeAdapter();
+      const runtime = createAgentRuntime();
 
       // 设置 SSE 响应头
       reply.raw.writeHead(200, {
@@ -482,7 +481,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
 
         // 流式处理响应
-        for await (const event of adapter.chat({
+        for await (const event of runtime.chat({
           message: enhancedMessage,
           sessionId: body.sessionId,
           cwd,
