@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createProxyServer, type ServerOptions } from 'http-proxy';
 import { E2bSandboxProvider, type StartedCodeServerSession } from '../ide/e2b-provider.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import {
@@ -19,11 +21,22 @@ export type StoredIdeSession = StartedCodeServerSession & {
 export type IdeRoutesOptions = {
   e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>
     & Partial<Pick<E2bSandboxProvider, 'renewCodeServer' | 'stopCodeServer'>>;
+  proxyServer?: IdeProxyServer;
   sessionStore?: Map<string, StoredIdeSession>;
+};
+
+type IdeProxyServer = {
+  web(
+    req: IncomingMessage,
+    res: ServerResponse,
+    options: ServerOptions,
+    callback: (error: Error) => void,
+  ): void;
 };
 
 export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOptions = {}) {
   const e2bProvider = options.e2bProvider ?? new E2bSandboxProvider();
+  const proxyServer = options.proxyServer ?? createProxyServer({ ws: true });
   const sessionStore = options.sessionStore ?? new Map<string, StoredIdeSession>();
 
   fastify.get('/api/ide/config', {
@@ -194,6 +207,33 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       return sendRouteError(reply, error, 400);
     }
   });
+
+  fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/proxy/*', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    const session = getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+    if (!session) {
+      return reply.status(404).send({ error: 'IDE session not found' });
+    }
+    if (session.status !== 'running') {
+      return reply.status(409).send({ error: 'IDE session is not running' });
+    }
+    if (!session.trafficAccessToken) {
+      return reply.status(502).send({ error: 'IDE session is missing provider access token' });
+    }
+
+    request.raw.url = buildUpstreamProxyPath(request.raw.url || '/', request.params['*']);
+    reply.hijack();
+    proxyServer.web(request.raw, reply.raw, {
+      target: `https://${session.host}`,
+      changeOrigin: true,
+      headers: {
+        'e2b-traffic-access-token': session.trafficAccessToken,
+      },
+    }, (error) => {
+      sendProxyError(reply.raw, error);
+    });
+  });
 }
 
 function getOwnedSession(
@@ -219,6 +259,23 @@ function toPublicSession(session: StoredIdeSession) {
     expiresAt: session.expiresAt,
     openPath: `/api/ide/sessions/${session.id}/proxy/`,
   };
+}
+
+function buildUpstreamProxyPath(rawUrl: string, wildcardPath: string | undefined): string {
+  const parsed = new URL(rawUrl, 'http://mycc.local');
+  const path = wildcardPath ? `/${wildcardPath}` : '/';
+  return `${path}${parsed.search}`;
+}
+
+function sendProxyError(response: ServerResponse, error: Error): void {
+  if (response.headersSent) {
+    response.destroy(error);
+    return;
+  }
+
+  response.statusCode = 502;
+  response.setHeader('content-type', 'application/json; charset=utf-8');
+  response.end(JSON.stringify({ error: 'IDE proxy failed' }));
 }
 
 function sendRouteError(reply: FastifyReply, error: unknown, statusCode: number) {

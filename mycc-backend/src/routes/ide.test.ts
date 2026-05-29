@@ -5,10 +5,10 @@ import { ideRoutes, type IdeRoutesOptions } from './ide.js';
 
 const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
 
-function authHeader(): string {
+function authHeader(overrides: Partial<{ userId: number; linuxUser: string }> = {}): string {
   const token = jwt.sign({
-    userId: 42,
-    linuxUser: 'tester',
+    userId: overrides.userId ?? 42,
+    linuxUser: overrides.linuxUser ?? 'tester',
     role: 'user',
     plan: 'free',
   }, TEST_JWT_SECRET, { expiresIn: '1h' });
@@ -264,5 +264,148 @@ describe('ide routes', () => {
       }),
     });
     expect(JSON.stringify(response.json())).not.toContain('secret-token');
+  });
+
+  it('does not allow another user to inspect or control an IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const renewCodeServer = vi.fn();
+    const stopCodeServer = vi.fn();
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+        renewCodeServer,
+        stopCodeServer,
+      },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+    const otherUser = authHeader({ userId: 43, linuxUser: 'other' });
+
+    const status = await app.inject({
+      method: 'GET',
+      url: `/api/ide/sessions/${id}/status`,
+      headers: { authorization: otherUser },
+    });
+    const renew = await app.inject({
+      method: 'POST',
+      url: `/api/ide/sessions/${id}/renew`,
+      headers: { authorization: otherUser },
+    });
+    const stop = await app.inject({
+      method: 'DELETE',
+      url: `/api/ide/sessions/${id}`,
+      headers: { authorization: otherUser },
+    });
+
+    expect(status.statusCode).toBe(404);
+    expect(renew.statusCode).toBe(404);
+    expect(stop.statusCode).toBe(404);
+    expect(renewCodeServer).not.toHaveBeenCalled();
+    expect(stopCodeServer).not.toHaveBeenCalled();
+  });
+
+  it('does not renew a stopped IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const renewCodeServer = vi.fn();
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+        renewCodeServer,
+        stopCodeServer: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/ide/sessions/${id}`,
+      headers: { authorization: authHeader() },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/ide/sessions/${id}/renew`,
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: 'IDE session is not running' });
+    expect(renewCodeServer).not.toHaveBeenCalled();
+  });
+
+  it('proxies an owned running IDE session with E2B traffic token injection', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const web = vi.fn((req, res) => {
+      expect(req.url).toBe('/healthz?ready=1');
+      res.statusCode = 204;
+      res.end();
+    });
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+      },
+      proxyServer: { web },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/ide/sessions/${id}/proxy/healthz?ready=1`,
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(web).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        target: 'https://18080-sbx_123.e2b.app',
+        changeOrigin: true,
+        headers: {
+          'e2b-traffic-access-token': 'secret-token',
+        },
+      }),
+      expect.any(Function),
+    );
   });
 });
