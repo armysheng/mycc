@@ -160,6 +160,33 @@ Authorization: Bearer <token>
 | PLAN_PRO_TOKENS | 专业版额度 | 12000000 |
 | PLAN_BASIC_PRICE_CNY | 基础版月费（人民币） | 39 |
 | PLAN_PRO_PRICE_CNY | 专业版月费（人民币） | 99 |
+| MYCC_AGENT_RUNTIME | Agent 运行时：`remote-claude` 或 `claude-agent-sdk` | remote-claude |
+| MYCC_AGENT_SDK_BASE_URL | Agent SDK 的 Anthropic/CCR base URL | - |
+| MYCC_AGENT_SDK_AUTH_TOKEN | Agent SDK/CCR auth token | - |
+| MYCC_AGENT_SDK_API_KEY | Agent SDK Anthropic API key | ANTHROPIC_API_KEY |
+| MYCC_AGENT_SDK_MODEL | Agent SDK 默认模型 | claude-sonnet-4-6 |
+| MYCC_AGENT_SDK_ALLOWED_TOOLS | Agent SDK 自动允许工具，逗号分隔 | Read,Glob,Grep |
+| MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | dontAsk |
+| MYCC_AGENT_SDK_PARTIAL_MESSAGES | 是否输出 SDK partial stream event | false |
+
+### Agent Runtime
+
+后端聊天和自动化都通过 `src/agent-runtime` 工厂创建运行时，方便逐步接入不同底层：
+
+- `remote-claude`：默认稳定路径，保持现有行为，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
+- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: dontAsk`、`allowedTools: Read,Glob,Grep`，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+
+如果要让 Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再配置：
+
+```bash
+MYCC_AGENT_RUNTIME=claude-agent-sdk
+MYCC_AGENT_SDK_BASE_URL=http://127.0.0.1:3456
+MYCC_AGENT_SDK_AUTH_TOKEN=<ccr-api-key-or-token>
+MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
+MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
+```
+
+注意：`claude-agent-sdk` runtime 当前是 opt-in 实验能力，适合沙箱/单用户隔离环境验证；生产多用户默认仍使用 `remote-claude`。
 
 ## 开发说明
 
