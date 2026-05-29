@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import { Template } from 'e2b';
+import type { AgentRuntime } from '../src/agent-runtime/types.js';
 import { resolveClaudeProviderEnv } from '../src/agent-runtime/claude-env.js';
+import { E2bClaudeAgentSdkRuntime } from '../src/agent-runtime/e2b-claude-agent-sdk-runtime.js';
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
@@ -19,6 +21,8 @@ const MARKER = `mycc-e2b-agent-smoke-${Date.now()}`;
 const IDE_MARKER_FILE = 'mycc-smoke-from-ide.txt';
 const AGENT_READBACK_FILE = 'mycc-smoke-agent-readback.txt';
 const AGENT_MARKER_FILE = 'mycc-smoke-from-agent.txt';
+const AGENT_RUNTIME = process.env.MYCC_SMOKE_E2B_AGENT_RUNTIME || 'e2b-claude-cli';
+const E2B_AGENT_SDK_SMOKE_ALLOWED_TOOLS = 'Read,Glob,Grep,Write,Edit,MultiEdit,Bash';
 
 let session: StoredIdeSession | undefined;
 const provider = new E2bSandboxProvider();
@@ -34,6 +38,7 @@ async function main() {
   process.env.MYCC_E2B_LINUX_USER = SANDBOX_LINUX_USER;
   process.env.MYCC_E2B_WORKSPACE_DIR = WORKSPACE_DIR;
   process.env.MYCC_IDE_SESSION_TTL_SECONDS = String(SESSION_TTL_SECONDS);
+  applyRuntimeSmokeDefaults();
 
   requireClaudeCredential();
 
@@ -43,10 +48,7 @@ async function main() {
   }
 
   const store = new InMemoryIdeSessionStore();
-  const runtime = new E2bClaudeCliRuntime({
-    sessionStore: store,
-    e2bProvider: provider,
-  });
+  const runtime = createSmokeRuntime(store);
 
   try {
     await runAgentPrompt(runtime, [
@@ -68,13 +70,35 @@ async function main() {
       '请直接完成文件写入，不要只解释。',
     ].join('\n'));
     await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
-    console.log(`[ok] E2B Agent+IDE workspace smoke passed: sandbox=${session.sandboxId}, marker=${MARKER}`);
+    console.log(`[ok] E2B Agent+IDE workspace smoke passed: runtime=${AGENT_RUNTIME}, sandbox=${session.sandboxId}, marker=${MARKER}`);
   } finally {
     await cleanup();
   }
 }
 
-async function runAgentPrompt(runtime: E2bClaudeCliRuntime, prompt: string): Promise<void> {
+function createSmokeRuntime(store: InMemoryIdeSessionStore): AgentRuntime {
+  if (AGENT_RUNTIME === 'e2b-claude-agent-sdk') {
+    return new E2bClaudeAgentSdkRuntime({
+      sessionStore: store,
+      e2bProvider: provider,
+    });
+  }
+  if (AGENT_RUNTIME === 'e2b-claude-cli') {
+    return new E2bClaudeCliRuntime({
+      sessionStore: store,
+      e2bProvider: provider,
+    });
+  }
+  throw new Error(`Unsupported MYCC_SMOKE_E2B_AGENT_RUNTIME: ${AGENT_RUNTIME}`);
+}
+
+function applyRuntimeSmokeDefaults(): void {
+  if (AGENT_RUNTIME !== 'e2b-claude-agent-sdk') return;
+  process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS ||= E2B_AGENT_SDK_SMOKE_ALLOWED_TOOLS;
+  process.env.MYCC_AGENT_SDK_PERMISSION_MODE ||= 'bypassPermissions';
+}
+
+async function runAgentPrompt(runtime: AgentRuntime, prompt: string): Promise<void> {
   const events = [];
 
   for await (const event of runtime.chat({

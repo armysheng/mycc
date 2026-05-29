@@ -37,6 +37,8 @@ RUN mkdir -p /opt/mycc-agent-runtime \
   && npm init -y \
   && npm install @anthropic-ai/claude-agent-sdk
 
+COPY agent-sdk-bridge.mjs /opt/mycc-agent-runtime/bridge.mjs
+
 RUN useradd -m -s /bin/bash mycc \
   && mkdir -p /home/mycc/workspace /home/mycc/.mycc \
   && chown -R mycc:mycc /home/mycc /opt/mycc-agent-runtime
