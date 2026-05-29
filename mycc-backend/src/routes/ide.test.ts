@@ -176,4 +176,93 @@ describe('ide routes', () => {
       },
     });
   });
+
+  it('renews a running IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const renewCodeServer = vi.fn().mockImplementation(async (session) => ({
+      ...session,
+      expiresAt: '2026-05-29T15:00:00.000Z',
+    }));
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+        renewCodeServer,
+      },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/ide/sessions/${id}/renew`,
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(renewCodeServer).toHaveBeenCalledWith(expect.objectContaining({
+      sandboxId: 'sbx_123',
+      trafficAccessToken: 'secret-token',
+    }), 3600);
+    expect(response.json().data.expiresAt).toBe('2026-05-29T15:00:00.000Z');
+    expect(JSON.stringify(response.json())).not.toContain('secret-token');
+  });
+
+  it('stops a running IDE session and keeps provider secrets private', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const stopCodeServer = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+        stopCodeServer,
+      },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/ide/sessions/${id}`,
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(stopCodeServer).toHaveBeenCalledWith(expect.objectContaining({
+      sandboxId: 'sbx_123',
+      trafficAccessToken: 'secret-token',
+    }));
+    expect(response.json()).toEqual({
+      success: true,
+      data: expect.objectContaining({
+        id,
+        status: 'stopped',
+      }),
+    });
+    expect(JSON.stringify(response.json())).not.toContain('secret-token');
+  });
 });

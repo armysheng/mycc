@@ -8,7 +8,7 @@ import {
 } from '../ide/service.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
 
-export type IdeSessionStatus = 'running';
+export type IdeSessionStatus = 'running' | 'stopped';
 
 export type StoredIdeSession = StartedCodeServerSession & {
   id: string;
@@ -17,7 +17,8 @@ export type StoredIdeSession = StartedCodeServerSession & {
 };
 
 export type IdeRoutesOptions = {
-  e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>;
+  e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>
+    & Partial<Pick<E2bSandboxProvider, 'renewCodeServer' | 'stopCodeServer'>>;
   sessionStore?: Map<string, StoredIdeSession>;
 };
 
@@ -129,6 +130,81 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       data: toPublicSession(session),
     };
   });
+
+  fastify.post<{ Params: { id: string } }>('/api/ide/sessions/:id/renew', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    try {
+      const session = getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+      if (!session) {
+        return reply.status(404).send({ error: 'IDE session not found' });
+      }
+      if (session.status !== 'running') {
+        return reply.status(409).send({ error: 'IDE session is not running' });
+      }
+      if (!e2bProvider.renewCodeServer) {
+        throw new Error('IDE provider does not support renew');
+      }
+
+      const config = resolveIdeConfig();
+      const renewed = await e2bProvider.renewCodeServer(session, config.sessionTtlSeconds);
+      const updated: StoredIdeSession = {
+        ...session,
+        ...renewed,
+        status: 'running',
+      };
+      sessionStore.set(session.id, updated);
+
+      return {
+        success: true,
+        data: toPublicSession(updated),
+      };
+    } catch (error) {
+      return sendRouteError(reply, error, 400);
+    }
+  });
+
+  fastify.delete<{ Params: { id: string } }>('/api/ide/sessions/:id', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    try {
+      const session = getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+      if (!session) {
+        return reply.status(404).send({ error: 'IDE session not found' });
+      }
+
+      if (session.status === 'running') {
+        if (!e2bProvider.stopCodeServer) {
+          throw new Error('IDE provider does not support stop');
+        }
+        await e2bProvider.stopCodeServer(session);
+      }
+
+      const stopped: StoredIdeSession = {
+        ...session,
+        status: 'stopped',
+      };
+      sessionStore.set(session.id, stopped);
+
+      return {
+        success: true,
+        data: toPublicSession(stopped),
+      };
+    } catch (error) {
+      return sendRouteError(reply, error, 400);
+    }
+  });
+}
+
+function getOwnedSession(
+  sessionStore: Map<string, StoredIdeSession>,
+  userId: number | undefined,
+  sessionId: string,
+): StoredIdeSession | null {
+  if (!userId) return null;
+  const session = sessionStore.get(sessionId);
+  if (!session || session.userId !== userId) return null;
+  return session;
 }
 
 function toPublicSession(session: StoredIdeSession) {
