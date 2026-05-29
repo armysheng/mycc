@@ -439,7 +439,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
       let didInjectProjectContext = false;
       try {
-        const shouldInjectProjectContext = !hasInjectedProjectContextForSession(userId, body.sessionId);
+        const shouldInjectProjectContext = !onboardingBootstrapRequest
+          && !hasInjectedProjectContextForSession(userId, body.sessionId);
         if (shouldInjectProjectContext) {
           const projectContextPrompt = await getProjectContextPromptCached({
             userId,
@@ -475,6 +476,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
       let streamHasError = false;
       let streamResultHasError = false;
+      let lastStreamError: string | null = null;
 
       try {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
@@ -508,9 +510,15 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
           if (event.type === 'error') {
             streamHasError = true;
+            if (typeof event.error === 'string' && event.error.trim()) {
+              lastStreamError = event.error;
+            }
           }
           if (event.type === 'result' && event.is_error === true) {
             streamResultHasError = true;
+            if (typeof event.result === 'string' && event.result.trim()) {
+              lastStreamError = event.result;
+            }
           }
 
           // 发送事件
@@ -566,7 +574,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
             }
           } else {
             streamHasError = true;
-            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: '初始化流程执行失败，请重试 onboarding。' })}\n\n`);
+            const normalized = (lastStreamError || '').replace(/\s+/g, ' ').trim();
+            const detail = normalized.includes('No available accounts')
+              ? '上游账号池暂无可用账号，请稍后重试或联系管理员补充账号池。'
+              : normalized.slice(0, 200);
+            const message = detail
+              ? `初始化流程执行失败：${detail}`
+              : '初始化流程执行失败，请重试 onboarding。';
+            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
           }
         }
 

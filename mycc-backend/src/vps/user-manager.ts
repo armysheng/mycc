@@ -6,6 +6,8 @@
 import { getSSHPool } from '../ssh/pool.js';
 import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 
+const MYCC_GROUP = 'mycc';
+
 export class VPSUserManager {
   /**
    * 将模板文件复制到用户 workspace 并替换变量
@@ -45,7 +47,7 @@ export class VPSUserManager {
     }
 
     // 4. 设置文件归属
-    const chownCmd = `sudo chown -R ${linuxUser}:mycc /home/${linuxUser}`;
+    const chownCmd = `sudo chown -R ${linuxUser}:${MYCC_GROUP} /home/${linuxUser}`;
     const chownResult = await sshPool.exec(connection, chownCmd);
     if (chownResult.exitCode !== 0) {
       throw new Error(`设置文件权限失败: ${chownResult.stderr}`);
@@ -89,7 +91,13 @@ export class VPSUserManager {
       console.log(`[VPSUserManager] 开始创建用户: ${linuxUser}`);
 
       // 1. 创建用户（加入 mycc 组）
-      const createUserCmd = `sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)}`;
+      const ensureGroupCmd = `getent group ${MYCC_GROUP} >/dev/null 2>&1 || sudo groupadd ${MYCC_GROUP}`;
+      const ensureGroupResult = await sshPool.exec(connection, ensureGroupCmd);
+      if (ensureGroupResult.exitCode !== 0) {
+        throw new Error(`创建用户组失败: ${ensureGroupResult.stderr}`);
+      }
+
+      const createUserCmd = `sudo useradd -m -g ${MYCC_GROUP} -s /bin/bash ${escapeShellArg(linuxUser)}`;
       const createResult = await sshPool.exec(connection, createUserCmd);
 
       if (createResult.exitCode !== 0) {

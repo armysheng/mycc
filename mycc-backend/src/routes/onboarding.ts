@@ -7,6 +7,7 @@ import { sanitizeLinuxUsername, escapeShellArg } from '../utils/validation.js';
 import { clearExpiredOnboardingBootstrapTickets, issueOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 const CLAUDE_BOOTSTRAP_SENTINEL = '<!-- MYCC_BOOTSTRAP_REQUIRED -->';
+const MYCC_GROUP = 'mycc';
 
 const initializeSchema = z.object({
   assistantName: z.preprocess(
@@ -104,13 +105,14 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
         let preflight = await sshPool.exec(connection, preflightCmd);
         if (preflight.exitCode !== 0) {
           const repairCmd = [
-            `(id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g mycc -s /bin/bash ${escapeShellArg(linuxUser)} || true)`,
+            `getent group ${MYCC_GROUP} >/dev/null 2>&1 || sudo groupadd ${MYCC_GROUP}`,
+            `(id ${escapeShellArg(linuxUser)} >/dev/null 2>&1 || sudo useradd -m -g ${MYCC_GROUP} -s /bin/bash ${escapeShellArg(linuxUser)} || true)`,
             `id ${escapeShellArg(linuxUser)} >/dev/null 2>&1`,
             `sudo mkdir -p "${workspaceDir}"`,
             `sudo test -d "${templateDir}"`,
             `sudo cp -rn "${templateDir}/." "${workspaceDir}/"`,
             `sudo cp "${templateDir}/CLAUDE.md" "${claudeMdPath}"`,
-            `sudo chown -R ${escapeShellArg(linuxUser)}:mycc /home/${escapeShellArg(linuxUser)}`,
+            `sudo chown -R ${escapeShellArg(linuxUser)}:${MYCC_GROUP} /home/${escapeShellArg(linuxUser)}`,
           ].join(' && ');
 
           const repaired = await sshPool.exec(connection, repairCmd);
@@ -163,7 +165,7 @@ export async function onboardingRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const ensureOwnerCmd = `sudo chown -R ${escapeShellArg(linuxUser)}:mycc "${workspaceDir}"`;
+        const ensureOwnerCmd = `sudo chown -R ${escapeShellArg(linuxUser)}:${MYCC_GROUP} "${workspaceDir}"`;
         const ensureOwner = await sshPool.exec(connection, ensureOwnerCmd);
         if (ensureOwner.exitCode !== 0) {
           console.error(`❌ Onboarding 权限修复失败 userId=${request.user.userId} linuxUser=${linuxUser}: ${ensureOwner.stderr}`);

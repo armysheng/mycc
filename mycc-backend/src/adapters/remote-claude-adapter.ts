@@ -110,6 +110,7 @@ export class RemoteClaudeAdapter {
   ): AsyncIterable<SSEEvent> {
     let buffer = '';
     let stderrBuffer = '';
+    let rawOutputTail = '';
     const eventQueue: SSEEvent[] = [];
     let streamClosed = false;
     let resolveNext: (() => void) | null = null;
@@ -137,6 +138,8 @@ export class RemoteClaudeAdapter {
             .replace(/\x1b\[[\?]?[0-9;]*[a-zA-Z]/g, '')
             .replace(/\r/g, '');
           if (!cleanChunk.trim()) return; // 跳过纯控制字符行
+
+          rawOutputTail = `${rawOutputTail}${cleanChunk}`.slice(-1000);
 
           buffer += cleanChunk;
           const lines = buffer.split('\n');
@@ -177,9 +180,28 @@ export class RemoteClaudeAdapter {
 
           // 如果退出码非 0，添加错误事件
           if (code !== 0) {
+            let detail = stderrBuffer.trim();
+            if (!detail && code === 127) {
+              detail = 'claude command not found on VPS (install @anthropic-ai/claude-code)';
+            }
+            if (!detail) {
+              const noAccounts = rawOutputTail.match(/No available accounts[^"\n]*/);
+              if (noAccounts?.[0]) {
+                detail = noAccounts[0];
+              }
+            }
+            if (!detail) {
+              const apiErr = rawOutputTail.match(/API Error:[^\n]+/);
+              if (apiErr?.[0]) {
+                detail = apiErr[0];
+              }
+            }
+            if (!detail && rawOutputTail.trim()) {
+              detail = rawOutputTail.trim().split('\n').slice(-3).join(' | ');
+            }
             eventQueue.push({
               type: 'error',
-              error: `命令执行失败 (exit code ${code}): ${stderrBuffer || '未知错误'}`,
+              error: `Command failed (exit code ${code}): ${detail || 'unknown error'}`,
             });
           }
 
