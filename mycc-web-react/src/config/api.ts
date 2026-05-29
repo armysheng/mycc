@@ -11,6 +11,7 @@ export const API_CONFIG = {
     AUTOMATIONS: withBase("/api/automations"),
     WORKSPACE: withBase("/api/workspace"),
     BILLING: withBase("/api/billing"),
+    IDE: withBase("/api/ide"),
   },
 } as const;
 
@@ -109,6 +110,26 @@ export const getWorkspaceSaveFileUrl = () => {
 
 export const getWorkspaceExecUrl = () => {
   return `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`;
+};
+
+export const getIdeConfigUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.IDE}/config`;
+};
+
+export const getIdeSessionsUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.IDE}/sessions`;
+};
+
+export const resolveIdeOpenUrl = (openPath: string) => {
+  if (/^https?:\/\//i.test(openPath)) {
+    return openPath;
+  }
+  const base = API_BASE || window.location.origin;
+  const path = openPath.replace(/^\/+/, "");
+  if (/^https?:\/\//i.test(base)) {
+    return `${base}/${path}`;
+  }
+  return `${window.location.origin}${base ? `/${base.replace(/^\/+/, "")}` : ""}/${path}`;
 };
 
 export const getBillingSubscriptionUrl = () => {

@@ -54,11 +54,32 @@ CREATE TABLE conversations (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Remote IDE 会话表
+CREATE TABLE ide_sessions (
+  id UUID PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  provider VARCHAR(20) NOT NULL CHECK (provider IN ('e2b')),
+  sandbox_id VARCHAR(120) NOT NULL,
+  code_server_pid INTEGER NOT NULL,
+  host VARCHAR(255) NOT NULL,
+  traffic_access_token TEXT,
+  port INTEGER NOT NULL,
+  access_mode VARCHAR(40) NOT NULL CHECK (access_mode IN ('mycc-proxy')),
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'stopped')),
+  proxy_token UUID NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  stopped_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 索引
 CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX idx_usage_logs_created_at ON usage_logs(created_at);
 CREATE INDEX idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE INDEX idx_ide_sessions_user_id ON ide_sessions(user_id);
+CREATE INDEX idx_ide_sessions_status_expires_at ON ide_sessions(status, expires_at);
 
 -- 触发器：自动更新 updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -73,4 +94,7 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_ide_sessions_updated_at BEFORE UPDATE ON ide_sessions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -23,10 +23,16 @@
 ## 后端接口骨架
 
 - `GET /api/ide/config`：返回 Remote IDE 能力状态。默认 `disabled`。
-- `POST /api/ide/sessions/plan`：在 `MYCC_IDE_PROVIDER=e2b` 时生成 E2B/code-server session plan；当前不创建真实 sandbox。
+- `POST /api/ide/sessions/plan`：在 `MYCC_IDE_PROVIDER=e2b` 时生成 E2B/code-server session plan；仅返回安全的公开 plan。
 - `POST /api/ide/sessions`：在 `MYCC_IDE_PROVIDER=e2b` 且配置 `MYCC_E2B_API_KEY` 后，通过 provider 创建 POC session；响应隐藏 E2B host 和 traffic token。
-- `GET /api/ide/sessions/:id/status`：查询内存 session 状态，按登录用户隔离。
+- `GET /api/ide/sessions/:id/open`：使用一次性 open token 换取 HttpOnly proxy cookie，然后 302 到后端 proxy。
+- `GET /api/ide/sessions/:id/status`：查询持久化 session 状态，按登录用户隔离。
+- `POST /api/ide/sessions/:id/renew` / `DELETE /api/ide/sessions/:id`：续期或停止 E2B/code-server session。
+- `/api/ide/sessions/:id/proxy/*`：mycc 后端反向代理 code-server HTTP 和 WebSocket，服务端注入 `e2b-traffic-access-token`。
 - `E2bSandboxProvider.startCodeServer(plan)`：已封装 `Sandbox.create`、私有网络、后台启动 code-server、host/traffic token 获取，并通过注入 fake sandbox 测试。
+- `PostgresIdeSessionStore`：生产默认将 IDE session 元数据写入 `ide_sessions`，测试仍可注入内存 store。
+- `mycc-web-react` 工作区页已提供 “打开 Remote IDE” 最小入口。
+- `npm run smoke:e2b-ide`：提供真实 E2B/code-server 端到端 smoke，失败也会 cleanup session。
 
 当前实现刻意不把内部 `startCommand`、E2B host 或 traffic token 返回给客户端，避免前端依赖服务端执行细节或绕过后端代理。
 
@@ -56,8 +62,8 @@ WORKDIR /home/mycc/workspace
 
 ## 下一步实现切片
 
-1. 增加 `E2bSandboxProvider`，封装 create/connect/extend/kill/runBackground/getHost。
-2. 增加 `IdeSessionService` 的真实 start/stop/status/renew，落库或 Redis 保存 `userId -> ideSessionId -> sandboxId -> pid -> port`。
-3. 增加 mycc 反向代理，支持 WebSocket upgrade，并自动注入 `e2b-traffic-access-token`。
-4. 把 Claude Agent SDK runtime 切到 sandbox provider，确保 IDE 和 agent 共享同一 workspace。
+1. 用真实 `MYCC_E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
+2. 把 Claude Agent SDK runtime 切到同一个 sandbox provider，确保 IDE 和 agent 共享同一 workspace。
+3. 增加 session 复用策略，避免用户重复点击创建多个 running sandbox。
+4. 增加过期 session 清理任务，生产环境对 `traffic_access_token` 做加密或改为 token reference。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。

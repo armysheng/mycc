@@ -18,9 +18,12 @@ import { Sidebar } from "./layout/Sidebar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getAuthHeaders,
+  getIdeConfigUrl,
+  getIdeSessionsUrl,
   getWorkspaceFileUrl,
   getWorkspaceSaveFileUrl,
   getWorkspaceTreeUrl,
+  resolveIdeOpenUrl,
 } from "../config/api";
 
 type WorkspaceNodeType = "directory" | "file";
@@ -42,6 +45,14 @@ interface WorkspaceFileData {
   truncated: boolean;
   binary: boolean;
   content: string | null;
+}
+
+interface IdeConfigData {
+  enabled?: boolean;
+}
+
+interface IdeSessionData {
+  openPath?: string;
 }
 
 function detectLanguage(filePath: string): string {
@@ -144,6 +155,7 @@ export function WorkspacePage() {
   const [fileLoading, setFileLoading] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ideOpening, setIdeOpening] = useState(false);
 
   const [treeHeight, setTreeHeight] = useState(620);
 
@@ -235,6 +247,32 @@ export function WorkspacePage() {
     }
   }, [activeFile, apiFetch, draftContent, loadTree]);
 
+  const openRemoteIde = useCallback(async () => {
+    setIdeOpening(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const configJson = await apiFetch(getIdeConfigUrl());
+      const config = configJson?.data as IdeConfigData | undefined;
+      if (config?.enabled === false) {
+        throw new Error("Remote IDE 当前未启用");
+      }
+
+      const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
+      const session = sessionJson?.data as IdeSessionData | undefined;
+      if (!session?.openPath) {
+        throw new Error("Remote IDE 会话创建成功，但缺少打开地址");
+      }
+
+      window.open(resolveIdeOpenUrl(session.openPath), "_blank", "noopener,noreferrer");
+      setNotice("Remote IDE 已在新标签页打开");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "打开 Remote IDE 失败");
+    } finally {
+      setIdeOpening(false);
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     void loadTree();
   }, [loadTree]);
@@ -304,6 +342,16 @@ export function WorkspacePage() {
               <p className="text-xs text-slate-500 mt-1">轻量、直接、可保存。命令行面板已暂时移除。</p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void openRemoteIde();
+                }}
+                disabled={ideOpening}
+                className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+              >
+                {ideOpening ? "打开中..." : "打开 Remote IDE"}
+              </button>
               <button
                 type="button"
                 onClick={() => {

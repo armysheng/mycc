@@ -3,29 +3,25 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { createProxyServer, type ServerOptions } from 'http-proxy';
-import { E2bSandboxProvider, type StartedCodeServerSession } from '../ide/e2b-provider.js';
+import { E2bSandboxProvider } from '../ide/e2b-provider.js';
 import { verifyToken } from '../auth/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import {
   buildE2bCodeServerSessionPlan,
   resolveIdeConfig,
 } from '../ide/service.js';
+import {
+  PostgresIdeSessionStore,
+  type IdeSessionStore,
+  type StoredIdeSession,
+} from '../ide/session-store.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
-
-export type IdeSessionStatus = 'running' | 'stopped';
-
-export type StoredIdeSession = StartedCodeServerSession & {
-  id: string;
-  proxyToken: string;
-  userId: number;
-  status: IdeSessionStatus;
-};
 
 export type IdeRoutesOptions = {
   e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>
     & Partial<Pick<E2bSandboxProvider, 'renewCodeServer' | 'stopCodeServer'>>;
   proxyServer?: IdeProxyServer;
-  sessionStore?: Map<string, StoredIdeSession>;
+  sessionStore?: IdeSessionStore;
 };
 
 type IdeProxyServer = {
@@ -47,7 +43,7 @@ type IdeProxyServer = {
 export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOptions = {}) {
   const e2bProvider = options.e2bProvider ?? new E2bSandboxProvider();
   const proxyServer = options.proxyServer ?? createProxyServer({ ws: true });
-  const sessionStore = options.sessionStore ?? new Map<string, StoredIdeSession>();
+  const sessionStore = options.sessionStore ?? new PostgresIdeSessionStore();
 
   fastify.get('/api/ide/config', {
     preHandler: jwtAuthMiddleware,
@@ -122,7 +118,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         userId: user.userId,
         status: 'running',
       };
-      sessionStore.set(session.id, session);
+      await sessionStore.set(session);
 
       return reply.status(201).send({
         success: true,
@@ -137,7 +133,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   });
 
   fastify.get<{ Params: { id: string }; Querystring: { token?: string } }>('/api/ide/sessions/:id/open', async (request, reply) => {
-    const session = sessionStore.get(request.params.id);
+    const session = await sessionStore.get(request.params.id);
     if (!session || session.proxyToken !== request.query.token) {
       return reply.status(401).send({ error: 'IDE open token is invalid' });
     }
@@ -169,7 +165,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       return reply.status(401).send({ error: '未提供认证 token' });
     }
 
-    const session = sessionStore.get(request.params.id);
+    const session = await sessionStore.get(request.params.id);
     if (!session || session.userId !== user.userId) {
       return reply.status(404).send({ error: 'IDE session not found' });
     }
@@ -184,7 +180,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
     try {
-      const session = getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+      const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
       if (!session) {
         return reply.status(404).send({ error: 'IDE session not found' });
       }
@@ -202,7 +198,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         ...renewed,
         status: 'running',
       };
-      sessionStore.set(session.id, updated);
+      await sessionStore.set(updated);
 
       return {
         success: true,
@@ -217,7 +213,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
     try {
-      const session = getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+      const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
       if (!session) {
         return reply.status(404).send({ error: 'IDE session not found' });
       }
@@ -233,7 +229,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         ...session,
         status: 'stopped',
       };
-      sessionStore.set(session.id, stopped);
+      await sessionStore.set(stopped);
 
       return {
         success: true,
@@ -245,7 +241,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   });
 
   fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/proxy/*', async (request, reply) => {
-    const session = getProxySession(sessionStore, request, request.params.id);
+    const session = await getProxySession(sessionStore, request, request.params.id);
     if (!session) {
       return reply.status(404).send({ error: 'IDE session not found' });
     }
@@ -269,38 +265,42 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     });
   });
 
-  fastify.server.on('upgrade', (request, socket, head) => {
-    const target = resolveProxyTargetFromUpgrade(sessionStore, request);
-    if (!target || !proxyServer.ws) {
-      socket.destroy();
-      return;
-    }
+  fastify.server.on('upgrade', async (request, socket, head) => {
+    try {
+      const target = await resolveProxyTargetFromUpgrade(sessionStore, request);
+      if (!target || !proxyServer.ws) {
+        socket.destroy();
+        return;
+      }
 
-    request.url = target.upstreamPath;
-    const trafficAccessToken = target.session.trafficAccessToken;
-    if (!trafficAccessToken) {
+      request.url = target.upstreamPath;
+      const trafficAccessToken = target.session.trafficAccessToken;
+      if (!trafficAccessToken) {
+        socket.destroy();
+        return;
+      }
+      proxyServer.ws(request, socket, head, {
+        target: `https://${target.session.host}`,
+        changeOrigin: true,
+        headers: {
+          'e2b-traffic-access-token': trafficAccessToken,
+        },
+      }, () => {
+        socket.destroy();
+      });
+    } catch {
       socket.destroy();
-      return;
     }
-    proxyServer.ws(request, socket, head, {
-      target: `https://${target.session.host}`,
-      changeOrigin: true,
-      headers: {
-        'e2b-traffic-access-token': trafficAccessToken,
-      },
-    }, () => {
-      socket.destroy();
-    });
   });
 }
 
-function getOwnedSession(
-  sessionStore: Map<string, StoredIdeSession>,
+async function getOwnedSession(
+  sessionStore: IdeSessionStore,
   userId: number | undefined,
   sessionId: string,
-): StoredIdeSession | null {
+): Promise<StoredIdeSession | null> {
   if (!userId) return null;
-  const session = sessionStore.get(sessionId);
+  const session = await sessionStore.get(sessionId);
   if (!session || session.userId !== userId) return null;
   return session;
 }
@@ -329,16 +329,16 @@ function buildUpstreamProxyPath(rawUrl: string, wildcardPath: string | undefined
   return `${path}${parsed.search}`;
 }
 
-function resolveProxyTargetFromUpgrade(
-  sessionStore: Map<string, StoredIdeSession>,
+async function resolveProxyTargetFromUpgrade(
+  sessionStore: IdeSessionStore,
   request: IncomingMessage,
-): { session: StoredIdeSession; upstreamPath: string } | null {
+): Promise<{ session: StoredIdeSession; upstreamPath: string } | null> {
   const parsed = new URL(request.url || '/', 'http://mycc.local');
   const matched = parsed.pathname.match(/^\/api\/ide\/sessions\/([^/]+)\/proxy\/?(.*)$/);
   const sessionId = matched?.[1];
   if (!sessionId) return null;
 
-  const session = getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
+  const session = await getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
   if (!session || session.status !== 'running' || !session.trafficAccessToken) return null;
 
   const wildcardPath = matched?.[2] || '';
@@ -347,19 +347,19 @@ function resolveProxyTargetFromUpgrade(
 }
 
 function getProxySession(
-  sessionStore: Map<string, StoredIdeSession>,
+  sessionStore: IdeSessionStore,
   request: FastifyRequest,
   sessionId: string,
-): StoredIdeSession | null {
+): Promise<StoredIdeSession | null> {
   return getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
 }
 
-function getProxySessionFromHeaders(
-  sessionStore: Map<string, StoredIdeSession>,
+async function getProxySessionFromHeaders(
+  sessionStore: IdeSessionStore,
   headers: FastifyRequest['headers'] | IncomingMessage['headers'],
   sessionId: string,
-): StoredIdeSession | null {
-  const session = sessionStore.get(sessionId);
+): Promise<StoredIdeSession | null> {
+  const session = await sessionStore.get(sessionId);
   if (!session) return null;
 
   const userId = userIdFromAuthorization(headerValue(headers.authorization));

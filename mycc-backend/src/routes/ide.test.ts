@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ideRoutes, type IdeRoutesOptions } from './ide.js';
+import { InMemoryIdeSessionStore } from '../ide/session-store.js';
 
 const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
 
@@ -17,7 +18,10 @@ function authHeader(overrides: Partial<{ userId: number; linuxUser: string }> = 
 
 async function buildApp(options: IdeRoutesOptions = {}) {
   const app = Fastify({ logger: false });
-  await app.register(ideRoutes, options);
+  await app.register(ideRoutes, {
+    ...options,
+    sessionStore: options.sessionStore ?? new InMemoryIdeSessionStore(),
+  });
   return app;
 }
 
@@ -528,6 +532,9 @@ describe('ide routes', () => {
       headers: { cookie },
       url: `/api/ide/sessions/${id}/proxy/?reconnectionToken=abc`,
     }, socket, Buffer.alloc(0));
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
 
     expect(socket.destroy).not.toHaveBeenCalled();
     expect(ws).toHaveBeenCalledWith(
