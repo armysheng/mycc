@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { createProxyServer, type ServerOptions } from 'http-proxy';
 import { E2bSandboxProvider, type StartedCodeServerSession } from '../ide/e2b-provider.js';
 import { verifyToken } from '../auth/service.js';
@@ -31,6 +32,13 @@ type IdeProxyServer = {
   web(
     req: IncomingMessage,
     res: ServerResponse,
+    options: ServerOptions,
+    callback: (error: Error) => void,
+  ): void;
+  ws?(
+    req: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
     options: ServerOptions,
     callback: (error: Error) => void,
   ): void;
@@ -260,6 +268,30 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       sendProxyError(reply.raw, error);
     });
   });
+
+  fastify.server.on('upgrade', (request, socket, head) => {
+    const target = resolveProxyTargetFromUpgrade(sessionStore, request);
+    if (!target || !proxyServer.ws) {
+      socket.destroy();
+      return;
+    }
+
+    request.url = target.upstreamPath;
+    const trafficAccessToken = target.session.trafficAccessToken;
+    if (!trafficAccessToken) {
+      socket.destroy();
+      return;
+    }
+    proxyServer.ws(request, socket, head, {
+      target: `https://${target.session.host}`,
+      changeOrigin: true,
+      headers: {
+        'e2b-traffic-access-token': trafficAccessToken,
+      },
+    }, () => {
+      socket.destroy();
+    });
+  });
 }
 
 function getOwnedSession(
@@ -297,25 +329,54 @@ function buildUpstreamProxyPath(rawUrl: string, wildcardPath: string | undefined
   return `${path}${parsed.search}`;
 }
 
+function resolveProxyTargetFromUpgrade(
+  sessionStore: Map<string, StoredIdeSession>,
+  request: IncomingMessage,
+): { session: StoredIdeSession; upstreamPath: string } | null {
+  const parsed = new URL(request.url || '/', 'http://mycc.local');
+  const matched = parsed.pathname.match(/^\/api\/ide\/sessions\/([^/]+)\/proxy\/?(.*)$/);
+  const sessionId = matched?.[1];
+  if (!sessionId) return null;
+
+  const session = getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
+  if (!session || session.status !== 'running' || !session.trafficAccessToken) return null;
+
+  const wildcardPath = matched?.[2] || '';
+  const upstreamPath = `/${wildcardPath}${parsed.search}`;
+  return { session, upstreamPath };
+}
+
 function getProxySession(
   sessionStore: Map<string, StoredIdeSession>,
   request: FastifyRequest,
   sessionId: string,
 ): StoredIdeSession | null {
+  return getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
+}
+
+function getProxySessionFromHeaders(
+  sessionStore: Map<string, StoredIdeSession>,
+  headers: FastifyRequest['headers'] | IncomingMessage['headers'],
+  sessionId: string,
+): StoredIdeSession | null {
   const session = sessionStore.get(sessionId);
   if (!session) return null;
 
-  const userId = userIdFromAuthorization(request.headers.authorization);
+  const userId = userIdFromAuthorization(headerValue(headers.authorization));
   if (userId && userId === session.userId) {
     return session;
   }
 
-  const cookieToken = parseCookies(request.headers.cookie || '')[proxyCookieName(sessionId)];
+  const cookieToken = parseCookies(headerValue(headers.cookie) || '')[proxyCookieName(sessionId)];
   if (cookieToken && cookieToken === session.proxyToken) {
     return session;
   }
 
   return null;
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function userIdFromAuthorization(authorization: string | undefined): number | null {

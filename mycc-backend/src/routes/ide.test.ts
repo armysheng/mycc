@@ -489,4 +489,61 @@ describe('ide routes', () => {
     expect(response.statusCode).toBe(204);
     expect(web).toHaveBeenCalledOnce();
   });
+
+  it('proxies WebSocket upgrades authorized by the IDE proxy cookie', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const web = vi.fn();
+    const ws = vi.fn();
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+      },
+      proxyServer: { web, ws },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+    const open = await app.inject({
+      method: 'GET',
+      url: created.json().data.openPath,
+    });
+    const cookie = Array.isArray(open.headers['set-cookie'])
+      ? open.headers['set-cookie'][0]
+      : open.headers['set-cookie'];
+    const socket = { destroy: vi.fn() };
+
+    app.server.emit('upgrade', {
+      headers: { cookie },
+      url: `/api/ide/sessions/${id}/proxy/?reconnectionToken=abc`,
+    }, socket, Buffer.alloc(0));
+
+    expect(socket.destroy).not.toHaveBeenCalled();
+    expect(ws).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/?reconnectionToken=abc',
+      }),
+      socket,
+      expect.any(Buffer),
+      expect.objectContaining({
+        target: 'https://18080-sbx_123.e2b.app',
+        changeOrigin: true,
+        headers: {
+          'e2b-traffic-access-token': 'secret-token',
+        },
+      }),
+      expect.any(Function),
+    );
+  });
 });
