@@ -15,6 +15,7 @@ export type IdeSessionStore = {
   get(sessionId: string): Promise<StoredIdeSession | null>;
   set(session: StoredIdeSession): Promise<void>;
   findReusableByUser(userId: number): Promise<StoredIdeSession | null>;
+  findExpiredRunning(now: Date, limit: number): Promise<StoredIdeSession[]>;
 };
 
 type IdeSessionQuery = {
@@ -57,6 +58,14 @@ export class InMemoryIdeSessionStore implements IdeSessionStore {
       .filter((session) => session.status === 'running')
       .filter((session) => new Date(session.expiresAt).getTime() > now);
     return candidates.at(-1) ?? null;
+  }
+
+  async findExpiredRunning(now: Date, limit: number): Promise<StoredIdeSession[]> {
+    const cutoff = now.getTime();
+    return Array.from(this.sessions.values())
+      .filter((session) => session.status === 'running')
+      .filter((session) => new Date(session.expiresAt).getTime() <= cutoff)
+      .slice(0, Math.max(0, limit));
   }
 }
 
@@ -162,6 +171,32 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
 
     const row = result.rows[0];
     return row ? fromRow(row) : null;
+  }
+
+  async findExpiredRunning(now: Date, limit: number): Promise<StoredIdeSession[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 50;
+    const result = await this.db.query<IdeSessionRow>(
+      `SELECT id,
+              user_id,
+              provider,
+              sandbox_id,
+              code_server_pid,
+              host,
+              traffic_access_token,
+              port,
+              access_mode,
+              status,
+              proxy_token,
+              expires_at
+       FROM ide_sessions
+       WHERE status = $1
+         AND expires_at <= $2::timestamptz
+       ORDER BY expires_at ASC
+       LIMIT $3`,
+      ['running', now.toISOString(), safeLimit],
+    );
+
+    return result.rows.map(fromRow);
   }
 }
 

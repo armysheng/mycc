@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "test": "vitest",
     "backfill:id-soul": "tsx scripts/backfill-legacy-id-soul.ts",
+    "cleanup:ide-sessions": "tsx scripts/cleanup-expired-ide-sessions.ts",
     "smoke:e2b-ide": "tsx scripts/smoke-e2b-ide.ts",
     "smoke:e2b-agent-workspace": "tsx scripts/smoke-e2b-agent-workspace.ts"
   },

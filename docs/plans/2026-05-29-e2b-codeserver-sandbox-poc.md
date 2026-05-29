@@ -34,6 +34,7 @@
 - `mycc-web-react` 工作区页已提供 “打开 Remote IDE” 最小入口。
 - `npm run smoke:e2b-ide`：提供真实 E2B/code-server 端到端 smoke，失败也会 cleanup session。
 - `npm run smoke:e2b-agent-workspace`：直接创建 E2B/code-server sandbox，并用 `e2b-claude-cli` runtime 在同一 `sandboxId` 内做 workspace 双向读写 smoke。
+- `npm run cleanup:ide-sessions`：扫描过期 running IDE session，调用 E2B stop 并落库为 stopped，减少 sandbox 残留和成本泄漏。
 - `MYCC_AGENT_RUNTIME=e2b-claude-cli`：新增 Claude CLI bridge runtime，复用当前用户的 running IDE session，通过 `sandboxId` 连接 E2B，并在同一个 `/home/mycc/workspace` 执行 `claude --print --output-format stream-json`。
 - `POST /api/ide/sessions`：同一用户已有未过期 running session 时直接复用，避免重复创建 E2B sandbox。
 
@@ -67,6 +68,6 @@ WORKDIR /home/mycc/workspace
 
 1. 用真实 `MYCC_E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
 2. 用真实 E2B + Claude 凭据跑 `npm run smoke:e2b-agent-workspace`，验证 Claude CLI runtime 和 code-server 共享 `/home/mycc/workspace`。
-3. 增加过期 session 清理任务，生产环境对 `traffic_access_token` 做加密或改为 token reference。
+3. 将 `npm run cleanup:ide-sessions` 接到生产 cron 或部署平台定时任务；生产环境对 `traffic_access_token` 做加密或改为 token reference。
 4. 后续如果确实需要 SDK 级事件能力，再在 sandbox 内增加 Agent SDK bridge；当前优先使用 Claude CLI `stream-json`，与现有协议兼容。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。

@@ -16,6 +16,14 @@ const baseSession: StoredIdeSession = {
   status: 'running',
 };
 
+const expiredSession: StoredIdeSession = {
+  ...baseSession,
+  id: 'ide_expired',
+  sandboxId: 'sbx_expired',
+  host: '18080-sbx_expired.e2b.app',
+  expiresAt: '2026-05-29T10:00:00.000Z',
+};
+
 describe('IDE session stores', () => {
   it('keeps sessions in memory for tests and local injection', async () => {
     const store = new InMemoryIdeSessionStore();
@@ -24,6 +32,16 @@ describe('IDE session stores', () => {
 
     await expect(store.get(baseSession.id)).resolves.toEqual(baseSession);
     await expect(store.findReusableByUser(baseSession.userId)).resolves.toEqual(baseSession);
+  });
+
+  it('lists expired running sessions from memory for cleanup', async () => {
+    const store = new InMemoryIdeSessionStore();
+    await store.set(baseSession);
+    await store.set(expiredSession);
+    await store.set({ ...expiredSession, id: 'ide_stopped', status: 'stopped' });
+
+    await expect(store.findExpiredRunning(new Date('2026-05-30T00:00:00.000Z'), 10))
+      .resolves.toEqual([expiredSession]);
   });
 
   it('persists and reloads IDE sessions through Postgres', async () => {
@@ -98,5 +116,37 @@ describe('IDE session stores', () => {
     expect(query).toHaveBeenCalledWith(expect.stringContaining('status = $2'), [42, 'running']);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('expires_at > NOW()'), [42, 'running']);
     expect(reloaded).toEqual(baseSession);
+  });
+
+  it('loads expired running IDE sessions for cleanup from Postgres', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rowCount: 1,
+      rows: [{
+        id: 'ide_expired',
+        user_id: 42,
+        provider: 'e2b',
+        sandbox_id: 'sbx_expired',
+        code_server_pid: 1234,
+        host: '18080-sbx_expired.e2b.app',
+        traffic_access_token: 'secret-token',
+        port: 18080,
+        access_mode: 'mycc-proxy',
+        status: 'running',
+        proxy_token: 'proxy-token',
+        expires_at: new Date('2026-05-29T10:00:00.000Z'),
+        stopped_at: null,
+      }],
+    });
+    const store = new PostgresIdeSessionStore({ query });
+    const now = new Date('2026-05-30T00:00:00.000Z');
+
+    const sessions = await store.findExpiredRunning(now, 25);
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('expires_at <= $2::timestamptz'), [
+      'running',
+      '2026-05-30T00:00:00.000Z',
+      25,
+    ]);
+    expect(sessions).toEqual([expiredSession]);
   });
 });

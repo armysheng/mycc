@@ -22,6 +22,7 @@ function createStore(session: StoredIdeSession | null): IdeSessionStore {
     get: vi.fn(),
     set: vi.fn(),
     findReusableByUser: vi.fn().mockResolvedValue(session),
+    findExpiredRunning: vi.fn().mockResolvedValue([]),
   };
 }
 
