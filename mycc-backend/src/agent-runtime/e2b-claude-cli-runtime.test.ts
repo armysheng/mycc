@@ -131,6 +131,40 @@ describe('E2bClaudeCliRuntime', () => {
     );
   });
 
+  it('maps CCR router env aliases into Claude CLI envs', async () => {
+    vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
+    vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'stale-anthropic-api-key');
+    const runCommand = vi.fn().mockImplementation(async (_session, _command, options) => {
+      await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeCliRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(runCommand).toHaveBeenCalledWith(
+      runningSession,
+      expect.stringContaining('claude'),
+      expect.objectContaining({
+        envs: expect.objectContaining({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456',
+          ANTHROPIC_AUTH_TOKEN: 'ccr-auth-token',
+        }),
+      }),
+    );
+    const cliEnv = runCommand.mock.calls[0][2].envs || {};
+    expect(cliEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
+  });
+
   it('requires chat routes to pass userId for E2B sandbox lookup', async () => {
     const runCommand = vi.fn();
     const runtime = new E2bClaudeCliRuntime({

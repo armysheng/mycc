@@ -3,6 +3,7 @@ import type { Options, PermissionMode, SDKMessage } from '@anthropic-ai/claude-a
 import path from 'node:path';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
+import { omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
 
 const DEFAULT_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
 const DEFAULT_USER_RUNTIME_DIR = '.mycc';
@@ -43,25 +44,15 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
     const linuxUser = sanitizeLinuxUsername(params.linuxUser);
     const cwd = this.resolveWorkspaceCwd(params.cwd, linuxUser);
     const runtimeDirs = this.resolveRuntimeDirs(linuxUser);
-    const baseUrl = process.env.MYCC_AGENT_SDK_BASE_URL
-      || process.env.ANTHROPIC_BASE_URL
-      || process.env.VPS_ANTHROPIC_BASE_URL;
-    const authToken = process.env.MYCC_AGENT_SDK_AUTH_TOKEN
-      || process.env.ANTHROPIC_AUTH_TOKEN
-      || process.env.VPS_ANTHROPIC_AUTH_TOKEN;
-    const apiKey = process.env.MYCC_AGENT_SDK_API_KEY
-      || process.env.ANTHROPIC_API_KEY;
 
     const env = {
-      ...process.env,
+      ...omitClaudeProviderEnv(),
       CLAUDE_AGENT_SDK_CLIENT_APP: process.env.CLAUDE_AGENT_SDK_CLIENT_APP || 'mycc-backend/agent-runtime',
       CLAUDE_CONFIG_DIR: runtimeDirs.claudeConfigDir,
       HOME: runtimeDirs.home,
       XDG_CONFIG_HOME: `${runtimeDirs.home}/.config`,
       XDG_DATA_HOME: `${runtimeDirs.home}/.local/share`,
-      ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
-      ...(authToken ? { ANTHROPIC_AUTH_TOKEN: authToken } : {}),
-      ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
+      ...resolveClaudeProviderEnv(),
     };
 
     const permissionMode = this.resolvePermissionMode();

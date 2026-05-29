@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { Template } from 'e2b';
+import { resolveClaudeProviderEnv } from '../src/agent-runtime/claude-env.js';
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
@@ -149,16 +150,11 @@ async function cleanup(): Promise<void> {
 }
 
 function requireClaudeCredential(): void {
-  if (
-    process.env.MYCC_AGENT_SDK_AUTH_TOKEN
-    || process.env.ANTHROPIC_AUTH_TOKEN
-    || process.env.VPS_ANTHROPIC_AUTH_TOKEN
-    || process.env.MYCC_AGENT_SDK_API_KEY
-    || process.env.ANTHROPIC_API_KEY
-  ) {
+  const env = resolveClaudeProviderEnv();
+  if (env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY) {
     return;
   }
-  throw new Error('A Claude credential is required: set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN');
+  throw new Error('A Claude credential is required: set MYCC_CCR_AUTH_TOKEN, ANTHROPIC_AUTH_TOKEN, MYCC_CCR_API_KEY, or ANTHROPIC_API_KEY');
 }
 
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {

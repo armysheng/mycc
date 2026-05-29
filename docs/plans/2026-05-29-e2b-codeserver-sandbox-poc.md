@@ -9,6 +9,7 @@
 - E2B 适合做第一版远程沙箱 POC：支持 Debian/Ubuntu 模板、预装 GNU 工具链、后台进程、端口 host、pause/resume 和 sandbox timeout。
 - `code-server` 适合做可选 IDE 入口：推荐在 E2B template 中预装，运行时按 session 动态启动。
 - Claude 没有官方可嵌入 UI SDK；mycc 继续自研 ClaudeCode Web 壳，后端用 Agent SDK/Claude Code 事件流做统一协议层。
+- CCR router 的接入点放在 Claude provider env 层：mycc 读取 `MYCC_CCR_*` / `MYCC_CLAUDE_*` / 兼容旧变量后，统一映射为 Claude/Anthropic runtime 需要的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`。不直接读取全局 `OPENAI_*`，避免和其他 OpenAI-compatible 用途混淆。
 
 ## 安全默认值
 
@@ -37,6 +38,7 @@
 - `npm run cleanup:ide-sessions`：扫描过期 running IDE session，调用 E2B stop 并落库为 stopped，减少 sandbox 残留和成本泄漏。
 - `MYCC_AGENT_RUNTIME=e2b-claude-cli`：新增 Claude CLI bridge runtime，优先复用当前用户的 running IDE session；如果 chat 先发生且没有 session，会自动创建 E2B/code-server session 并写入同一个 store，再通过 `sandboxId` 在 `/home/mycc/workspace` 执行 `claude --print --output-format stream-json`。
 - `POST /api/ide/sessions`：同一用户已有未过期 running session 时直接复用，避免重复创建 E2B sandbox。
+- `resolveClaudeProviderEnv()`：Agent SDK runtime 与 E2B Claude CLI runtime 共用 Claude/CCR env 解析。base URL 优先级为 `MYCC_CCR_BASE_URL` > `MYCC_CLAUDE_BASE_URL` > `MYCC_AGENT_SDK_BASE_URL` > `ANTHROPIC_BASE_URL` > `VPS_ANTHROPIC_BASE_URL`；credential 只转发第一组命中的 token/api key，避免 `ANTHROPIC_AUTH_TOKEN` 和旧 `ANTHROPIC_API_KEY` 同时下发。
 
 当前实现刻意不把内部 `startCommand`、E2B host 或 traffic token 返回给客户端，避免前端依赖服务端执行细节或绕过后端代理。
 
@@ -67,7 +69,7 @@ WORKDIR /home/mycc/workspace
 ## 下一步实现切片
 
 1. 用真实 `MYCC_E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
-2. 用真实 E2B + Claude 凭据跑 `npm run smoke:e2b-agent-workspace`，验证 Claude CLI runtime 和 code-server 共享 `/home/mycc/workspace`，并覆盖 chat-first 自动创建 session 后 Remote IDE 复用的产品路径。
+2. 用真实 E2B + Claude/CCR 凭据跑 `npm run smoke:e2b-agent-workspace`，验证 Claude CLI runtime 和 code-server 共享 `/home/mycc/workspace`，并覆盖 chat-first 自动创建 session 后 Remote IDE 复用的产品路径。
 3. 将 `npm run cleanup:ide-sessions` 接到生产 cron 或部署平台定时任务；生产环境对 `traffic_access_token` 做加密或改为 token reference。
 4. 后续如果确实需要 SDK 级事件能力，再在 sandbox 内增加 Agent SDK bridge；当前优先使用 Claude CLI `stream-json`，与现有协议兼容。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。

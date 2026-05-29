@@ -5,6 +5,7 @@ import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provid
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
+import { resolveClaudeProviderEnv } from './claude-env.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
 type E2bClaudeCliProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
@@ -177,23 +178,13 @@ function buildClaudeCliCommand(params: AgentChatParams): string {
 function buildClaudeEnv(sandboxUser: string): Record<string, string> {
   const home = `/home/${sandboxUser}/.mycc/home`;
   const claudeConfigDir = `/home/${sandboxUser}/.mycc/claude`;
-  const baseUrl = process.env.MYCC_AGENT_SDK_BASE_URL
-    || process.env.ANTHROPIC_BASE_URL
-    || process.env.VPS_ANTHROPIC_BASE_URL;
-  const authToken = process.env.MYCC_AGENT_SDK_AUTH_TOKEN
-    || process.env.ANTHROPIC_AUTH_TOKEN
-    || process.env.VPS_ANTHROPIC_AUTH_TOKEN;
-  const apiKey = process.env.MYCC_AGENT_SDK_API_KEY
-    || process.env.ANTHROPIC_API_KEY;
 
   return {
     CLAUDE_CONFIG_DIR: claudeConfigDir,
     HOME: home,
     XDG_CONFIG_HOME: `${home}/.config`,
     XDG_DATA_HOME: `${home}/.local/share`,
-    ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
-    ...(authToken ? { ANTHROPIC_AUTH_TOKEN: authToken } : {}),
-    ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
+    ...resolveClaudeProviderEnv(),
   };
 }
 

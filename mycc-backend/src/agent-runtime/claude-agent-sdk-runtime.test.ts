@@ -103,6 +103,35 @@ describe('ClaudeAgentSdkRuntime', () => {
     });
   });
 
+  it('maps CCR router env aliases into Anthropic SDK env', async () => {
+    vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
+    vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'stale-anthropic-api-key');
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(query).toHaveBeenCalledWith({
+      prompt: 'hello',
+      options: expect.objectContaining({
+        env: expect.objectContaining({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456',
+          ANTHROPIC_AUTH_TOKEN: 'ccr-auth-token',
+        }),
+      }),
+    });
+    const sdkCall = vi.mocked(query).mock.calls[0]!;
+    const sdkEnv = sdkCall[0]!.options!.env || {};
+    expect(sdkEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
+  });
+
   it('rejects relative runtime config roots', async () => {
     vi.stubEnv('MYCC_AGENT_SDK_CONFIG_ROOT', 'runtime/claude');
 
