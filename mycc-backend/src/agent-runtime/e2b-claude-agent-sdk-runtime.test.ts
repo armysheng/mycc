@@ -104,6 +104,27 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     expect(runCommand).not.toHaveBeenCalled();
   });
 
+  it('rejects unsupported Agent SDK permission modes before running bridge', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_PERMISSION_MODE', 'writeEverything');
+    const runCommand = vi.fn();
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'Unsupported E2B Agent SDK permission mode: writeEverything' },
+    ]);
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it('creates and stores an E2B IDE sandbox when chat starts before Remote IDE opens', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const store = createStore(null);

@@ -20,6 +20,14 @@ const DEFAULT_SANDBOX_LINUX_USER = 'mycc';
 const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep';
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const SUPPORTED_PERMISSION_MODES = new Set([
+  'default',
+  'acceptEdits',
+  'bypassPermissions',
+  'plan',
+  'dontAsk',
+  'auto',
+]);
 
 const DEFAULT_BRIDGE_COMMAND = 'cd /opt/mycc-agent-runtime && node bridge.mjs';
 
@@ -182,7 +190,7 @@ function buildAgentSdkBridgeEnv(
     MYCC_AGENT_PROMPT_B64: Buffer.from(params.message, 'utf8').toString('base64'),
     MYCC_AGENT_SDK_ALLOWED_TOOLS: process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS,
     MYCC_AGENT_SDK_PARTIAL_MESSAGES: process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES || 'false',
-    MYCC_AGENT_SDK_PERMISSION_MODE: process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'dontAsk',
+    MYCC_AGENT_SDK_PERMISSION_MODE: resolvePermissionMode(),
     MYCC_AGENT_WORKSPACE_CWD: cwd,
     MYCC_E2B_AGENT_SDK_MODEL: resolveAgentSdkModel(),
     XDG_CONFIG_HOME: `${home}/.config`,
@@ -190,6 +198,14 @@ function buildAgentSdkBridgeEnv(
     ...(params.sessionId ? { MYCC_AGENT_SESSION_ID: params.sessionId } : {}),
     ...resolveClaudeProviderEnv(),
   };
+}
+
+function resolvePermissionMode(): string {
+  const raw = (process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'dontAsk').trim();
+  if (SUPPORTED_PERMISSION_MODES.has(raw)) {
+    return raw;
+  }
+  throw new Error(`Unsupported E2B Agent SDK permission mode: ${raw}`);
 }
 
 function resolveSandboxLinuxUser(): string {
