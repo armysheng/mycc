@@ -14,6 +14,11 @@ type RuntimeConfig = {
     baseUrlConfigured: boolean;
     credentialConfigured: boolean;
   };
+  e2bAgentPreflight?: {
+    ok: boolean;
+    errorCount: number;
+    warnCount: number;
+  };
 };
 
 type ChatRuntimeStatusBadgeProps = {
@@ -63,6 +68,12 @@ export function ChatRuntimeStatusBadge({ token }: ChatRuntimeStatusBadgeProps) {
   const runtimeLabel = config ? runtimeKindLabel(config.kind) : "Runtime 待检测";
   const providerLabel = config ? providerStatusLabel(config.claudeProvider) : "Provider 待检测";
   const workspaceLabel = config?.usesCodeServerWorkspace ? "code-server workspace" : undefined;
+  const e2bPreflightLabel = config?.usesCodeServerWorkspace && config.e2bAgentPreflight
+    ? e2bPreflightStatusLabel(config.e2bAgentPreflight)
+    : undefined;
+  const e2bPreflightClass = config?.e2bAgentPreflight
+    ? e2bPreflightStatusClass(config.e2bAgentPreflight)
+    : "";
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
@@ -75,6 +86,11 @@ export function ChatRuntimeStatusBadge({ token }: ChatRuntimeStatusBadgeProps) {
       {workspaceLabel && (
         <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
           {workspaceLabel}
+        </span>
+      )}
+      {e2bPreflightLabel && (
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${e2bPreflightClass}`}>
+          {e2bPreflightLabel}
         </span>
       )}
     </div>
@@ -98,4 +114,20 @@ function providerStatusLabel(provider: RuntimeConfig["claudeProvider"]): string 
   if (provider.provider === "vps") return "VPS 凭证";
   if (provider.provider === "custom") return "自定义 Claude Provider";
   return "Provider 未配置";
+}
+
+function e2bPreflightStatusLabel(preflight: NonNullable<RuntimeConfig["e2bAgentPreflight"]>): string {
+  if (preflight.errorCount > 0) return `E2B 缺配置 ${preflight.errorCount}`;
+  if (preflight.warnCount > 0) return `E2B 待确认 ${preflight.warnCount}`;
+  return preflight.ok ? "E2B 就绪" : "E2B 待检测";
+}
+
+function e2bPreflightStatusClass(preflight: NonNullable<RuntimeConfig["e2bAgentPreflight"]>): string {
+  if (preflight.errorCount > 0) {
+    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200";
+  }
+  if (preflight.warnCount > 0 || !preflight.ok) {
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200";
+  }
+  return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200";
 }

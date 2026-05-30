@@ -17,6 +17,11 @@ import { createAgentRuntime } from '../agent-runtime/index.js';
 import { describeAgentRuntimeConfig } from '../agent-runtime/factory.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import {
+  buildE2bAgentPreflightReport,
+  type E2bPreflightCheck,
+  type E2bPreflightReport,
+} from '../ide/e2b-preflight.js';
 import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
@@ -96,6 +101,13 @@ const SKILL_INSTALL_PATTERNS: RegExp[] = [
   /\binstall\s+([a-z0-9._-]{2,64})\s+skill\b/i,
 ];
 const ONBOARDING_BOOTSTRAP_MARKER = '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。';
+
+type RuntimeConfigPreflightSummary = {
+  ok: boolean;
+  errorCount: number;
+  warnCount: number;
+  checks: E2bPreflightCheck[];
+};
 
 function isHistoryMessage(value: unknown): value is HistoryMessage {
   if (!value || typeof value !== 'object') return false;
@@ -514,9 +526,16 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
       return reply.status(401).send({ error: '未认证' });
     }
 
+    const e2bAgentPreflight = summarizeE2bAgentPreflight(
+      await buildE2bAgentPreflightReport({ env: projectContextOptions.env }),
+    );
+
     return {
       success: true,
-      data: describeAgentRuntimeConfig(projectContextOptions.env),
+      data: {
+        ...describeAgentRuntimeConfig(projectContextOptions.env),
+        e2bAgentPreflight,
+      },
     };
   });
 
@@ -973,6 +992,15 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
       message: 'Abort 接口已接收（当前版本为兼容实现）',
     });
   });
+}
+
+function summarizeE2bAgentPreflight(report: E2bPreflightReport): RuntimeConfigPreflightSummary {
+  return {
+    ok: report.ok,
+    errorCount: report.checks.filter((check) => check.status === 'error').length,
+    warnCount: report.checks.filter((check) => check.status === 'warn').length,
+    checks: report.checks,
+  };
 }
 
 /**

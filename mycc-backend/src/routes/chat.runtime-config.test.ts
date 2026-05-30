@@ -87,8 +87,58 @@ describe('chat runtime config route', () => {
           credentialSource: 'MYCC_CCR_AUTH_TOKEN',
           credentialTarget: 'ANTHROPIC_AUTH_TOKEN',
         },
+        e2bAgentPreflight: {
+          ok: false,
+          errorCount: 1,
+          warnCount: 2,
+          checks: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'e2b-api-key',
+              status: 'error',
+              label: 'E2B API key',
+            }),
+            expect.objectContaining({
+              id: 'agent-runtime',
+              status: 'ok',
+            }),
+            expect.objectContaining({
+              id: 'ide-provider',
+              status: 'warn',
+            }),
+          ]),
+        },
       },
     });
+    expect(response.body).not.toContain('ccr-secret');
+    expect(response.body).not.toContain('ccr.example.test');
+    await app.close();
+  });
+
+  it('does not leak E2B keys or provider URLs in runtime preflight metadata', async () => {
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
+        MYCC_CCR_BASE_URL: 'https://ccr.example.test/v1',
+        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/chat/runtime/config',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.e2bAgentPreflight).toEqual(expect.objectContaining({
+      ok: true,
+      errorCount: 0,
+      warnCount: 0,
+    }));
+    expect(response.body).not.toContain('e2b_liveKey-ABC_123');
     expect(response.body).not.toContain('ccr-secret');
     expect(response.body).not.toContain('ccr.example.test');
     await app.close();
