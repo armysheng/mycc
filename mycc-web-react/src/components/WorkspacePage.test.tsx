@@ -35,6 +35,14 @@ function okJson(data: unknown) {
   };
 }
 
+function errorJson(status: number, error: string) {
+  return {
+    ok: false,
+    status,
+    json: () => Promise.resolve({ success: false, error }),
+  };
+}
+
 describe("WorkspacePage", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -165,5 +173,32 @@ describe("WorkspacePage", () => {
 
     expect(await screen.findByText("E2B Remote IDE 就绪")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeEnabled();
+  });
+
+  it("shows a Remote IDE CTA when E2B workspace files require a running session", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(errorJson(
+          409,
+          "E2B 工作区会话不存在，请先打开 Remote IDE",
+        ) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("E2B 工作区需要 Remote IDE")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "先打开 Remote IDE" })).toBeEnabled();
+    expect(screen.queryByText(/系统错误：E2B 工作区会话不存在/)).not.toBeInTheDocument();
   });
 });

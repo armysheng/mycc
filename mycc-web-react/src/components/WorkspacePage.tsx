@@ -59,6 +59,25 @@ interface IdeSessionData {
   openPath?: string;
 }
 
+class ApiRequestError extends Error {
+  readonly status?: number;
+
+  constructor(
+    message: string,
+    status?: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+function requiresRemoteIdeSession(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message.includes("E2B 工作区会话不存在")
+    || error.message.includes("请先打开 Remote IDE");
+}
+
 function detectLanguage(filePath: string): string {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript";
@@ -151,6 +170,7 @@ export function WorkspacePage() {
 
   const [treeRoot, setTreeRoot] = useState<WorkspaceTreeNode | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
+  const [workspaceNeedsIde, setWorkspaceNeedsIde] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -176,7 +196,7 @@ export function WorkspacePage() {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.success) {
-      throw new Error(json?.error || "请求失败");
+      throw new ApiRequestError(json?.error || "请求失败", res.status);
     }
     return json;
   }, [token]);
@@ -194,8 +214,16 @@ export function WorkspacePage() {
       if (json?.data?.truncated) {
         setNotice("目录节点较多，已自动截断显示。可分层打开目录查看完整内容。");
       }
+      setWorkspaceNeedsIde(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载目录失败");
+      if (requiresRemoteIdeSession(err)) {
+        setWorkspaceNeedsIde(true);
+        setTreeRoot(null);
+        setError(null);
+      } else {
+        setWorkspaceNeedsIde(false);
+        setError(err instanceof Error ? err.message : "加载目录失败");
+      }
     } finally {
       setTreeLoading(false);
     }
@@ -296,7 +324,9 @@ export function WorkspacePage() {
       } else {
         window.open(openUrl, "_blank", "noopener,noreferrer");
       }
+      setWorkspaceNeedsIde(false);
       setNotice("Remote IDE 已在新标签页打开");
+      void loadTree();
     } catch (err) {
       ideWindow?.close();
       setError(err instanceof Error ? err.message : "打开 Remote IDE 失败");
@@ -446,6 +476,23 @@ export function WorkspacePage() {
               <div className="flex-1 overflow-auto p-2">
                 {treeLoading ? (
                   <div className="text-xs text-slate-500 px-2 py-3">加载目录中...</div>
+                ) : workspaceNeedsIde ? (
+                  <div className="m-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-100">
+                    <div className="font-semibold">E2B 工作区需要 Remote IDE</div>
+                    <p className="mt-2 text-xs leading-5 text-emerald-700 dark:text-emerald-200/80">
+                      当前文件树会复用 E2B IDE sandbox。先打开 Remote IDE 创建会话，再回到这里查看同一份 `/home/mycc/workspace`。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openRemoteIde();
+                      }}
+                      disabled={ideDisabled}
+                      className="mt-3 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100"
+                    >
+                      先打开 Remote IDE
+                    </button>
+                  </div>
                 ) : (
                   <Tree<WorkspaceTreeNode>
                     data={data}
