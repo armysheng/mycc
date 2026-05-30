@@ -15,4 +15,9 @@ export const template = Template()
     'git --version',
     'python3 --version',
     'gcc --version',
+    'make --version',
+    'find --version',
+    'gawk --version',
+    'lsof -v',
+    'tree --version',
   ].join(' && '));
