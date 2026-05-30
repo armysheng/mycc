@@ -1,5 +1,25 @@
-import { describe, expect, it } from 'vitest';
-import { parseOnboardingBootstrapRequest, shouldLoadProjectContextFromVpsWorkspace } from './chat.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  loadWorkspaceBootstrapFilesFromE2b,
+  parseOnboardingBootstrapRequest,
+  shouldLoadProjectContextFromVpsWorkspace,
+} from './chat.js';
+import type { StoredIdeSession } from '../ide/session-store.js';
+
+const runningSession: StoredIdeSession = {
+  id: 'ide_123',
+  provider: 'e2b',
+  sandboxId: 'sbx_123',
+  codeServerPid: 1234,
+  host: '18080-sbx_123.e2b.app',
+  trafficAccessToken: 'traffic-token',
+  port: 18080,
+  accessMode: 'mycc-proxy',
+  expiresAt: '2099-05-29T14:00:00.000Z',
+  proxyToken: 'proxy-token',
+  userId: 42,
+  status: 'running',
+};
 
 describe('parseOnboardingBootstrapRequest', () => {
   it('extracts assistant name from onboarding bootstrap prompt', () => {
@@ -44,5 +64,46 @@ describe('parseOnboardingBootstrapRequest', () => {
     expect(shouldLoadProjectContextFromVpsWorkspace({
       MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
     })).toBe(false);
+  });
+
+  it('loads bootstrap context files from the running E2B sandbox workspace', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          name: 'README.md',
+          path: '/home/mycc/workspace/0-System/about-me/README.md',
+          content: 'hello from e2b',
+          missing: false,
+        },
+      ]),
+      stderr: '',
+    });
+
+    const files = await loadWorkspaceBootstrapFilesFromE2b({
+      session: runningSession,
+      workspaceDir: '/home/mycc/workspace',
+      e2bProvider: { runCommandInSession },
+    });
+
+    expect(files).toEqual([
+      {
+        name: 'README.md',
+        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        content: 'hello from e2b',
+        missing: false,
+      },
+    ]);
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      runningSession,
+      expect.stringContaining('node -e'),
+      {
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 30000,
+      },
+    );
+    const command = runCommandInSession.mock.calls[0]![1] as string;
+    expect(command).toContain('/home/mycc/workspace/0-System/about-me/README.md');
+    expect(command).not.toContain('sudo -n -u');
   });
 });

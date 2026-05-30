@@ -15,6 +15,9 @@ import {
 } from '../db/client.js';
 import { createAgentRuntime } from '../agent-runtime/index.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
+import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
+import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import {
   escapeShellArg,
   sanitizeLinuxUsername,
@@ -67,6 +70,16 @@ const MAX_SESSION_INJECTION_MARKS = 5000;
 type CachedContextPrompt = {
   prompt: string;
   expiresAt: number;
+};
+type E2bProjectContextProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>;
+type ChatProjectContextOptions = {
+  env?: NodeJS.ProcessEnv;
+  e2bProvider?: E2bProjectContextProvider;
+  ideSessionStore?: IdeSessionStore;
+};
+type ProjectContextSource = {
+  cacheKey: string;
+  loadFiles: () => Promise<WorkspaceBootstrapFile[]>;
 };
 
 const contextPromptCache = new Map<string, CachedContextPrompt>();
@@ -239,38 +252,7 @@ async function loadWorkspaceBootstrapFilesFromRemote(params: {
   const sshPool = getSSHPool();
   const connection = await sshPool.acquire();
   try {
-    const bootstrapRoot = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
-    const entries = [
-      ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
-        name,
-        path: `${bootstrapRoot}/${name}`,
-        required: true,
-      })),
-      ...OPTIONAL_BOOTSTRAP_FILE_NAMES.map((name) => ({
-        name,
-        path: `${bootstrapRoot}/${name}`,
-        required: false,
-      })),
-    ];
-
-    const script = [
-      'const fs=require("fs");',
-      `const entries=${JSON.stringify(entries)};`,
-      'const out=[];',
-      'for(const e of entries){',
-      '  try{',
-      '    if(fs.existsSync(e.path)){',
-      '      const content=fs.readFileSync(e.path,"utf8");',
-      '      out.push({name:e.name,path:e.path,content,missing:false});',
-      '    }else if(e.required){',
-      '      out.push({name:e.name,path:e.path,missing:true});',
-      '    }',
-      '  }catch(_err){',
-      '    if(e.required){ out.push({name:e.name,path:e.path,missing:true}); }',
-      '  }',
-      '}',
-      'process.stdout.write(JSON.stringify(out));',
-    ].join('');
+    const script = buildBootstrapFilesReaderScript(params.workspaceDir);
 
     const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
     const result = await sshPool.exec(connection, cmd);
@@ -284,6 +266,63 @@ async function loadWorkspaceBootstrapFilesFromRemote(params: {
   } finally {
     sshPool.release(connection);
   }
+}
+
+export async function loadWorkspaceBootstrapFilesFromE2b(params: {
+  session: StoredIdeSession;
+  workspaceDir: string;
+  e2bProvider: E2bProjectContextProvider;
+}): Promise<WorkspaceBootstrapFile[]> {
+  const result = await params.e2bProvider.runCommandInSession(
+    params.session,
+    `node -e ${escapeShellArg(buildBootstrapFilesReaderScript(params.workspaceDir))}`,
+    {
+      cwd: params.workspaceDir,
+      timeoutMs: 30000,
+    },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || result.error || '读取 E2B bootstrap 文件失败');
+  }
+
+  const parsed = JSON.parse(result.stdout) as WorkspaceBootstrapFile[];
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((item) => item && typeof item.path === 'string' && typeof item.name === 'string');
+}
+
+function buildBootstrapFilesReaderScript(workspaceDir: string): string {
+  const bootstrapRoot = `${workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+  const entries = [
+    ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
+      name,
+      path: `${bootstrapRoot}/${name}`,
+      required: true,
+    })),
+    ...OPTIONAL_BOOTSTRAP_FILE_NAMES.map((name) => ({
+      name,
+      path: `${bootstrapRoot}/${name}`,
+      required: false,
+    })),
+  ];
+
+  return [
+    'const fs=require("fs");',
+    `const entries=${JSON.stringify(entries)};`,
+    'const out=[];',
+    'for(const e of entries){',
+    '  try{',
+    '    if(fs.existsSync(e.path)){',
+    '      const content=fs.readFileSync(e.path,"utf8");',
+    '      out.push({name:e.name,path:e.path,content,missing:false});',
+    '    }else if(e.required){',
+    '      out.push({name:e.name,path:e.path,missing:true});',
+    '    }',
+    '  }catch(_err){',
+    '    if(e.required){ out.push({name:e.name,path:e.path,missing:true}); }',
+    '  }',
+    '}',
+    'process.stdout.write(JSON.stringify(out));',
+  ].join('');
 }
 
 function nowMs(): number {
@@ -341,6 +380,42 @@ export function shouldLoadProjectContextFromVpsWorkspace(env: NodeJS.ProcessEnv 
   return runtime !== 'e2b-claude-cli' && runtime !== 'e2b-claude-agent-sdk';
 }
 
+async function resolveProjectContextSource(params: {
+  userId: number;
+  linuxUser: string;
+  vpsWorkspaceDir: string;
+  options: Required<ChatProjectContextOptions>;
+}): Promise<ProjectContextSource | null> {
+  if (shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
+    return {
+      cacheKey: `ssh:${params.userId}:${params.vpsWorkspaceDir}`,
+      loadFiles: () => loadWorkspaceBootstrapFilesFromRemote({
+        linuxUser: params.linuxUser,
+        workspaceDir: params.vpsWorkspaceDir,
+      }),
+    };
+  }
+
+  const plan = buildE2bCodeServerSessionPlan({
+    userId: params.userId,
+    linuxUser: params.linuxUser,
+    workspaceDir: params.vpsWorkspaceDir,
+  }, params.options.env);
+  const session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+  if (!session) {
+    return null;
+  }
+
+  return {
+    cacheKey: `e2b:${params.userId}:${session.sandboxId}:${plan.workspaceDir}`,
+    loadFiles: () => loadWorkspaceBootstrapFilesFromE2b({
+      session,
+      workspaceDir: plan.workspaceDir,
+      e2bProvider: params.options.e2bProvider,
+    }),
+  };
+}
+
 function markProjectContextInjectedForSession(userId: number, sessionId: string): void {
   const currentTime = nowMs();
   pruneExpiredSessionInjectionMarks(currentTime);
@@ -358,19 +433,27 @@ async function getProjectContextPromptCached(params: {
   userId: number;
   linuxUser: string;
   workspaceDir: string;
+  options: Required<ChatProjectContextOptions>;
 }): Promise<string> {
+  const source = await resolveProjectContextSource({
+    userId: params.userId,
+    linuxUser: params.linuxUser,
+    vpsWorkspaceDir: params.workspaceDir,
+    options: params.options,
+  });
+  if (!source) {
+    return '';
+  }
+
   const currentTime = nowMs();
   pruneExpiredContextPromptCache(currentTime);
-  const cacheKey = getContextPromptCacheKey(params.userId, params.workspaceDir);
+  const cacheKey = getContextPromptCacheKey(params.userId, source.cacheKey);
   const cached = contextPromptCache.get(cacheKey);
   if (cached && cached.expiresAt > currentTime) {
     return cached.prompt;
   }
 
-  const bootstrapFiles = await loadWorkspaceBootstrapFilesFromRemote({
-    linuxUser: params.linuxUser,
-    workspaceDir: params.workspaceDir,
-  });
+  const bootstrapFiles = await source.loadFiles();
   const contextFiles = buildBootstrapContextFiles(bootstrapFiles);
   const prompt = buildProjectContextPrompt(contextFiles);
   contextPromptCache.set(cacheKey, {
@@ -386,7 +469,13 @@ async function getProjectContextPromptCached(params: {
   return prompt;
 }
 
-export async function chatRoutes(fastify: FastifyInstance) {
+export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectContextOptions = {}) {
+  const projectContextOptions: Required<ChatProjectContextOptions> = {
+    env: options.env ?? process.env,
+    e2bProvider: options.e2bProvider ?? new E2bSandboxProvider(),
+    ideSessionStore: options.ideSessionStore ?? new PostgresIdeSessionStore(),
+  };
+
   // POST /api/chat - 发送消息（SSE 流式响应）
   fastify.post('/api/chat', {
     preHandler: jwtAuthMiddleware,
@@ -452,6 +541,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             userId,
             linuxUser,
             workspaceDir: cwd,
+            options: projectContextOptions,
           });
           const mergedMessage = injectProjectContextPrompt(enhancedMessage, projectContextPrompt);
           didInjectProjectContext = mergedMessage !== enhancedMessage;
