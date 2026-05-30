@@ -1,8 +1,12 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 
 const execFileAsync = promisify(execFile);
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('E2B workspace smoke scripts', () => {
   it.each([
@@ -17,6 +21,16 @@ describe('E2B workspace smoke scripts', () => {
     expect(output).toContain('[skip] E2B template: Skipped remote template check for mycc-code-server-dev');
     expect(output).toContain('fix the preflight checklist above');
     expect(output).not.toContain('openai-secret-should-not-leak');
+  });
+
+  it('keeps IDE smoke pinned to MyCC proxy-only E2B access', () => {
+    const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-ide.ts'), 'utf8');
+
+    expect(source).toContain('assertDirectHostRejectsUnauthenticatedTraffic');
+    expect(source).toContain('https://${session.host}/healthz');
+    expect(source).toContain('Direct E2B host accepted unauthenticated traffic');
+    expect(source).toContain('waitForProxyHealth');
+    expect(source).toContain("headers: { cookie }");
   });
 });
 

@@ -19,6 +19,8 @@ describe('E2B code-server template files', () => {
       'npm --version',
       'claude --version',
       'rg --version',
+      'jq --version',
+      'file --version',
       'git --version',
       'python3 --version',
       'gcc --version',
@@ -59,6 +61,8 @@ describe('E2B code-server template files', () => {
     expect(script).toContain('https://e2b.dev/dashboard?tab=personal');
     expect(script).toContain('npx --yes @e2b/cli template create');
     expect(script).toContain('test -f /opt/mycc-agent-runtime/bridge.mjs');
+    expect(script).toContain('jq --version');
+    expect(script).toContain('file --version');
     expect(docs).toContain('E2B_ACCESS_TOKEN');
     expect(docs).toContain('npm run template:e2b-code-server:create');
   });

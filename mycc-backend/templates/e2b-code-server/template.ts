@@ -12,6 +12,8 @@ export const template = Template()
     'cd /opt/mycc-agent-runtime && node -e "import(\'@anthropic-ai/claude-agent-sdk\').then(() => console.log(\'agent-sdk ok\'))"',
     'test -f /opt/mycc-agent-runtime/bridge.mjs',
     'rg --version',
+    'jq --version',
+    'file --version',
     'git --version',
     'python3 --version',
     'gcc --version',

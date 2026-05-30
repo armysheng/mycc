@@ -34,10 +34,17 @@ describe('E2B template contract', () => {
     expect(command).toContain('code-server');
     expect(command).toContain('claude');
     expect(command).toContain('/opt/mycc-agent-runtime/bridge.mjs');
+    expect(command).toContain('gawk');
+    expect(command).toContain('rg');
+    expect(command).toContain('jq');
+    expect(command).toContain('file');
+    expect(command).toContain('lsof');
+    expect(command).toContain('gawk --version');
     expect(command).toContain('sed --version');
     expect(command).toContain('grep --version');
     expect(command).toContain('realpath --version');
     expect(command).toContain('grep -Eiq');
+    expect(command).toContain('gnu:gawk');
     expect(command).toContain('gnu:sed');
     expect(command).toContain('gnu:realpath');
   });
@@ -52,6 +59,12 @@ describe('E2B template contract', () => {
     expect(command).toContain('g++');
     expect(command).toContain('pkg-config');
     expect(command).toContain('gnu:make');
+    expect(command).toContain('mycc-c-ok');
+    expect(command).toContain('mycc-cxx-ok');
+    expect(command).toContain('python3 -m venv');
+    expect(command).toContain('mycc-python-ok');
+    expect(command).toContain('npm --prefix');
+    expect(command).toContain('mycc-npm-native-ok');
   });
 
   it('runs the contract check inside the E2B workspace', async () => {
@@ -73,7 +86,7 @@ describe('E2B template contract', () => {
       expect.stringContaining('sh -lc'),
       {
         cwd: '/home/mycc/workspace',
-        timeoutMs: 30000,
+        timeoutMs: 60000,
       },
     );
   });

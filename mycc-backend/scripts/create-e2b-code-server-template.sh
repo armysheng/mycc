@@ -8,7 +8,7 @@ TEMPLATE_NAME="${MYCC_E2B_TEMPLATE:-mycc-code-server-dev}"
 CPU_COUNT="${MYCC_E2B_TEMPLATE_CPU_COUNT:-2}"
 MEMORY_MB="${MYCC_E2B_TEMPLATE_MEMORY_MB:-4096}"
 
-READY_CMD='code-server --version && node --version && npm --version && claude --version && cd /opt/mycc-agent-runtime && node -e "import(\"@anthropic-ai/claude-agent-sdk\").then(() => console.log(\"agent-sdk ok\"))" && test -f /opt/mycc-agent-runtime/bridge.mjs && rg --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version'
+READY_CMD='code-server --version && node --version && npm --version && claude --version && cd /opt/mycc-agent-runtime && node -e "import(\"@anthropic-ai/claude-agent-sdk\").then(() => console.log(\"agent-sdk ok\"))" && test -f /opt/mycc-agent-runtime/bridge.mjs && rg --version && jq --version && file --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version'
 
 if [[ -z "${E2B_ACCESS_TOKEN:-}" ]]; then
   auth_info="$(npx --yes @e2b/cli auth info 2>&1 || true)"

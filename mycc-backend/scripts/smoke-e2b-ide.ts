@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import { Template } from 'e2b';
 import jwt from 'jsonwebtoken';
 import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
+import { PostgresIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
+import { pool } from '../src/db/client.js';
 
 dotenv.config();
 
@@ -28,10 +30,12 @@ const BASE_URL = (process.env.BASE_URL || 'http://localhost:8080').replace(/\/$/
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
 const TEMPLATE_NAME = process.env.MYCC_E2B_TEMPLATE || 'mycc-code-server-dev';
 const TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_TIMEOUT_MS, 120_000);
+const DIRECT_HOST_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_DIRECT_HOST_TIMEOUT_MS, 15_000);
 const USER_ID = parsePositiveInteger(process.env.MYCC_SMOKE_USER_ID, 42);
 const LINUX_USER = process.env.MYCC_SMOKE_LINUX_USER || 'mycc';
 
 let sessionId: string | undefined;
+const sessionStore = new PostgresIdeSessionStore();
 
 async function main() {
   const apiKey = requireE2bApiKey();
@@ -64,6 +68,9 @@ async function main() {
     sessionId = created.data.id;
     assertNoProviderSecrets(created.data);
 
+    const privateSession = await getPrivateSession(sessionId);
+    await assertDirectHostRejectsUnauthenticatedTraffic(privateSession);
+
     const open = await fetch(resolveUrl(created.data.openPath), {
       redirect: 'manual',
     });
@@ -79,8 +86,12 @@ async function main() {
     await waitForProxyHealth(sessionId, cookie);
     console.log(`[ok] E2B IDE smoke passed: session=${sessionId}, template=${TEMPLATE_NAME}`);
   } finally {
-    if (sessionId) {
-      await cleanupSession(sessionId, authorization);
+    try {
+      if (sessionId) {
+        await cleanupSession(sessionId, authorization);
+      }
+    } finally {
+      await pool.end();
     }
   }
 }
@@ -118,6 +129,30 @@ async function waitForProxyHealth(id: string, cookie: string): Promise<void> {
   }
 
   throw new Error(`Timed out waiting for proxied code-server healthz: status=${lastStatus} body=${lastBody}`);
+}
+
+async function getPrivateSession(id: string): Promise<StoredIdeSession> {
+  const session = await sessionStore.get(id);
+  if (!session) {
+    throw new Error(`IDE session was not persisted: ${id}`);
+  }
+  if (!session.host || !session.trafficAccessToken) {
+    throw new Error('IDE session is missing private provider routing data');
+  }
+  return session;
+}
+
+async function assertDirectHostRejectsUnauthenticatedTraffic(session: StoredIdeSession): Promise<void> {
+  const response = await fetch(`https://${session.host}/healthz`, {
+    redirect: 'manual',
+    signal: AbortSignal.timeout(DIRECT_HOST_TIMEOUT_MS),
+  });
+  if (response.ok) {
+    throw new Error('Direct E2B host accepted unauthenticated traffic; expected MyCC proxy-only access');
+  }
+  if (response.status !== 401 && response.status !== 403) {
+    throw new Error(`Direct E2B host returned unexpected unauthenticated status: ${response.status}`);
+  }
 }
 
 async function cleanupSession(id: string, authorization: string): Promise<void> {

@@ -546,6 +546,27 @@ describe('ide routes', () => {
     expect(renewCodeServer).not.toHaveBeenCalled();
   });
 
+  it('does not proxy browser requests without JWT or IDE proxy cookie', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const web = vi.fn();
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+      proxyServer: { web },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/ide_123/proxy/healthz',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: 'IDE session not found' });
+    expect(web).not.toHaveBeenCalled();
+  });
+
   it('proxies an owned running IDE session with E2B traffic token injection', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const web = vi.fn((req, res) => {

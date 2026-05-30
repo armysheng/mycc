@@ -28,11 +28,16 @@ const BASE_REQUIRED_COMMANDS = [
   'curl',
   'sed',
   'awk',
+  'gawk',
   'grep',
   'find',
   'xargs',
   'tar',
   'gzip',
+  'rg',
+  'jq',
+  'file',
+  'lsof',
   'realpath',
   'stat',
   'timeout',
@@ -40,6 +45,7 @@ const BASE_REQUIRED_COMMANDS = [
 
 const GNU_VERSION_COMMANDS = [
   'bash',
+  'gawk',
   'sed',
   'grep',
   'find',
@@ -60,6 +66,7 @@ const NATIVE_BUILD_TOOL_COMMANDS = [
 
 const GNU_IDENTITY_PATTERNS: Record<string, string> = {
   bash: 'gnu bash',
+  gawk: 'gnu awk|gawk',
   sed: 'gnu sed',
   grep: 'gnu grep',
   find: 'gnu findutils|gnu find',
@@ -73,6 +80,7 @@ const GNU_IDENTITY_PATTERNS: Record<string, string> = {
 };
 
 const DEFAULT_AGENT_SDK_BRIDGE_PATH = '/opt/mycc-agent-runtime/bridge.mjs';
+const DEFAULT_TEMPLATE_CONTRACT_TIMEOUT_MS = 60_000;
 
 export function buildE2bTemplateContractCommand(options: E2bTemplateContractOptions = {}): string {
   const requiredCommands = new Set<string>(BASE_REQUIRED_COMMANDS);
@@ -108,6 +116,7 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
       '  missing="$missing file:$bridge_path"',
       'fi',
     ] : []),
+    ...(options.requireNativeBuildTools ? buildNativeRuntimeSmokeLines() : []),
     'if [ -n "$missing" ]; then',
     '  echo "E2B template contract missing:$missing" >&2',
     '  exit 42',
@@ -118,13 +127,67 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
   return `sh -lc ${escapeShellArg(lines.join('\n'))}`;
 }
 
+function buildNativeRuntimeSmokeLines(): string[] {
+  return [
+    'contract_dir="$(mktemp -d)"',
+    'trap \'rm -rf "$contract_dir"\' EXIT',
+    'cat > "$contract_dir/hello.c" <<\'MYCC_C_EOF\'',
+    '#include <stdio.h>',
+    'int main(void) { puts("mycc-c-ok"); return 0; }',
+    'MYCC_C_EOF',
+    'cat > "$contract_dir/hello.cc" <<\'MYCC_CXX_EOF\'',
+    '#include <iostream>',
+    'int main() { std::cout << "mycc-cxx-ok\\n"; return 0; }',
+    'MYCC_CXX_EOF',
+    'cat > "$contract_dir/Makefile" <<\'MYCC_MAKE_EOF\'',
+    'CC=gcc',
+    'CXX=g++',
+    'all:',
+    '\t$(CC) hello.c -o hello-c',
+    '\t$(CXX) hello.cc -o hello-cxx',
+    'MYCC_MAKE_EOF',
+    'if ! make -C "$contract_dir" >/dev/null 2>&1; then',
+    '  missing="$missing native:make"',
+    'fi',
+    'if ! ([ -x "$contract_dir/hello-c" ] && "$contract_dir/hello-c" | grep -qx "mycc-c-ok"); then',
+    '  missing="$missing native:gcc"',
+    'fi',
+    'if ! ([ -x "$contract_dir/hello-cxx" ] && "$contract_dir/hello-cxx" | grep -qx "mycc-cxx-ok"); then',
+    '  missing="$missing native:g++"',
+    'fi',
+    'if ! python3 -m venv "$contract_dir/venv" >/dev/null 2>&1; then',
+    '  missing="$missing python:venv"',
+    'fi',
+    'if ! "$contract_dir/venv/bin/python" -m pip --version >/dev/null 2>&1; then',
+    '  missing="$missing python:pip"',
+    'fi',
+    'if ! "$contract_dir/venv/bin/python" -c "print(\'mycc-python-ok\')" | grep -qx "mycc-python-ok"; then',
+    '  missing="$missing python:runtime"',
+    'fi',
+    'mkdir -p "$contract_dir/npm"',
+    'cat > "$contract_dir/npm/native.c" <<\'MYCC_NPM_C_EOF\'',
+    '#include <stdio.h>',
+    'int main(void) { puts("mycc-npm-native-ok"); return 0; }',
+    'MYCC_NPM_C_EOF',
+    'cat > "$contract_dir/npm/package.json" <<\'MYCC_PACKAGE_EOF\'',
+    '{"scripts":{"smoke":"gcc native.c -o native && ./native > npm-native-ok.txt"}}',
+    'MYCC_PACKAGE_EOF',
+    'if ! npm --prefix "$contract_dir/npm" run --silent smoke >/dev/null 2>&1; then',
+    '  missing="$missing npm:lifecycle"',
+    'fi',
+    'if ! grep -qx "mycc-npm-native-ok" "$contract_dir/npm/npm-native-ok.txt" 2>/dev/null; then',
+    '  missing="$missing npm:write"',
+    'fi',
+  ];
+}
+
 export async function assertE2bTemplateContract(params: AssertE2bTemplateContractParams): Promise<void> {
   const result = await params.e2bProvider.runCommandInSession(
     params.session,
     buildE2bTemplateContractCommand(params),
     {
       cwd: params.workspaceDir,
-      timeoutMs: params.timeoutMs ?? 30_000,
+      timeoutMs: params.timeoutMs ?? DEFAULT_TEMPLATE_CONTRACT_TIMEOUT_MS,
     },
   );
   if (result.exitCode !== 0) {
