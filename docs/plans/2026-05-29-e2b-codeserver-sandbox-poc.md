@@ -64,6 +64,7 @@ bridge 通过 env 接收 `MYCC_AGENT_PROMPT_B64`、`MYCC_AGENT_WORKSPACE_CWD=/ho
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。
 6. 已新增 Workspace API provider 切换：默认 `MYCC_WORKSPACE_PROVIDER=ssh` 继续走 VPS `/home/{linuxUser}/workspace`；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后复用当前用户 running E2B IDE session，在 `/home/mycc/workspace` 提供文件树、读取、保存和管理员 exec。没有 running session 时返回 `409`，避免隐式创建昂贵 sandbox。
 7. E2B agent runtime 下已停止从 VPS `/home/{linuxUser}/workspace` 注入项目上下文；如果当前用户已有 running E2B IDE session，会从 `/home/mycc/workspace/0-System/about-me` 读取 context 并注入。chat-first 首轮如果还没有 sandbox，则会跳过 context，后续仍可补“首次创建 sandbox 时同步/生成 context”。
+8. E2B workspace/context 命令如果发现 running session 对应 sandbox 明确已失效（如 `sandbox not found` / `404` / stopped），会把 session 标记为 `stopped` 并提示重新打开 Remote IDE，避免反复命中坏 session；普通 timeout/执行错误不会误停 session。
 
 ## Claude UI / SDK 调研结论
 

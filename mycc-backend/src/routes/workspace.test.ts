@@ -156,4 +156,64 @@ describe('workspace route helpers', () => {
       error: 'E2B 工作区会话不存在，请先打开 Remote IDE',
     });
   });
+
+  it('marks stale E2B workspace sessions stopped when sandbox command fails', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: {
+        runCommandInSession: vi.fn().mockRejectedValue(new Error('sandbox not found')),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/tree',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      success: false,
+      error: 'E2B 工作区会话已失效，请重新打开 Remote IDE：sandbox not found',
+    });
+    expect(await sessionStore.findReusableByUser(42)).toBeNull();
+    expect(await sessionStore.get(runningSession.id)).toEqual({
+      ...runningSession,
+      status: 'stopped',
+    });
+  });
+
+  it('does not stop E2B workspace sessions for generic command errors', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: {
+        runCommandInSession: vi.fn().mockRejectedValue(new Error('command timed out')),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/tree',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      success: false,
+      error: 'E2B 工作区操作失败：command timed out',
+    });
+    expect(await sessionStore.findReusableByUser(42)).toEqual(runningSession);
+  });
 });

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { JWTPayload } from '../auth/service.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
@@ -328,10 +329,24 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
     }
 
     const run = async (command: string, timeoutMs: number = 30000): Promise<WorkspaceCommandResult> => {
-      return e2bProvider.runCommandInSession(session as StoredIdeSession, command, {
-        cwd: plan.workspaceDir,
-        timeoutMs,
-      });
+      try {
+        return await e2bProvider.runCommandInSession(session as StoredIdeSession, command, {
+          cwd: plan.workspaceDir,
+          timeoutMs,
+        });
+      } catch (error) {
+        if (isLikelyStaleE2bSessionError(error)) {
+          await sessionStore.set({ ...session, status: 'stopped' });
+          throw new WorkspaceRouteError(
+            409,
+            `E2B 工作区会话已失效，请重新打开 Remote IDE${error instanceof Error && error.message ? `：${error.message}` : ''}`,
+          );
+        }
+        throw new WorkspaceRouteError(
+          500,
+          `E2B 工作区操作失败${error instanceof Error && error.message ? `：${error.message}` : ''}`,
+        );
+      }
     };
 
     return handler({

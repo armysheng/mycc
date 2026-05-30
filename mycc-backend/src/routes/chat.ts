@@ -16,6 +16,7 @@ import {
 import { createAgentRuntime } from '../agent-runtime/index.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import {
@@ -408,11 +409,20 @@ async function resolveProjectContextSource(params: {
 
   return {
     cacheKey: `e2b:${params.userId}:${session.sandboxId}:${plan.workspaceDir}`,
-    loadFiles: () => loadWorkspaceBootstrapFilesFromE2b({
-      session,
-      workspaceDir: plan.workspaceDir,
-      e2bProvider: params.options.e2bProvider,
-    }),
+    loadFiles: async () => {
+      try {
+        return await loadWorkspaceBootstrapFilesFromE2b({
+          session,
+          workspaceDir: plan.workspaceDir,
+          e2bProvider: params.options.e2bProvider,
+        });
+      } catch (error) {
+        if (isLikelyStaleE2bSessionError(error)) {
+          await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
+        }
+        throw error;
+      }
+    },
   };
 }
 
