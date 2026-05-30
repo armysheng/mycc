@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { createProxyServer, type ServerOptions } from 'http-proxy';
+import httpProxy, { type ServerOptions } from 'http-proxy';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
 import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { verifyToken } from '../auth/service.js';
@@ -42,7 +42,7 @@ type IdeProxyServer = {
 
 export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOptions = {}) {
   const e2bProvider = options.e2bProvider ?? new E2bSandboxProvider();
-  const proxyServer = options.proxyServer ?? createProxyServer({ ws: true });
+  const proxyServer = options.proxyServer ?? httpProxy.createProxyServer({ ws: true });
   const sessionStore = options.sessionStore ?? new PostgresIdeSessionStore();
 
   fastify.get('/api/ide/config', {

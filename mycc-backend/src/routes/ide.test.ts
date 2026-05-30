@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ideRoutes, type IdeRoutesOptions } from './ide.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
@@ -70,6 +72,20 @@ describe('ide routes', () => {
         accessMode: 'mycc-proxy',
       },
     });
+  });
+
+  it('can be imported by the tsx runtime used by npm run dev', () => {
+    const tsxBin = path.join(process.cwd(), 'node_modules/.bin/tsx');
+
+    expect(() => execFileSync(tsxBin, ['-e', "import('./src/routes/ide.ts').then(() => {})"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        MYCC_IDE_PROVIDER: '',
+        MYCC_E2B_TEMPLATE: '',
+      },
+      stdio: 'pipe',
+    })).not.toThrow();
   });
 
   it('returns 501 when creating an IDE plan while provider is disabled', async () => {

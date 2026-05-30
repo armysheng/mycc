@@ -12,6 +12,7 @@ import { ideRoutes } from './routes/ide.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
+import { shouldInitializeSshAtStartup } from './startup/ssh-startup.js';
 import { validateRegistry } from './skills/skill-registry.js';
 import { AutomationScheduler } from './automations/scheduler.js';
 import * as path from 'path';
@@ -42,6 +43,14 @@ await fastify.register(cors, {
 
 // 健康检查
 fastify.get('/health', async () => {
+  if (!shouldInitializeSshAtStartup()) {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      vps: 'skipped'
+    };
+  }
+
   try {
     // 测试 SSH 连接
     const sshPool = getSSHPool();
@@ -78,33 +87,37 @@ async function start() {
     await pool.query('SELECT NOW()');
     console.log('✅ 数据库连接成功');
 
-    // 初始化 SSH 连接池
-    const sshConfig: SSHConfig = {
-      host: process.env.VPS_HOST || '',
-      port: parseInt(process.env.VPS_SSH_PORT || '22'),
-      username: process.env.VPS_SSH_USER || '',
-      privateKeyPath: process.env.VPS_SSH_KEY_PATH || '',
-      maxConnections: parseInt(process.env.VPS_SSH_MAX_CONNECTIONS || '5'),
-      readyTimeoutMs: parseInt(process.env.VPS_SSH_READY_TIMEOUT_MS || '30000'),
-      forceIPv4: process.env.VPS_SSH_FORCE_IPV4 !== 'false',
-      keepaliveIntervalMs: parseInt(process.env.VPS_SSH_KEEPALIVE_INTERVAL_MS || '10000'),
-      keepaliveCountMax: parseInt(process.env.VPS_SSH_KEEPALIVE_COUNT_MAX || '3'),
-    };
+    if (shouldInitializeSshAtStartup()) {
+      // 初始化 SSH 连接池
+      const sshConfig: SSHConfig = {
+        host: process.env.VPS_HOST || '',
+        port: parseInt(process.env.VPS_SSH_PORT || '22'),
+        username: process.env.VPS_SSH_USER || '',
+        privateKeyPath: process.env.VPS_SSH_KEY_PATH || '',
+        maxConnections: parseInt(process.env.VPS_SSH_MAX_CONNECTIONS || '5'),
+        readyTimeoutMs: parseInt(process.env.VPS_SSH_READY_TIMEOUT_MS || '30000'),
+        forceIPv4: process.env.VPS_SSH_FORCE_IPV4 !== 'false',
+        keepaliveIntervalMs: parseInt(process.env.VPS_SSH_KEEPALIVE_INTERVAL_MS || '10000'),
+        keepaliveCountMax: parseInt(process.env.VPS_SSH_KEEPALIVE_COUNT_MAX || '3'),
+      };
 
-    if (!sshConfig.host || !sshConfig.username || !sshConfig.privateKeyPath) {
-      throw new Error('VPS SSH 配置不完整，请检查环境变量');
+      if (!sshConfig.host || !sshConfig.username || !sshConfig.privateKeyPath) {
+        throw new Error('VPS SSH 配置不完整，请检查环境变量');
+      }
+
+      initSSHPool(sshConfig);
+      console.log('✅ SSH 连接池初始化成功');
+
+      // 测试 SSH 连接
+      const sshPool = getSSHPool();
+      const sshOk = await sshPool.testConnection();
+      if (!sshOk) {
+        throw new Error('SSH 连接测试失败');
+      }
+      console.log('✅ VPS 连接测试成功');
+    } else {
+      console.log('ℹ️ E2B runtime configured; skipping VPS SSH startup check');
     }
-
-    initSSHPool(sshConfig);
-    console.log('✅ SSH 连接池初始化成功');
-
-    // 测试 SSH 连接
-    const sshPool = getSSHPool();
-    const sshOk = await sshPool.testConnection();
-    if (!sshOk) {
-      throw new Error('SSH 连接测试失败');
-    }
-    console.log('✅ VPS 连接测试成功');
 
     const schedulerEnabled = process.env.AUTOMATIONS_SCHEDULER_ENABLED !== 'false';
     if (schedulerEnabled) {
