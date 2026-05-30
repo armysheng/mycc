@@ -1,6 +1,7 @@
 import type React from "react";
 import type {
   AssistantCapabilityCard,
+  AssistantDeliverableCard,
   AssistantHomeData,
   AssistantMemorySource,
   AssistantTaskCard,
@@ -93,10 +94,7 @@ export function AssistantHomePanel({
             {deliverables.length > 0 ? (
               <div className="grid gap-3">
                 {deliverables.map((deliverable) => (
-                  <div key={deliverable.id} className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{deliverable.title}</div>
-                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{deliverable.source}</div>
-                  </div>
+                  <DeliverableCard key={deliverable.id} deliverable={deliverable} />
                 ))}
               </div>
             ) : (
@@ -150,6 +148,42 @@ export function AssistantHomePanel({
   );
 }
 
+function DeliverableCard({ deliverable }: { deliverable: AssistantDeliverableCard }) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {deliverable.title}
+          </div>
+          {deliverable.description && (
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {deliverable.description}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+          {getDeliverableKindLabel(deliverable.kind)}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+        <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">
+          {getDeliverableSourceLabel(deliverable.source)}
+        </span>
+        {deliverable.path && (
+          <code className="max-w-full truncate rounded-md bg-slate-100 px-2 py-1 font-mono dark:bg-slate-800">
+            {deliverable.path}
+          </code>
+        )}
+        {deliverable.updatedAt && (
+          <span>{formatDeliverableTime(deliverable.updatedAt)}</span>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function Panel({
   title,
   subtitle,
@@ -168,6 +202,33 @@ function Panel({
       {children}
     </section>
   );
+}
+
+function getDeliverableKindLabel(kind: AssistantDeliverableCard["kind"]) {
+  const labels: Record<AssistantDeliverableCard["kind"], string> = {
+    document: "文档",
+    code_change: "代码变更",
+    diff: "Diff",
+    report: "报告",
+    link: "链接",
+    preview: "预览",
+    screenshot: "截图",
+    log: "日志",
+    pr: "PR",
+    dataset: "数据集",
+  };
+  return labels[kind] ?? "制品";
+}
+
+function getDeliverableSourceLabel(source: AssistantDeliverableCard["source"]) {
+  if (source === "current_workspace") return "来自当前工作区";
+  return "来自当前对话";
+}
+
+function formatDeliverableTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 function TaskCard({ task }: { task: AssistantTaskCard }) {

@@ -1,14 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { findUserById as defaultFindUserById, getUserConversations as defaultGetUserConversations } from '../db/client.js';
 import type { ConversationSummary, User } from '../db/client.js';
+import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import {
   PostgresIdeSessionStore,
   type IdeSessionStore,
   type StoredIdeSession,
 } from '../ide/session-store.js';
+import { escapeShellArg } from '../utils/validation.js';
 
 export type AssistantTaskStatus = 'recent' | 'active' | 'waiting' | 'needs_workspace';
+
+type E2bAssistantWorkspaceProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>;
 
 export type AssistantRoutesOptions = {
   getUserConversations?: (
@@ -18,6 +23,8 @@ export type AssistantRoutesOptions = {
   ) => Promise<ConversationSummary[]>;
   findUserById?: (userId: number) => Promise<User | null>;
   sessionStore?: IdeSessionStore;
+  e2bProvider?: E2bAssistantWorkspaceProvider;
+  env?: NodeJS.ProcessEnv;
 };
 
 type AssistantMemorySource = {
@@ -33,6 +40,71 @@ type AssistantDeliverableEmptyState = {
   description: string;
 };
 
+type WorkspaceDeliverableCandidate = {
+  path?: unknown;
+  title?: unknown;
+  size?: unknown;
+  mtime?: unknown;
+};
+
+type AssistantDeliverableCard = {
+  id: string;
+  kind: 'document' | 'code_change' | 'diff' | 'report' | 'link' | 'preview' | 'screenshot' | 'log' | 'pr' | 'dataset';
+  title: string;
+  source: 'current_workspace' | 'current_conversation';
+  status: 'ready' | 'pending' | 'error';
+  description?: string;
+  path?: string;
+  url?: string;
+  updatedAt?: string;
+};
+
+const DELIVERABLE_SCAN_SCRIPT = [
+  '/* DELIVERABLE_SCAN_SCRIPT */',
+  'const fs=require("fs");',
+  'const path=require("path");',
+  'const root=path.resolve(process.argv[1]||process.cwd());',
+  'const rootReal=fs.realpathSync(root);',
+  'const maxDepth=5;',
+  'const maxItems=16;',
+  'const ignoreDirs=new Set([".git",".claude",".config",".ssh","node_modules","dist","build","coverage",".next",".vite"]);',
+  'const deliverableWords=["report","summary","spec","plan","proposal","design","research","review","deliverable","artifact","报告","总结","方案","计划","规划","调研","设计","复盘","制品","交付"];',
+  'const secretWords=[".env","secret","token","credential","password","passwd","private","apikey","api_key","auth"];',
+  'const out=[];',
+  'const inside=(base,p)=>p===base||p.startsWith(base+path.sep);',
+  'const safe=(rel)=>{const lower=rel.toLowerCase();return !secretWords.some((word)=>lower.includes(word));};',
+  'const useful=(rel)=>{const lower=rel.toLowerCase();return deliverableWords.some((word)=>lower.includes(word));};',
+  'const title=(rel)=>path.basename(rel).replace(/\\.md$/i,"").replace(/[-_]+/g," ").trim()||path.basename(rel);',
+  'function walk(abs,depth){',
+  '  if(out.length>=maxItems||depth>maxDepth)return;',
+  '  let entries;',
+  '  try{entries=fs.readdirSync(abs,{withFileTypes:true});}catch{return;}',
+  '  entries.sort((a,b)=>a.name.localeCompare(b.name,"zh-Hans-CN"));',
+  '  for(const entry of entries){',
+  '    if(out.length>=maxItems)break;',
+  '    if(entry.name.startsWith("."))continue;',
+  '    const full=path.join(abs,entry.name);',
+  '    let stat;',
+  '    try{stat=fs.lstatSync(full);}catch{continue;}',
+  '    if(stat.isSymbolicLink())continue;',
+  '    let real;',
+  '    try{real=fs.realpathSync(full);}catch{continue;}',
+  '    if(!inside(rootReal,real))continue;',
+  '    const rel=path.relative(rootReal,real).split(path.sep).join("/");',
+  '    if(stat.isDirectory()){',
+  '      if(ignoreDirs.has(entry.name))continue;',
+  '      walk(real,depth+1);',
+  '      continue;',
+  '    }',
+  '    if(!entry.name.toLowerCase().endsWith(".md"))continue;',
+  '    if(!safe(rel)||!useful(rel))continue;',
+  '    out.push({path:"/"+rel,title:title(rel),size:stat.size,mtime:new Date(stat.mtimeMs).toISOString()});',
+  '  }',
+  '}',
+  'walk(rootReal,0);',
+  'process.stdout.write(JSON.stringify(out));',
+].join('');
+
 export async function assistantRoutes(
   fastify: FastifyInstance,
   options: AssistantRoutesOptions = {},
@@ -40,6 +112,8 @@ export async function assistantRoutes(
   const getUserConversations = options.getUserConversations ?? defaultGetUserConversations;
   const findUserById = options.findUserById ?? defaultFindUserById;
   const sessionStore = options.sessionStore ?? new PostgresIdeSessionStore();
+  const e2bProvider = options.e2bProvider ?? new E2bSandboxProvider();
+  const env = options.env ?? process.env;
 
   fastify.get('/api/assistant/home', {
     preHandler: jwtAuthMiddleware,
@@ -52,6 +126,13 @@ export async function assistantRoutes(
     const conversations = await getUserConversations(request.user.userId, 6, 0);
     const session = await sessionStore.findReusableByUser(request.user.userId);
     const memory = buildMemorySources(user, Boolean(session));
+    const deliverables = await collectWorkspaceDeliverables({
+      userId: request.user.userId,
+      linuxUser: user?.linux_user ?? request.user.linuxUser,
+      session,
+      e2bProvider,
+      env,
+    });
 
     return {
       success: true,
@@ -61,7 +142,7 @@ export async function assistantRoutes(
           initialized: Boolean(user?.is_initialized),
         },
         tasks: conversations.map(toTaskCard),
-        deliverables: [],
+        deliverables,
         deliverableEmptyState: deliverableEmptyState(),
         memory: {
           sources: memory,
@@ -103,10 +184,20 @@ export async function assistantRoutes(
       return reply.status(401).send({ error: '未认证' });
     }
 
+    const user = await findUserById(request.user.userId);
+    const session = await sessionStore.findReusableByUser(request.user.userId);
+    const deliverables = await collectWorkspaceDeliverables({
+      userId: request.user.userId,
+      linuxUser: user?.linux_user ?? request.user.linuxUser,
+      session,
+      e2bProvider,
+      env,
+    });
+
     return {
       success: true,
       data: {
-        deliverables: [],
+        deliverables,
         emptyState: deliverableEmptyState(),
       },
     };
@@ -193,6 +284,152 @@ function buildCapabilities(session: StoredIdeSession | null) {
       hidden: true,
     },
   ];
+}
+
+async function collectWorkspaceDeliverables(params: {
+  userId: number;
+  linuxUser: string;
+  session: StoredIdeSession | null;
+  e2bProvider: E2bAssistantWorkspaceProvider;
+  env: NodeJS.ProcessEnv;
+}): Promise<AssistantDeliverableCard[]> {
+  if (!params.session || params.session.provider !== 'e2b') {
+    return [];
+  }
+
+  try {
+    const plan = buildE2bCodeServerSessionPlan({
+      userId: params.userId,
+      linuxUser: params.linuxUser,
+      workspaceDir: `/home/${params.linuxUser}/workspace`,
+    }, params.env);
+    const command = `node -e ${escapeShellArg(DELIVERABLE_SCAN_SCRIPT)} -- ${escapeShellArg(plan.workspaceDir)}`;
+    const result = await params.e2bProvider.runCommandInSession(params.session, command, {
+      cwd: plan.workspaceDir,
+      timeoutMs: 8000,
+    });
+
+    if (result.exitCode !== 0 || !result.stdout?.trim()) {
+      return [];
+    }
+
+    const parsed = JSON.parse(result.stdout) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return toWorkspaceDeliverableCards(parsed as WorkspaceDeliverableCandidate[]);
+  } catch {
+    return [];
+  }
+}
+
+export function toWorkspaceDeliverableCards(
+  candidates: WorkspaceDeliverableCandidate[],
+): AssistantDeliverableCard[] {
+  const seen = new Set<string>();
+  const cards: AssistantDeliverableCard[] = [];
+
+  for (const candidate of candidates) {
+    const path = typeof candidate.path === 'string' ? candidate.path : '';
+    const title = typeof candidate.title === 'string' ? candidate.title.trim() : '';
+    if (!isSafeWorkspaceDeliverablePath(path) || !isUsefulDeliverableCandidate(path, title)) {
+      continue;
+    }
+
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    if (seen.has(normalizedPath)) {
+      continue;
+    }
+    seen.add(normalizedPath);
+
+    const updatedAt = typeof candidate.mtime === 'string' && !Number.isNaN(new Date(candidate.mtime).getTime())
+      ? new Date(candidate.mtime).toISOString()
+      : undefined;
+    const size = typeof candidate.size === 'number' && Number.isFinite(candidate.size)
+      ? candidate.size
+      : null;
+
+    cards.push({
+      id: `workspace:${normalizedPath}`,
+      kind: inferDeliverableKind(normalizedPath, title),
+      title: title || deriveTitleFromPath(normalizedPath),
+      source: 'current_workspace',
+      status: 'ready',
+      path: normalizedPath,
+      ...(updatedAt ? { updatedAt } : {}),
+      ...(size ? { description: `${Math.ceil(size / 1024)} KB · 来自当前工作区` } : { description: '来自当前工作区' }),
+    });
+  }
+
+  return cards.slice(0, 8);
+}
+
+function isSafeWorkspaceDeliverablePath(rawPath: string): boolean {
+  if (!rawPath || rawPath.includes('\0')) {
+    return false;
+  }
+
+  const normalized = rawPath.replace(/\\/g, '/');
+  const lower = normalized.toLowerCase();
+  if (!lower.endsWith('.md')) {
+    return false;
+  }
+  if (normalized.split('/').some((part) => part.startsWith('.') && part !== '')) {
+    return false;
+  }
+
+  return ![
+    '.env',
+    'secret',
+    'token',
+    'credential',
+    'password',
+    'passwd',
+    'private',
+    'apikey',
+    'api_key',
+    'auth',
+  ].some((word) => lower.includes(word));
+}
+
+function isUsefulDeliverableCandidate(path: string, title: string): boolean {
+  const haystack = `${path} ${title}`.toLowerCase();
+  return [
+    'report',
+    'summary',
+    'spec',
+    'plan',
+    'proposal',
+    'design',
+    'research',
+    'review',
+    'deliverable',
+    'artifact',
+    '报告',
+    '总结',
+    '方案',
+    '计划',
+    '规划',
+    '调研',
+    '设计',
+    '复盘',
+    '制品',
+    '交付',
+  ].some((word) => haystack.includes(word));
+}
+
+function inferDeliverableKind(path: string, title: string): AssistantDeliverableCard['kind'] {
+  const haystack = `${path} ${title}`.toLowerCase();
+  if (['report', 'research', 'review', '调研', '报告', '复盘'].some((word) => haystack.includes(word))) {
+    return 'report';
+  }
+  return 'document';
+}
+
+function deriveTitleFromPath(path: string): string {
+  const file = path.split('/').filter(Boolean).at(-1) || path;
+  return file.replace(/\.md$/i, '').replace(/[-_]+/g, ' ').trim() || file;
 }
 
 function deliverableEmptyState(): AssistantDeliverableEmptyState {

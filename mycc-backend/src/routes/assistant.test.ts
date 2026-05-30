@@ -65,10 +65,14 @@ function defaultOptions(): AssistantRoutesOptions {
   };
 }
 
-async function buildAppWithRunningSession() {
+async function buildAppWithRunningSession(overrides: Partial<AssistantRoutesOptions> = {}) {
   const options = defaultOptions();
   await options.sessionStore!.set(runningSession);
-  return buildApp(options);
+  return buildApp({
+    ...options,
+    ...overrides,
+    sessionStore: overrides.sessionStore ?? options.sessionStore,
+  });
 }
 
 describe('assistant routes', () => {
@@ -147,8 +151,74 @@ describe('assistant routes', () => {
     await app.close();
   });
 
+  it('derives safe markdown deliverable cards from the current E2B workspace', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          path: '/docs/research-report.md',
+          title: 'Claude UI 调研报告',
+          size: 2048,
+          mtime: '2026-05-30T10:00:00.000Z',
+        },
+        {
+          path: '/docs/.env-plan.md',
+          title: 'secret plan',
+          size: 1024,
+          mtime: '2026-05-30T11:00:00.000Z',
+        },
+        {
+          path: '/notes/random.md',
+          title: 'Random note',
+          size: 512,
+          mtime: '2026-05-30T12:00:00.000Z',
+        },
+      ]),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/home',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ide_123' }),
+      expect.stringContaining('DELIVERABLE_SCAN_SCRIPT'),
+      expect.objectContaining({
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 8000,
+      }),
+    );
+    expect(body.data.deliverables).toEqual([
+      expect.objectContaining({
+        kind: 'report',
+        title: 'Claude UI 调研报告',
+        source: 'current_workspace',
+        status: 'ready',
+        path: '/docs/research-report.md',
+        updatedAt: '2026-05-30T10:00:00.000Z',
+      }),
+    ]);
+    expect(response.body).not.toContain('.env-plan.md');
+    expect(response.body).not.toContain('Random note');
+    await app.close();
+  });
+
   it('does not leak provider, runtime, or secret fields from any assistant endpoint', async () => {
-    const app = await buildAppWithRunningSession();
+    const app = await buildAppWithRunningSession({
+      env: { MYCC_IDE_PROVIDER: 'disabled' },
+    });
 
     for (const url of ['/api/assistant/home', '/api/assistant/memory', '/api/assistant/deliverables']) {
       const response = await app.inject({
