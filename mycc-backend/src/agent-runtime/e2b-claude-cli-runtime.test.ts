@@ -165,6 +165,30 @@ describe('E2bClaudeCliRuntime', () => {
     expect(cliEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
 
+  it('marks a stale reusable E2B session stopped when CLI execution cannot find the sandbox', async () => {
+    const store = createStore(runningSession);
+    const runCommand = vi.fn().mockRejectedValue(new Error('sandbox not found'));
+    const runtime = new E2bClaudeCliRuntime({
+      sessionStore: store,
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'sandbox not found' },
+    ]);
+    expect(store.set).toHaveBeenCalledWith({
+      ...runningSession,
+      status: 'stopped',
+    });
+  });
+
   it('requires chat routes to pass userId for E2B sandbox lookup', async () => {
     const runCommand = vi.fn();
     const runtime = new E2bClaudeCliRuntime({

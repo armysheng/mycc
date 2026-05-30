@@ -107,6 +107,8 @@ describe('ClaudeAgentSdkRuntime', () => {
     vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
     vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
     vi.stubEnv('ANTHROPIC_API_KEY', 'stale-anthropic-api-key');
+    vi.stubEnv('OPENAI_BASE_URL', 'https://openai-compatible.example.test/v1');
+    vi.stubEnv('OPENAI_API_KEY', 'openai-key');
     vi.mocked(query).mockReturnValue((async function* () {
       yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
     })() as ReturnType<typeof query>);
@@ -130,6 +132,8 @@ describe('ClaudeAgentSdkRuntime', () => {
     const sdkCall = vi.mocked(query).mock.calls[0]!;
     const sdkEnv = sdkCall[0]!.options!.env || {};
     expect(sdkEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(sdkEnv).not.toHaveProperty('OPENAI_BASE_URL');
+    expect(sdkEnv).not.toHaveProperty('OPENAI_API_KEY');
   });
 
   it('rejects relative runtime config roots', async () => {

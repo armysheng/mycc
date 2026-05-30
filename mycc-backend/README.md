@@ -179,7 +179,7 @@ Authorization: Bearer <token>
 | MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
-| MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY`，格式必须为 `e2b_<hex>` | - |
+| MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY`，格式前缀必须为 `e2b_<token>` | - |
 | MYCC_E2B_TEMPLATE | E2B code-server 模板名 | mycc-code-server-dev |
 | MYCC_E2B_ALLOW_PUBLIC_TRAFFIC | 是否允许 E2B host 直接公网访问；产品路径必须为 false | false |
 
@@ -194,7 +194,7 @@ Authorization: Bearer <token>
 
 `claude-agent-sdk` runtime 会覆盖传给 SDK 子进程的 `HOME`、`CLAUDE_CONFIG_DIR`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`。默认每个用户写到 `/home/{linux_user}/.mycc`；如果运行在 E2B/容器沙箱或希望挂载专用 runtime 卷，可设置 `MYCC_AGENT_SDK_CONFIG_ROOT=/srv/mycc/runtime`，最终目录为 `/srv/mycc/runtime/{linux_user}/{home,.claude}`。
 
-如果要让 Claude/Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再优先配置 `MYCC_CCR_*`；mycc 会把它映射为 Anthropic runtime 需要的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。不要把全局 `OPENAI_*` 直接复用于 Claude runtime，避免误用其他 OpenAI-compatible 服务凭据。
+如果要让 Claude/Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再优先配置 `MYCC_CCR_*`；mycc 会把它映射为 Anthropic runtime 需要的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。如果 ccr router 再转发到 OpenAI-compatible provider，把 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 配在 ccr router 内部；不要把全局 `OPENAI_*` 直接复用于 mycc 的 Claude runtime，避免误用其他 OpenAI-compatible 服务凭据。
 
 ```bash
 MYCC_AGENT_RUNTIME=claude-agent-sdk
@@ -214,8 +214,8 @@ MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 MYCC_IDE_PROVIDER=e2b
 MYCC_WORKSPACE_PROVIDER=e2b
 MYCC_E2B_TEMPLATE=mycc-code-server-dev
-MYCC_E2B_API_KEY=e2b_<hex>
-# 或使用 E2B_API_KEY=e2b_<hex>
+MYCC_E2B_API_KEY=e2b_<token>
+# 或使用 E2B_API_KEY=e2b_<token>
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 ```
 
@@ -229,7 +229,7 @@ npm run smoke:e2b-agent-workspace
 npm run smoke:e2b-agent-sdk-workspace
 ```
 
-这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<hex>` 或 `E2B_API_KEY=e2b_<hex>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
+这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<token>` 或 `E2B_API_KEY=e2b_<token>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
 
 `smoke:e2b-agent-workspace` 和 `smoke:e2b-agent-sdk-workspace` 会额外验证 E2B template 契约：`code-server`、Node/Python/Git/curl、GNU 常用工具链必须可用；CLI runtime 需要 `claude`，Agent SDK runtime 需要 `/opt/mycc-agent-runtime/bridge.mjs`。
 

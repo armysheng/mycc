@@ -72,7 +72,7 @@ describe('Claude provider env resolver', () => {
     });
   });
 
-  it('removes only Claude provider aliases before injecting resolved values', () => {
+  it('removes Claude provider aliases and global OpenAI credentials before injecting resolved values', () => {
     expect(omitClaudeProviderEnv({
       MYCC_CCR_BASE_URL: 'https://ccr.example.test',
       MYCC_CCR_AUTH_TOKEN: 'ccr-token',
@@ -80,9 +80,9 @@ describe('Claude provider env resolver', () => {
       ANTHROPIC_API_KEY: 'anthropic-api-key',
       VPS_ANTHROPIC_AUTH_TOKEN: 'vps-auth-token',
       OPENAI_API_KEY: 'openai-key',
+      OPENAI_BASE_URL: 'https://openai-compatible.example.test/v1',
       OTHER_ENV: 'keep-me',
     })).toEqual({
-      OPENAI_API_KEY: 'openai-key',
       OTHER_ENV: 'keep-me',
     });
   });

@@ -23,6 +23,7 @@ describe('E2B API key helpers', () => {
 
   it('validates the E2B SDK key format before calling E2B', () => {
     expect(isValidE2bApiKey('e2b_deadbeef')).toBe(true);
+    expect(isValidE2bApiKey('e2b_liveKey-ABC_123')).toBe(true);
     expect(isValidE2bApiKey('not-an-e2b-key')).toBe(false);
     expect(() => requireE2bApiKey({ E2B_API_KEY: 'not-an-e2b-key' }))
       .toThrow('must use the E2B API key format');

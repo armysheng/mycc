@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parseStreamLine } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provider.js';
 import { ensureE2bIdeSession } from '../ide/e2b-session.js';
+import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
@@ -103,18 +104,21 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
         stderrBuffer += data;
       },
       timeoutMs: resolveCommandTimeoutMs(),
-    } satisfies E2bCommandRunOptions).then((result) => {
+    } satisfies E2bCommandRunOptions).then(async (result) => {
       if (buffer.trim()) {
         const event = parseStreamLine(buffer);
         if (event) pushEvent(event);
       }
       if (result.exitCode !== 0) {
+        const error = `Command failed (exit code ${result.exitCode}): ${stderrBuffer.trim() || result.stderr || result.error || 'unknown error'}`;
+        await this.markSessionStoppedIfStale(session, error);
         pushEvent({
           type: 'error',
-          error: `Command failed (exit code ${result.exitCode}): ${stderrBuffer.trim() || result.stderr || result.error || 'unknown error'}`,
+          error,
         });
       }
-    }).catch((error) => {
+    }).catch(async (error) => {
+      await this.markSessionStoppedIfStale(session, error);
       pushEvent({
         type: 'error',
         error: error instanceof Error ? error.message : String(error),
@@ -135,6 +139,11 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
       }
     }
     await runPromise;
+  }
+
+  private async markSessionStoppedIfStale(session: StoredIdeSession, error: unknown): Promise<void> {
+    if (!isLikelyStaleE2bSessionError(error)) return;
+    await this.sessionStore.set({ ...session, status: 'stopped' });
   }
 }
 

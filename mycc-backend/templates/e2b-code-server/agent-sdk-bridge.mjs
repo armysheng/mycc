@@ -2,6 +2,10 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep';
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const SDK_ENV_DENYLIST = [
+  'OPENAI_BASE_URL',
+  'OPENAI_API_KEY',
+];
 
 const prompt = Buffer.from(process.env.MYCC_AGENT_PROMPT_B64 || '', 'base64').toString('utf8');
 const allowedTools = (process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS)
@@ -14,7 +18,7 @@ const options = {
   allowedTools,
   cwd: process.env.MYCC_AGENT_WORKSPACE_CWD || process.cwd(),
   env: {
-    ...process.env,
+    ...buildSdkEnv(process.env),
     CLAUDE_AGENT_SDK_CLIENT_APP: process.env.CLAUDE_AGENT_SDK_CLIENT_APP || 'mycc-backend/e2b-agent-sdk-runtime',
   },
   includePartialMessages: process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES === 'true',
@@ -38,4 +42,12 @@ if (process.env.MYCC_AGENT_SESSION_ID) {
 
 for await (const message of query({ prompt, options })) {
   console.log(JSON.stringify(message));
+}
+
+function buildSdkEnv(env) {
+  const cleanEnv = { ...env };
+  for (const key of SDK_ENV_DENYLIST) {
+    delete cleanEnv[key];
+  }
+  return cleanEnv;
 }

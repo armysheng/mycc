@@ -104,6 +104,30 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     expect(runCommand).not.toHaveBeenCalled();
   });
 
+  it('marks a stale reusable E2B session stopped when bridge execution cannot find the sandbox', async () => {
+    const store = createStore(runningSession);
+    const runCommand = vi.fn().mockRejectedValue(new Error('sandbox not found'));
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: store,
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'sandbox not found' },
+    ]);
+    expect(store.set).toHaveBeenCalledWith({
+      ...runningSession,
+      status: 'stopped',
+    });
+  });
+
   it('rejects unsupported Agent SDK permission modes before running bridge', async () => {
     vi.stubEnv('MYCC_AGENT_SDK_PERMISSION_MODE', 'writeEverything');
     const runCommand = vi.fn();

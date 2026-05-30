@@ -43,6 +43,8 @@ const CREDENTIAL_ENV_KEYS: ClaudeCredentialEnv[] = [
 const CLAUDE_PROVIDER_ENV_KEYS = new Set([
   ...BASE_URL_ENV_KEYS,
   ...CREDENTIAL_ENV_KEYS.map((credential) => credential.source),
+  'OPENAI_BASE_URL',
+  'OPENAI_API_KEY',
 ]);
 
 export function resolveClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): ClaudeProviderEnv {

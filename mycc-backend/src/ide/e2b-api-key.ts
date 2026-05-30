@@ -8,11 +8,11 @@ export function requireE2bApiKey(env: NodeJS.ProcessEnv = process.env): string {
     throw new Error('MYCC_E2B_API_KEY or E2B_API_KEY is required');
   }
   if (!isValidE2bApiKey(apiKey)) {
-    throw new Error('MYCC_E2B_API_KEY or E2B_API_KEY must use the E2B API key format: e2b_<hex>');
+    throw new Error('MYCC_E2B_API_KEY or E2B_API_KEY must use the E2B API key format: e2b_<token>');
   }
   return apiKey;
 }
 
 export function isValidE2bApiKey(apiKey: string): boolean {
-  return /^e2b_[0-9a-fA-F]+$/.test(apiKey.trim());
+  return /^e2b_[A-Za-z0-9_-]+$/.test(apiKey.trim());
 }
