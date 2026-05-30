@@ -1,16 +1,25 @@
 # E2B code-server Template
 
-This template builds the `mycc-code-server-dev` sandbox image used by the Remote IDE POC.
+This template builds the `mycc-code-server-dev` sandbox image used by the MyCC E2B GNU sandbox path.
 
 It installs:
 
-- GNU/Linux userland and build tools: `bash`, `coreutils`, `findutils`, `grep`, `sed`, `gawk`, `tar`, `gzip`, `git`, `openssh-client`, `ripgrep`, `jq`, `build-essential`, `make`, `pkg-config`, `python3`, `python3-venv`, `lsof`, `net-tools`, `file`, `tree`, `less`, `vim`, `nano`, `zip`, `unzip`
+- GNU/Linux userland and build tools: `bash`, `coreutils`, `findutils`, `grep`, `sed`, `gawk`, `tar`, `gzip`, `git`, `openssh-client`, `ripgrep`, `jq`, `build-essential`, `make`, `pkg-config`, `python3`, `python3-venv`, `python3-pip`, `lsof`, `net-tools`, `file`, `tree`, `less`, `vim`, `nano`, `zip`, `unzip`
+- GNU desktop prerequisites: `xvfb`, `xfce4`, `x11vnc`, `novnc`, `websockify`, `dbus-x11`, `x11-utils`, `xdotool`
 - Node.js 22 and npm
 - `code-server`
 - `@anthropic-ai/claude-code`
+- `@musistudio/claude-code-router` with the `ccr` CLI
 - `@anthropic-ai/claude-agent-sdk` and the mycc Agent SDK bridge in `/opt/mycc-agent-runtime`
 
 The default sandbox user is `mycc` and the default workspace is `/home/mycc/workspace`.
+
+The intended runtime model is:
+
+- `ccr-router` runs inside the sandbox image and reads provider base URL/token from runtime env injected by MyCC.
+- Claude CLI and Agent SDK bridge talk to the sandbox-local CCR endpoint.
+- `code-server`, MyCC workspace file APIs, Agent runtime, and desktop all operate on `/home/mycc/workspace`.
+- MyCC proxies browser traffic to sandbox services; browsers must not receive raw E2B hosts, E2B traffic tokens, provider base URLs, or provider tokens.
 
 ## Build
 
@@ -32,14 +41,14 @@ cd mycc-backend/templates/e2b-code-server
 e2b template create mycc-code-server-dev \
   --path . \
   --dockerfile e2b.Dockerfile \
-  --ready-cmd 'code-server --version && node --version && npm --version && claude --version && cd /opt/mycc-agent-runtime && node -e "import(\"@anthropic-ai/claude-agent-sdk\").then(() => console.log(\"agent-sdk ok\"))" && test -f /opt/mycc-agent-runtime/bridge.mjs && rg --version && jq --version && file --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version'
+  --ready-cmd 'code-server --version && node --version && npm --version && claude --version && ccr --help >/dev/null && cd /opt/mycc-agent-runtime && node -e "import(\"@anthropic-ai/claude-agent-sdk\").then(() => console.log(\"agent-sdk ok\"))" && test -f /opt/mycc-agent-runtime/bridge.mjs && python3 -m venv /tmp/mycc-ready-venv && /tmp/mycc-ready-venv/bin/python -m pip --version && rg --version && jq --version && file --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version && command -v Xvfb && command -v startxfce4 && command -v x11vnc && command -v websockify && command -v dbus-launch && command -v xdpyinfo'
 ```
 
 If the template already exists, use the equivalent E2B CLI update/build flow for your account.
 
 ## Runtime Contract
 
-The backend starts `code-server` dynamically; this template should not start it as a default command.
+The backend starts sandbox services dynamically; this template should not start `ccr`, `code-server`, or desktop as a default command.
 
 Expected runtime command shape:
 
@@ -72,6 +81,13 @@ The backend passes prompt/session/workspace details through environment variable
 - `CLAUDE_CONFIG_DIR=/home/mycc/.mycc/claude`
 - `HOME=/home/mycc/.mycc/home`
 
+For the target sandbox-local CCR path, MyCC should inject provider credentials into the `ccr-router` service, not into every user-facing process. Claude CLI and Agent SDK bridge should receive only the local CCR endpoint and router auth key, for example:
+
+- `ANTHROPIC_BASE_URL=http://127.0.0.1:<ccr-port>`
+- `ANTHROPIC_AUTH_TOKEN=<sandbox-local-router-key>`
+
+The upstream provider base URL/token should be present only in the CCR process env or a restricted CCR config/secret file.
+
 The product default allowed tools are read-only. The SDK workspace smoke script sets write-capable smoke defaults locally (`Read,Glob,Grep,Write,Edit,MultiEdit,Bash` with `bypassPermissions`) unless you override `MYCC_AGENT_SDK_ALLOWED_TOOLS` / `MYCC_AGENT_SDK_PERMISSION_MODE`.
 
 ## Smoke Checks
@@ -83,8 +99,11 @@ code-server --version
 node --version
 npm --version
 claude --version
+ccr --help >/dev/null
 cd /opt/mycc-agent-runtime && node -e "import('@anthropic-ai/claude-agent-sdk').then(() => console.log('agent-sdk ok'))"
 test -f /opt/mycc-agent-runtime/bridge.mjs
+python3 -m venv /tmp/mycc-smoke-venv
+/tmp/mycc-smoke-venv/bin/python -m pip --version
 rg --version
 jq --version
 file --version
@@ -96,6 +115,12 @@ find --version
 gawk --version
 lsof -v
 tree --version
+command -v Xvfb
+command -v startxfce4
+command -v x11vnc
+command -v websockify
+command -v dbus-launch
+command -v xdpyinfo
 pwd
 whoami
 ```

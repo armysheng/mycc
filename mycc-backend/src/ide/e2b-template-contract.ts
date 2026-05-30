@@ -8,6 +8,9 @@ export type E2bTemplateContractOptions = {
   requireClaudeCli?: boolean;
   requireAgentSdkBridge?: boolean;
   requireNativeBuildTools?: boolean;
+  requireCcrRouter?: boolean;
+  requireDesktop?: boolean;
+  requirePythonRuntime?: boolean;
   bridgePath?: string;
 };
 
@@ -64,6 +67,15 @@ const NATIVE_BUILD_TOOL_COMMANDS = [
   'pkg-config',
 ] as const;
 
+const DESKTOP_COMMANDS = [
+  'Xvfb',
+  'startxfce4',
+  'x11vnc',
+  'websockify',
+  'dbus-launch',
+  'xdpyinfo',
+] as const;
+
 const GNU_IDENTITY_PATTERNS: Record<string, string> = {
   bash: 'gnu bash',
   gawk: 'gnu awk|gawk',
@@ -95,6 +107,12 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
     NATIVE_BUILD_TOOL_COMMANDS.forEach((cmd) => requiredCommands.add(cmd));
     gnuCommands.add('make');
   }
+  if (options.requireCcrRouter) {
+    requiredCommands.add('ccr');
+  }
+  if (options.requireDesktop) {
+    DESKTOP_COMMANDS.forEach((cmd) => requiredCommands.add(cmd));
+  }
 
   const bridgePath = options.bridgePath || DEFAULT_AGENT_SDK_BRIDGE_PATH;
   const lines = [
@@ -116,7 +134,10 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
       '  missing="$missing file:$bridge_path"',
       'fi',
     ] : []),
-    ...(options.requireNativeBuildTools ? buildNativeRuntimeSmokeLines() : []),
+    ...(options.requireNativeBuildTools ? buildNativeRuntimeSmokeLines({ includePythonRuntime: true }) : []),
+    ...(options.requirePythonRuntime && !options.requireNativeBuildTools
+      ? buildPythonRuntimeSmokeLines()
+      : []),
     'if [ -n "$missing" ]; then',
     '  echo "E2B template contract missing:$missing" >&2',
     '  exit 42',
@@ -127,7 +148,7 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
   return `sh -lc ${escapeShellArg(lines.join('\n'))}`;
 }
 
-function buildNativeRuntimeSmokeLines(): string[] {
+function buildNativeRuntimeSmokeLines(options: { includePythonRuntime?: boolean } = {}): string[] {
   return [
     'contract_dir="$(mktemp -d)"',
     'trap \'rm -rf "$contract_dir"\' EXIT',
@@ -155,15 +176,7 @@ function buildNativeRuntimeSmokeLines(): string[] {
     'if ! ([ -x "$contract_dir/hello-cxx" ] && "$contract_dir/hello-cxx" | grep -qx "mycc-cxx-ok"); then',
     '  missing="$missing native:g++"',
     'fi',
-    'if ! python3 -m venv "$contract_dir/venv" >/dev/null 2>&1; then',
-    '  missing="$missing python:venv"',
-    'fi',
-    'if ! "$contract_dir/venv/bin/python" -m pip --version >/dev/null 2>&1; then',
-    '  missing="$missing python:pip"',
-    'fi',
-    'if ! "$contract_dir/venv/bin/python" -c "print(\'mycc-python-ok\')" | grep -qx "mycc-python-ok"; then',
-    '  missing="$missing python:runtime"',
-    'fi',
+    ...(options.includePythonRuntime ? buildPythonRuntimeSmokeLines('contract_dir') : []),
     'mkdir -p "$contract_dir/npm"',
     'cat > "$contract_dir/npm/native.c" <<\'MYCC_NPM_C_EOF\'',
     '#include <stdio.h>',
@@ -177,6 +190,26 @@ function buildNativeRuntimeSmokeLines(): string[] {
     'fi',
     'if ! grep -qx "mycc-npm-native-ok" "$contract_dir/npm/npm-native-ok.txt" 2>/dev/null; then',
     '  missing="$missing npm:write"',
+    'fi',
+  ];
+}
+
+function buildPythonRuntimeSmokeLines(contractDirVariable = ''): string[] {
+  const needsTempDir = !contractDirVariable;
+  const contractDir = contractDirVariable ? `"${'$'}${contractDirVariable}"` : '"$python_contract_dir"';
+  return [
+    ...(needsTempDir ? [
+      'python_contract_dir="$(mktemp -d)"',
+      'trap \'rm -rf "$python_contract_dir"\' EXIT',
+    ] : []),
+    `if ! python3 -m venv ${contractDir}/venv >/dev/null 2>&1; then`,
+    '  missing="$missing python:venv"',
+    'fi',
+    `if ! ${contractDir}/venv/bin/python -m pip --version >/dev/null 2>&1; then`,
+    '  missing="$missing python:pip"',
+    'fi',
+    `if ! ${contractDir}/venv/bin/python -c "print('mycc-python-ok')" | grep -qx "mycc-python-ok"; then`,
+    '  missing="$missing python:runtime"',
     'fi',
   ];
 }

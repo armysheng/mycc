@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 ARG CODE_SERVER_VERSION=4.106.3
 ARG CLAUDE_CODE_VERSION=2.1.158
 ARG CLAUDE_AGENT_SDK_VERSION=0.3.158
+ARG CLAUDE_CODE_ROUTER_VERSION=2.0.0
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
@@ -11,6 +12,7 @@ RUN apt-get update && apt-get install -y \
   ca-certificates \
   coreutils \
   curl \
+  dbus-x11 \
   dumb-init \
   file \
   findutils \
@@ -25,6 +27,7 @@ RUN apt-get update && apt-get install -y \
   make \
   nano \
   net-tools \
+  novnc \
   openssh-client \
   pkg-config \
   procps \
@@ -37,6 +40,12 @@ RUN apt-get update && apt-get install -y \
   tree \
   unzip \
   vim \
+  websockify \
+  x11-utils \
+  x11vnc \
+  xdotool \
+  xfce4 \
+  xvfb \
   xz-utils \
   zip \
   && rm -rf /var/lib/apt/lists/*
@@ -50,7 +59,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
 RUN curl -fsSL https://code-server.dev/install.sh \
   | sh -s -- --method=standalone --prefix=/usr/local --version ${CODE_SERVER_VERSION}
 
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+RUN npm install -g \
+  @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+  @musistudio/claude-code-router@${CLAUDE_CODE_ROUTER_VERSION}
 
 RUN mkdir -p /opt/mycc-agent-runtime \
   && cd /opt/mycc-agent-runtime \

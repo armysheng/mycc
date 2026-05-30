@@ -67,6 +67,25 @@ describe('E2B template contract', () => {
     expect(command).toContain('mycc-npm-native-ok');
   });
 
+  it('can require sandbox-local CCR router, desktop, and Python runtime capabilities', () => {
+    const command = buildE2bTemplateContractCommand({
+      requireCcrRouter: true,
+      requireDesktop: true,
+      requirePythonRuntime: true,
+    });
+
+    expect(command).toContain('ccr');
+    expect(command).toContain('Xvfb');
+    expect(command).toContain('startxfce4');
+    expect(command).toContain('x11vnc');
+    expect(command).toContain('websockify');
+    expect(command).toContain('dbus-launch');
+    expect(command).toContain('xdpyinfo');
+    expect(command).toContain('python3 -m venv');
+    expect(command).toContain('python:pip');
+    expect(command).toContain('mycc-python-ok');
+  });
+
   it('runs the contract check inside the E2B workspace', async () => {
     const runCommandInSession = vi.fn().mockResolvedValue({
       exitCode: 0,
