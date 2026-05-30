@@ -12,6 +12,7 @@ export const API_CONFIG = {
     WORKSPACE: withBase("/api/workspace"),
     BILLING: withBase("/api/billing"),
     IDE: withBase("/api/ide"),
+    ASSISTANT: withBase("/api/assistant"),
   },
 } as const;
 
@@ -138,6 +139,18 @@ export const resolveIdeOpenUrl = (openPath: string) => {
     return `${base}/${path}`;
   }
   return `${window.location.origin}${base ? `/${base.replace(/^\/+/, "")}` : ""}/${path}`;
+};
+
+export const getAssistantHomeUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.ASSISTANT}/home`;
+};
+
+export const getAssistantMemoryUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.ASSISTANT}/memory`;
+};
+
+export const getAssistantDeliverablesUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.ASSISTANT}/deliverables`;
 };
 
 export const getBillingSubscriptionUrl = () => {

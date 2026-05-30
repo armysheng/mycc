@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { authRoutes } from './routes/auth.js';
 import { chatRoutes } from './routes/chat.js';
+import { assistantRoutes } from './routes/assistant.js';
 import { billingRoutes } from './routes/billing.js';
 import { skillsRoutes } from './routes/skills.js';
 import { automationsRoutes } from './routes/automations.js';
@@ -73,6 +74,7 @@ fastify.get('/health', async () => {
 // 注册路由
 await fastify.register(authRoutes);
 await fastify.register(chatRoutes);
+await fastify.register(assistantRoutes);
 await fastify.register(billingRoutes);
 await fastify.register(skillsRoutes);
 await fastify.register(automationsRoutes);

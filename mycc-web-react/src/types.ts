@@ -233,6 +233,82 @@ export interface ConversationHistory {
   messages: TimestampedSDKMessage[];
 }
 
+export type AssistantTaskStatus =
+  | "recent"
+  | "active"
+  | "waiting"
+  | "needs_workspace";
+
+export interface AssistantTaskCard {
+  id: string;
+  source: "conversation";
+  status: AssistantTaskStatus;
+  title: string;
+  messageCount: number;
+  totalTokens?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  description?: string;
+}
+
+export interface AssistantDeliverableCard {
+  id: string;
+  kind: "document" | "code_change" | "diff" | "report" | "link" | "preview" | "screenshot" | "log" | "pr" | "dataset";
+  title: string;
+  source: "current_workspace" | "current_conversation";
+  status: "ready" | "pending" | "error";
+  description?: string;
+  path?: string;
+  url?: string;
+  updatedAt?: string;
+}
+
+export interface AssistantMemorySource {
+  kind: "profile" | "project_context" | "runtime_memory";
+  label: string;
+  status: "available" | "available_when_workspace_running" | "managed_by_runtime" | "missing";
+  editable: boolean;
+  description: string;
+}
+
+export interface AssistantCapabilityCard {
+  id: "code-server" | "desktop" | "preview" | "terminal" | string;
+  label: string;
+  status: "available" | "running" | "disabled" | "needs_workspace" | "error";
+  description: string;
+  actionLabel?: string;
+  hidden?: boolean;
+}
+
+export interface AssistantHomeData {
+  assistant: {
+    name: string;
+    initialized: boolean;
+  };
+  tasks: AssistantTaskCard[];
+  deliverables: AssistantDeliverableCard[];
+  deliverableEmptyState?: {
+    title: string;
+    description: string;
+  };
+  memory: {
+    sources: AssistantMemorySource[];
+  };
+  workspace?: {
+    status: string;
+    label: string;
+    description: string;
+    expiresAt?: string;
+  };
+  capabilities: AssistantCapabilityCard[];
+  emptyStates?: {
+    tasks?: string;
+    deliverables?: string;
+    memory?: string;
+    workspace?: string;
+  };
+}
+
 // API types
 export type StreamResponse =
   | { type: "claude_json"; data: unknown }

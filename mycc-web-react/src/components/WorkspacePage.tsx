@@ -81,7 +81,8 @@ class ApiRequestError extends Error {
 function requiresRemoteIdeSession(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return error.message.includes("E2B 工作区会话不存在")
-    || error.message.includes("请先打开 Remote IDE");
+    || error.message.includes("请先打开 Remote IDE")
+    || error.message.includes("请先打开代码编辑器");
 }
 
 function detectLanguage(filePath: string): string {
@@ -260,7 +261,7 @@ export function WorkspacePage() {
     } catch (err) {
       setIdeConfig(null);
       setIdeSession(null);
-      setIdeConfigError(err instanceof Error ? err.message : "Remote IDE 状态检查失败");
+      setIdeConfigError(err instanceof Error ? err.message : "代码编辑器状态检查失败");
     } finally {
       setIdeConfigLoading(false);
     }
@@ -319,7 +320,7 @@ export function WorkspacePage() {
     }
   }, [activeFile, apiFetch, draftContent, loadTree]);
 
-  const openRemoteIde = useCallback(async () => {
+  const openCodeEditor = useCallback(async () => {
     setIdeOpening(true);
     setError(null);
     setNotice(null);
@@ -332,13 +333,13 @@ export function WorkspacePage() {
       const config = configJson?.data as IdeConfigData | undefined;
       setIdeConfig(config ?? null);
       if (config?.enabled === false) {
-        throw new Error("Remote IDE 当前未启用");
+        throw new Error("代码编辑器当前未启用");
       }
 
       const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
       const session = sessionJson?.data as IdeSessionData | undefined;
       if (!session?.openPath) {
-        throw new Error("Remote IDE 会话创建成功，但缺少打开地址");
+        throw new Error("代码编辑器会话创建成功，但缺少打开地址");
       }
       setIdeSession(session);
 
@@ -349,11 +350,11 @@ export function WorkspacePage() {
         window.open(openUrl, "_blank", "noopener,noreferrer");
       }
       setWorkspaceNeedsIde(false);
-      setNotice("Remote IDE 已在新标签页打开");
+      setNotice("代码编辑器已在新标签页打开");
       void loadTree();
     } catch (err) {
       ideWindow?.close();
-      setError(err instanceof Error ? err.message : "打开 Remote IDE 失败");
+      setError(err instanceof Error ? err.message : "打开代码编辑器失败");
     } finally {
       setIdeOpening(false);
     }
@@ -421,27 +422,25 @@ export function WorkspacePage() {
     ideSession.provider === "e2b" || ideConfig?.provider === "e2b"
   );
   const ideStatusLabel = (() => {
-    if (ideConfigLoading) return "Remote IDE 状态检查中";
-    if (ideConfigError) return "Remote IDE 状态未知";
-    if (ideConfig?.enabled === false) return "Remote IDE 未启用";
-    if (isRunningE2bSession) return "E2B sandbox 已连接";
-    if (ideConfig?.provider === "e2b") return "E2B Remote IDE 就绪";
-    if (ideConfig?.enabled) return "Remote IDE 就绪";
-    return "Remote IDE 状态待检测";
+    if (ideConfigLoading) return "代码编辑器状态检查中";
+    if (ideConfigError) return "代码编辑器状态未知";
+    if (ideConfig?.enabled === false) return "代码编辑器未启用";
+    if (isRunningE2bSession) return "当前活跃 E2B 工作区已连接";
+    if (ideConfig?.provider === "e2b") return "E2B 工作区可创建";
+    if (ideConfig?.enabled) return "代码编辑器可打开";
+    return "代码编辑器状态待检测";
   })();
   const ideStatusDetail = (() => {
     if (ideConfigError) return ideConfigError;
-    if (ideConfig?.enabled === false) return "后端 MYCC_IDE_PROVIDER 仍为 disabled，不会创建 E2B sandbox。";
-    if (isRunningE2bSession) {
-      const sandbox = ideSession?.sandboxId ? `sandbox ${ideSession.sandboxId}` : "当前用户会话";
-      const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
-      return `${sandbox}${expires}`;
-    }
-    if (ideConfig?.provider === "e2b") {
-      const template = ideConfig.e2bTemplate ? ` · ${ideConfig.e2bTemplate}` : "";
-      return `code-server 通过 MyCC 代理打开${template}`;
-    }
-    return "打开后会复用或创建当前用户的 Remote IDE session。";
+	    if (ideConfig?.enabled === false) return "后端 MYCC_IDE_PROVIDER 仍为 disabled，不会创建 E2B 工作区。";
+	    if (isRunningE2bSession) {
+	      const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
+	      return `当前用户工作区${expires}`;
+	    }
+	    if (ideConfig?.provider === "e2b") {
+	      return "需要深度编辑代码时会在新标签页打开编辑器。";
+	    }
+    return "打开后会复用或创建当前用户的代码编辑器会话。";
   })();
 
   return (
@@ -453,10 +452,10 @@ export function WorkspacePage() {
           <header className="rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
             <div>
               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] border border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200 dark:border-sky-700 mb-2">
-                Workspace Studio
+                Assistant Workbench
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight">工作区文件编辑</h1>
-              <p className="text-xs text-slate-500 mt-1">轻量、直接、可保存。命令行面板已暂时移除。</p>
+              <h1 className="text-2xl font-semibold tracking-tight">助理工作间</h1>
+              <p className="text-xs text-slate-500 mt-1">给助理接管代码、文件和制品的高级工作台；日常入口仍然是对话。</p>
               <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-800/80 dark:bg-emerald-900/25 dark:text-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span className="font-medium">{ideStatusLabel}</span>
@@ -469,12 +468,12 @@ export function WorkspacePage() {
               <button
                 type="button"
                 onClick={() => {
-                  void openRemoteIde();
+                  void openCodeEditor();
                 }}
                 disabled={ideDisabled}
                 className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
               >
-                {ideOpening ? "打开中..." : "打开 Remote IDE"}
+                {ideOpening ? "打开中..." : "打开代码编辑器"}
               </button>
               <button
                 type="button"
@@ -511,19 +510,19 @@ export function WorkspacePage() {
                   <div className="text-xs text-slate-500 px-2 py-3">加载目录中...</div>
                 ) : workspaceNeedsIde ? (
                   <div className="m-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-100">
-                    <div className="font-semibold">E2B 工作区需要 Remote IDE</div>
+                    <div className="font-semibold">E2B 工作区需要代码编辑器</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-700 dark:text-emerald-200/80">
-                      当前文件树会复用 E2B IDE sandbox。先打开 Remote IDE 创建会话，再回到这里查看同一份 `/home/mycc/workspace`。
+                      当前文件树会复用用户的 E2B 工作区。先创建代码编辑器会话，再回到这里查看同一份 `/home/mycc/workspace`。
                     </p>
                     <button
                       type="button"
                       onClick={() => {
-                        void openRemoteIde();
+                        void openCodeEditor();
                       }}
                       disabled={ideDisabled}
                       className="mt-3 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100"
                     >
-                      先打开 Remote IDE
+                      创建 E2B 工作区
                     </button>
                   </div>
                 ) : (

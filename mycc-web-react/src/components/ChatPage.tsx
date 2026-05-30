@@ -5,6 +5,7 @@ import type {
   ChatRequest,
   ChatMessage,
   PermissionMode,
+  AssistantHomeData,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
@@ -21,7 +22,8 @@ import { ChatMessages } from "./chat/ChatMessages";
 import { ChatRuntimeStatusBadge } from "./chat/ChatRuntimeStatusBadge";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
-import { getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
+import { getAssistantHomeUrl, getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
+import { AssistantHomePanel } from "./assistant/AssistantHomePanel";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
@@ -53,6 +55,9 @@ export function ChatPage() {
   >([]);
   const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
+  const [assistantHome, setAssistantHome] = useState<AssistantHomeData | null>(null);
+  const [assistantHomeLoading, setAssistantHomeLoading] = useState(false);
+  const [assistantHomeError, setAssistantHomeError] = useState<string | null>(null);
   const slashSkillsFetchInFlightRef = useRef(false);
   const { token, user, refreshUser } = useAuth();
   const onboardingBootstrapStartedRef = useRef(false);
@@ -146,6 +151,47 @@ export function ChatPage() {
     },
     [showPermissionRequest, showPlanModeRequest],
   );
+
+	  useEffect(() => {
+	    setAssistantHome(null);
+	    setAssistantHomeError(null);
+	    if (!token) {
+	      setAssistantHomeLoading(false);
+	      return;
+	    }
+	    let cancelled = false;
+
+    const loadAssistantHome = async () => {
+      setAssistantHomeLoading(true);
+      setAssistantHomeError(null);
+      try {
+        const response = await fetch(getAssistantHomeUrl(), {
+          headers: getAuthHeaders(token),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.success) {
+          throw new Error(json?.error || "助理首页加载失败");
+        }
+        if (!cancelled) {
+          setAssistantHome(json.data as AssistantHomeData);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAssistantHomeError(err instanceof Error ? err.message : "助理首页加载失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setAssistantHomeLoading(false);
+        }
+      }
+    };
+
+    void loadAssistantHome();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const sendMessage = useCallback(
     async (
@@ -800,12 +846,25 @@ export function ChatPage() {
           </div>
         ) : (
           <>
-            <ChatMessages
-              messages={messages}
-              isLoading={isLoading}
-              assistantDisplayName={assistantDisplayName}
-              assistantAvatarText={assistantAvatarText}
-            />
+            {messages.length === 0 && !isLoadedConversation ? (
+              <div className="flex-1 overflow-y-auto border p-3 sm:p-5 mb-3 sm:mb-5 rounded-[16px] shadow-[var(--shadow-sm)]">
+                <AssistantHomePanel
+                  assistantName={assistantDisplayName}
+                  data={assistantHome}
+                  loading={assistantHomeLoading}
+                  error={assistantHomeError}
+                  onStartPrompt={setInput}
+                  onOpenWorkspace={() => navigate("/workspace")}
+                />
+              </div>
+            ) : (
+              <ChatMessages
+                messages={messages}
+                isLoading={isLoading}
+                assistantDisplayName={assistantDisplayName}
+                assistantAvatarText={assistantAvatarText}
+              />
+            )}
             <ChatInput
               input={input}
               isLoading={isLoading}

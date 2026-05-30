@@ -53,7 +53,7 @@ describe("WorkspacePage", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens a placeholder tab synchronously before resolving the Remote IDE session", async () => {
+  it("opens a placeholder tab synchronously before resolving the code editor session", async () => {
     const config = createDeferred<ReturnType<typeof okJson>>();
     const session = createDeferred<ReturnType<typeof okJson>>();
     const openedWindow = {
@@ -94,7 +94,7 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开 Remote IDE" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开代码编辑器" }));
 
     expect(open).toHaveBeenCalledWith("about:blank", "_blank");
     expect(openedWindow.opener).toBeNull();
@@ -109,7 +109,7 @@ describe("WorkspacePage", () => {
     });
   });
 
-  it("shows Remote IDE as disabled when the backend provider is off", async () => {
+  it("shows the code editor as disabled when the backend provider is off", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
       const url = String(input);
@@ -138,11 +138,11 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Remote IDE 未启用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeDisabled();
+    expect(await screen.findByText("代码编辑器未启用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开代码编辑器" })).toBeDisabled();
   });
 
-  it("shows E2B Remote IDE readiness when the backend provider is enabled", async () => {
+  it("shows E2B workspace readiness when the backend provider is enabled", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
       const url = String(input);
@@ -174,8 +174,8 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("E2B Remote IDE 就绪")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeEnabled();
+    expect(await screen.findByText("E2B 工作区可创建")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开代码编辑器" })).toBeEnabled();
   });
 
   it("shows the current running E2B IDE session without creating a new one", async () => {
@@ -218,13 +218,13 @@ describe("WorkspacePage", () => {
       <MemoryRouter>
         <WorkspacePage />
       </MemoryRouter>,
-    );
+	    );
 
-    expect(await screen.findByText("E2B sandbox 已连接")).toBeInTheDocument();
-    expect(screen.getByText(/sbx_123/)).toBeInTheDocument();
-  });
+	    expect(await screen.findByText("当前活跃 E2B 工作区已连接")).toBeInTheDocument();
+	    expect(screen.queryByText(/sbx_123/)).not.toBeInTheDocument();
+	  });
 
-  it("shows a Remote IDE CTA when E2B workspace files require a running session", async () => {
+  it("shows a code editor CTA when E2B workspace files require a running session", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
       const url = String(input);
@@ -249,8 +249,8 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("E2B 工作区需要 Remote IDE")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "先打开 Remote IDE" })).toBeEnabled();
+    expect(await screen.findByText("E2B 工作区需要代码编辑器")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建 E2B 工作区" })).toBeEnabled();
     expect(screen.queryByText(/系统错误：E2B 工作区会话不存在/)).not.toBeInTheDocument();
   });
 });

@@ -144,14 +144,11 @@ function EmptyState({ assistantDisplayName }: { assistantDisplayName: string }) 
   return (
     <div className="flex-1 flex items-center justify-center text-center text-[var(--text-secondary)]">
       <div>
-        <div className="text-5xl mb-5 opacity-60">
-          <span role="img" aria-label="chat icon">
-            💬
-          </span>
+        <div className="mx-auto mb-5 h-14 w-14 rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-slate-700 dark:bg-slate-800" aria-hidden="true">
         </div>
-        <p className="text-base font-medium">开始与 {assistantDisplayName} 对话</p>
+        <p className="text-base font-medium">今天要 {assistantDisplayName} 帮你做什么？</p>
         <p className="text-sm mt-2 opacity-80">
-          在下方输入内容即可开始
+          交代一个任务、继续上次的事，或者让助理整理当前项目状态。
         </p>
       </div>
     </div>
