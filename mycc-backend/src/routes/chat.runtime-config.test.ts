@@ -91,6 +91,7 @@ describe('chat runtime config route', () => {
           ok: false,
           errorCount: 1,
           warnCount: 2,
+          skipCount: 1,
           checks: expect.arrayContaining([
             expect.objectContaining({
               id: 'e2b-api-key',
@@ -134,9 +135,10 @@ describe('chat runtime config route', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data.e2bAgentPreflight).toEqual(expect.objectContaining({
-      ok: true,
+      ok: false,
       errorCount: 0,
       warnCount: 0,
+      skipCount: 1,
     }));
     expect(response.body).not.toContain('e2b_liveKey-ABC_123');
     expect(response.body).not.toContain('ccr-secret');

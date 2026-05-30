@@ -65,6 +65,7 @@ describe("ChatRuntimeStatusBadge", () => {
         ok: false,
         errorCount: 1,
         warnCount: 2,
+        skipCount: 0,
         checks: [
           {
             id: "e2b-api-key",
@@ -80,5 +81,30 @@ describe("ChatRuntimeStatusBadge", () => {
 
     expect(await screen.findByText("E2B 缺配置 1")).toBeInTheDocument();
     expect(screen.queryByText(/MYCC_E2B_API_KEY/)).not.toBeInTheDocument();
+  });
+
+  it("treats skipped E2B checks as pending confirmation", async () => {
+    vi.mocked(fetch).mockResolvedValue(okJson({
+      kind: "e2b-claude-agent-sdk",
+      executionEnvironment: "e2b",
+      usesAgentSdk: true,
+      usesCodeServerWorkspace: true,
+      claudeProvider: {
+        provider: "ccr",
+        baseUrlConfigured: true,
+        credentialConfigured: true,
+      },
+      e2bAgentPreflight: {
+        ok: false,
+        errorCount: 0,
+        warnCount: 0,
+        skipCount: 1,
+        checks: [],
+      },
+    }) as Response);
+
+    render(<ChatRuntimeStatusBadge token="test-token" />);
+
+    expect(await screen.findByText("E2B 待确认 1")).toBeInTheDocument();
   });
 });

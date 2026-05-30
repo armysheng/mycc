@@ -18,6 +18,7 @@ type RuntimeConfig = {
     ok: boolean;
     errorCount: number;
     warnCount: number;
+    skipCount?: number;
   };
 };
 
@@ -117,8 +118,9 @@ function providerStatusLabel(provider: RuntimeConfig["claudeProvider"]): string 
 }
 
 function e2bPreflightStatusLabel(preflight: NonNullable<RuntimeConfig["e2bAgentPreflight"]>): string {
+  const pendingCount = preflight.warnCount + (preflight.skipCount ?? 0);
   if (preflight.errorCount > 0) return `E2B 缺配置 ${preflight.errorCount}`;
-  if (preflight.warnCount > 0) return `E2B 待确认 ${preflight.warnCount}`;
+  if (pendingCount > 0) return `E2B 待确认 ${pendingCount}`;
   return preflight.ok ? "E2B 就绪" : "E2B 待检测";
 }
 
@@ -126,7 +128,7 @@ function e2bPreflightStatusClass(preflight: NonNullable<RuntimeConfig["e2bAgentP
   if (preflight.errorCount > 0) {
     return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200";
   }
-  if (preflight.warnCount > 0 || !preflight.ok) {
+  if (preflight.warnCount > 0 || (preflight.skipCount ?? 0) > 0 || !preflight.ok) {
     return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200";
   }
   return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200";

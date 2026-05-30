@@ -106,6 +106,7 @@ type RuntimeConfigPreflightSummary = {
   ok: boolean;
   errorCount: number;
   warnCount: number;
+  skipCount: number;
   checks: E2bPreflightCheck[];
 };
 
@@ -995,10 +996,14 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
 }
 
 function summarizeE2bAgentPreflight(report: E2bPreflightReport): RuntimeConfigPreflightSummary {
+  const errorCount = report.checks.filter((check) => check.status === 'error').length;
+  const warnCount = report.checks.filter((check) => check.status === 'warn').length;
+  const skipCount = report.checks.filter((check) => check.status === 'skip').length;
   return {
-    ok: report.ok,
-    errorCount: report.checks.filter((check) => check.status === 'error').length,
-    warnCount: report.checks.filter((check) => check.status === 'warn').length,
+    ok: report.ok && warnCount === 0 && skipCount === 0,
+    errorCount,
+    warnCount,
+    skipCount,
     checks: report.checks,
   };
 }
