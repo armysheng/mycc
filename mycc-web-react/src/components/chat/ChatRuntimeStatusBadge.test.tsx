@@ -50,7 +50,7 @@ describe("ChatRuntimeStatusBadge", () => {
     expect(screen.queryByText(/MYCC_CCR/)).not.toBeInTheDocument();
   });
 
-  it("shows E2B preflight gaps in the runtime badges", async () => {
+  it("lists non-ok E2B preflight gaps without exposing secret values", async () => {
     vi.mocked(fetch).mockResolvedValue(okJson({
       kind: "e2b-claude-agent-sdk",
       executionEnvironment: "e2b",
@@ -64,7 +64,7 @@ describe("ChatRuntimeStatusBadge", () => {
       e2bAgentPreflight: {
         ok: false,
         errorCount: 1,
-        warnCount: 2,
+        warnCount: 1,
         skipCount: 0,
         checks: [
           {
@@ -72,6 +72,23 @@ describe("ChatRuntimeStatusBadge", () => {
             label: "E2B API key",
             status: "error",
             message: "Missing MYCC_E2B_API_KEY or E2B_API_KEY.",
+            action: "Create an API key in the E2B dashboard, then set MYCC_E2B_API_KEY.",
+            tokenPreview: "e2b_live_secret_123456",
+          },
+          {
+            id: "claude-provider",
+            label: "Claude Provider",
+            status: "warn",
+            message: "CCR provider URL is configured from MYCC_CCR_BASE_URL.",
+            action: "Confirm MYCC_CCR_BASE_URL points at your provider before enabling E2B.",
+            providerUrl: "https://provider.example.com/secret-route",
+          },
+          {
+            id: "workspace-ready",
+            label: "Workspace",
+            status: "ok",
+            message: "Workspace is ready.",
+            action: "No action needed.",
           },
         ],
       },
@@ -80,7 +97,18 @@ describe("ChatRuntimeStatusBadge", () => {
     render(<ChatRuntimeStatusBadge token="test-token" />);
 
     expect(await screen.findByText("E2B 缺配置 1")).toBeInTheDocument();
-    expect(screen.queryByText(/MYCC_E2B_API_KEY/)).not.toBeInTheDocument();
+    expect(screen.getByText("E2B preflight 缺口")).toBeInTheDocument();
+    expect(screen.getByText("E2B API key")).toBeInTheDocument();
+    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(screen.getByText("Missing MYCC_E2B_API_KEY or E2B_API_KEY.")).toBeInTheDocument();
+    expect(screen.getByText("Create an API key in the E2B dashboard, then set MYCC_E2B_API_KEY.")).toBeInTheDocument();
+    expect(screen.getByText("Claude Provider")).toBeInTheDocument();
+    expect(screen.getByText("warn")).toBeInTheDocument();
+    expect(screen.getByText("CCR provider URL is configured from MYCC_CCR_BASE_URL.")).toBeInTheDocument();
+    expect(screen.getByText("Confirm MYCC_CCR_BASE_URL points at your provider before enabling E2B.")).toBeInTheDocument();
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    expect(screen.queryByText(/e2b_live_secret_123456/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/provider\.example\.com/)).not.toBeInTheDocument();
   });
 
   it("treats skipped E2B checks as pending confirmation", async () => {

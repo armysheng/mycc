@@ -19,6 +19,13 @@ type RuntimeConfig = {
     errorCount: number;
     warnCount: number;
     skipCount?: number;
+    checks?: Array<{
+      id: string;
+      label: string;
+      status: "ok" | "warn" | "error" | "skip";
+      message: string;
+      action?: string;
+    }>;
   };
 };
 
@@ -75,24 +82,52 @@ export function ChatRuntimeStatusBadge({ token }: ChatRuntimeStatusBadgeProps) {
   const e2bPreflightClass = config?.e2bAgentPreflight
     ? e2bPreflightStatusClass(config.e2bAgentPreflight)
     : "";
+  const e2bPreflightGaps = config?.e2bAgentPreflight
+    ? nonOkE2bPreflightChecks(config.e2bAgentPreflight)
+    : [];
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${failed ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200" : "border-slate-200 bg-white/70 text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"}`}>
-        {runtimeLabel}
-      </span>
-      <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
-        {providerLabel}
-      </span>
-      {workspaceLabel && (
-        <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
-          {workspaceLabel}
+    <div className="mt-2 space-y-2 text-[11px] text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${failed ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200" : "border-slate-200 bg-white/70 text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"}`}>
+          {runtimeLabel}
         </span>
-      )}
-      {e2bPreflightLabel && (
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${e2bPreflightClass}`}>
-          {e2bPreflightLabel}
+        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
+          {providerLabel}
         </span>
+        {workspaceLabel && (
+          <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
+            {workspaceLabel}
+          </span>
+        )}
+        {e2bPreflightLabel && (
+          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${e2bPreflightClass}`}>
+            {e2bPreflightLabel}
+          </span>
+        )}
+      </div>
+      {e2bPreflightGaps.length > 0 && (
+        <div className="w-full rounded-2xl border border-slate-200/80 bg-white/80 p-3 text-slate-600 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">
+          <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">E2B preflight 缺口</div>
+          <div className="space-y-2">
+            {e2bPreflightGaps.map((check) => (
+              <div key={check.id} className="rounded-xl border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-100">{safePreflightText(check.label)}</span>
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${e2bPreflightCheckStatusClass(check.status)}`}>
+                    {check.status}
+                  </span>
+                </div>
+                <div className="mt-1 text-slate-600 dark:text-slate-300">{safePreflightText(check.message)}</div>
+                {check.action && (
+                  <div className="mt-1 text-slate-500 dark:text-slate-400">
+                    下一步：<span>{safePreflightText(check.action)}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -132,4 +167,28 @@ function e2bPreflightStatusClass(preflight: NonNullable<RuntimeConfig["e2bAgentP
     return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200";
   }
   return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200";
+}
+
+function nonOkE2bPreflightChecks(preflight: NonNullable<RuntimeConfig["e2bAgentPreflight"]>) {
+  return (preflight.checks ?? []).filter((check) => check.status !== "ok");
+}
+
+function e2bPreflightCheckStatusClass(status: "ok" | "warn" | "error" | "skip"): string {
+  if (status === "error") {
+    return "border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200";
+  }
+  if (status === "warn") {
+    return "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200";
+  }
+  if (status === "skip") {
+    return "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  }
+  return "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200";
+}
+
+function safePreflightText(value: string): string {
+  return value
+    .replace(/https?:\/\/\S+/gi, "[已隐藏 URL]")
+    .replace(/\be2b_[A-Za-z0-9][A-Za-z0-9_-]{8,}\b/g, "[已隐藏密钥]")
+    .replace(/\bsk-[A-Za-z0-9][A-Za-z0-9_-]{12,}\b/g, "[已隐藏密钥]");
 }
