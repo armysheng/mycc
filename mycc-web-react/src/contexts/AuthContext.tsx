@@ -8,7 +8,7 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
   isLoading: boolean;
 }
 
@@ -49,11 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUser = async () => {
-    if (!token) return;
+    if (!token) return null;
     const res = await getCurrentUser(token);
     if (res.success && res.data) {
       setUser(res.data);
+      return res.data;
     }
+    return null;
   };
 
   return (

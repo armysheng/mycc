@@ -29,7 +29,7 @@ import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
-import { setOnboardingBootstrapPending } from "../utils/onboardingBootstrapState";
+import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardingBootstrapState";
 
 const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
 
@@ -649,15 +649,15 @@ export function ChatPage() {
           content: "初始化提示发送超时或失败，但你可以继续对话；只要 CLAUDE.md 里的初始化标识还在，助手会继续完成初始化。",
           timestamp: Date.now(),
         });
-        setOnboardingBootstrapPending(false);
         return;
       } finally {
         if (timer) clearTimeout(timer);
       }
-      void refreshUser().catch((err) => {
-        console.error("[OnboardingBootstrap] refresh user after initialize failed:", err);
-      });
-      setOnboardingBootstrapPending(false);
+      void refreshUser()
+        .then(clearOnboardingBootstrapPendingIfInitialized)
+        .catch((err) => {
+          console.error("[OnboardingBootstrap] refresh user after initialize failed:", err);
+        });
     })();
   }, [
     location.state,

@@ -35,3 +35,11 @@ export function subscribeOnboardingBootstrapPending(
     window.removeEventListener(ONBOARDING_BOOTSTRAP_PENDING_EVENT, handler);
   };
 }
+
+export function clearOnboardingBootstrapPendingIfInitialized(
+  user: { is_initialized?: boolean } | null | undefined,
+): void {
+  if (user?.is_initialized === true) {
+    setOnboardingBootstrapPending(false);
+  }
+}

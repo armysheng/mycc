@@ -9,6 +9,7 @@ import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
 import { isDevelopment } from "./utils/environment";
 import {
+  clearOnboardingBootstrapPendingIfInitialized,
   getOnboardingBootstrapPending,
   setOnboardingBootstrapPending,
   subscribeOnboardingBootstrapPending,
@@ -42,9 +43,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (user?.is_initialized) {
-      setOnboardingBootstrapPending(false);
-    }
+    clearOnboardingBootstrapPendingIfInitialized(user);
   }, [user?.is_initialized]);
 
   if (isLoading) {
