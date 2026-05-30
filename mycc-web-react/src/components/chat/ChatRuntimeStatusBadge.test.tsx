@@ -111,7 +111,7 @@ describe("ChatRuntimeStatusBadge", () => {
     expect(screen.queryByText(/provider\.example\.com/)).not.toBeInTheDocument();
   });
 
-  it("treats skipped E2B checks as pending confirmation", async () => {
+  it("does not surface skipped E2B checks as product-facing gaps", async () => {
     vi.mocked(fetch).mockResolvedValue(okJson({
       kind: "e2b-claude-agent-sdk",
       executionEnvironment: "e2b",
@@ -127,12 +127,23 @@ describe("ChatRuntimeStatusBadge", () => {
         errorCount: 0,
         warnCount: 0,
         skipCount: 1,
-        checks: [],
+        checks: [
+          {
+            id: "e2b-template-exists",
+            label: "E2B template",
+            status: "skip",
+            message: "Remote template existence was not checked.",
+            action: "Run npm run doctor:e2b-agent to query E2B for the template.",
+          },
+        ],
       },
     }) as Response);
 
     render(<ChatRuntimeStatusBadge token="test-token" />);
 
-    expect(await screen.findByText("E2B 待确认 1")).toBeInTheDocument();
+    expect(await screen.findByText("E2B 就绪")).toBeInTheDocument();
+    expect(screen.queryByText("E2B preflight 缺口")).not.toBeInTheDocument();
+    expect(screen.queryByText("E2B template")).not.toBeInTheDocument();
+    expect(screen.queryByText(/doctor:e2b-agent/)).not.toBeInTheDocument();
   });
 });
