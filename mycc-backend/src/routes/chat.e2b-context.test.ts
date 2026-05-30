@@ -1,0 +1,139 @@
+import Fastify from 'fastify';
+import jwt from 'jsonwebtoken';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chatRoutes } from './chat.js';
+import { InMemoryIdeSessionStore } from '../ide/session-store.js';
+
+const mocks = vi.hoisted(() => ({
+  checkQuota: vi.fn(),
+  createAgentRuntime: vi.fn(),
+  findUserById: vi.fn(),
+  logUsage: vi.fn(),
+  markUserInitialized: vi.fn(),
+  renameConversation: vi.fn(),
+  runtimeChat: vi.fn(),
+  updateConversationStats: vi.fn(),
+  upsertConversation: vi.fn(),
+  userOwnsConversation: vi.fn(),
+}));
+
+vi.mock('../agent-runtime/index.js', () => ({
+  createAgentRuntime: mocks.createAgentRuntime,
+}));
+
+vi.mock('../db/client.js', () => ({
+  checkQuota: mocks.checkQuota,
+  createUser: vi.fn(),
+  findUserByCredential: vi.fn(),
+  findUserById: mocks.findUserById,
+  getSubscription: vi.fn(),
+  getUserConversations: vi.fn(),
+  logUsage: mocks.logUsage,
+  markUserInitialized: mocks.markUserInitialized,
+  renameConversation: mocks.renameConversation,
+  updateConversationStats: mocks.updateConversationStats,
+  updateUserProfile: vi.fn(),
+  upsertConversation: mocks.upsertConversation,
+  userOwnsConversation: mocks.userOwnsConversation,
+}));
+
+const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
+
+function authHeader(overrides: Partial<{ userId: number; linuxUser: string }> = {}): string {
+  const token = jwt.sign({
+    userId: overrides.userId ?? 42,
+    linuxUser: overrides.linuxUser ?? 'tester',
+    role: 'user',
+    plan: 'free',
+  }, TEST_JWT_SECRET, { expiresIn: '1h' });
+  return `Bearer ${token}`;
+}
+
+async function buildApp(options: Parameters<typeof chatRoutes>[1]) {
+  const app = Fastify({ logger: false });
+  await app.register(chatRoutes, options);
+  return app;
+}
+
+describe('chat E2B project context injection', () => {
+  beforeEach(() => {
+    vi.stubEnv('MYCC_AGENT_RUNTIME', 'e2b-claude-cli');
+    mocks.checkQuota.mockResolvedValue({ allowed: true, remaining: 1000 });
+    mocks.createAgentRuntime.mockReturnValue({ chat: mocks.runtimeChat });
+    mocks.findUserById.mockResolvedValue(null);
+    mocks.logUsage.mockResolvedValue(undefined);
+    mocks.markUserInitialized.mockResolvedValue(undefined);
+    mocks.renameConversation.mockResolvedValue(true);
+    mocks.runtimeChat.mockImplementation(async function* () {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        session_id: 'session-e2b-context',
+      };
+    });
+    mocks.updateConversationStats.mockResolvedValue(undefined);
+    mocks.upsertConversation.mockResolvedValue(true);
+    mocks.userOwnsConversation.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('creates the E2B IDE session and injects about-me context before runtime chat', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_context',
+      codeServerPid: 4321,
+      host: '18080-sbx_context.e2b.app',
+      trafficAccessToken: 'traffic-secret',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          name: 'README.md',
+          path: '/home/mycc/workspace/0-System/about-me/README.md',
+          content: 'hello from e2b about-me',
+          missing: false,
+        },
+      ]),
+      stderr: '',
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-cli',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      e2bProvider: {
+        startCodeServer,
+        runCommandInSession,
+      },
+      ideSessionStore: sessionStore,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { authorization: authHeader() },
+      payload: { message: '请总结当前项目' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(startCodeServer).toHaveBeenCalledOnce();
+    expect(runCommandInSession).toHaveBeenCalledOnce();
+    expect(mocks.runtimeChat).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('hello from e2b about-me'),
+    }));
+    const runtimeMessage = mocks.runtimeChat.mock.calls[0]![0].message as string;
+    expect(runtimeMessage).toContain('# Project Context');
+    expect(runtimeMessage).toContain('## User Request\n请总结当前项目');
+    await app.close();
+  });
+});

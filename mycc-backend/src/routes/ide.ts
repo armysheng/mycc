@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { createProxyServer, type ServerOptions } from 'http-proxy';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { verifyToken } from '../auth/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import {
@@ -121,20 +121,13 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       }
 
       const linuxUser = sanitizeLinuxUsername(user.linuxUser);
-      const plan = buildE2bCodeServerSessionPlan({
+      const session = await ensureE2bIdeSession({
         userId: user.userId,
         linuxUser,
         workspaceDir: `/home/${linuxUser}/workspace`,
+        sessionStore,
+        e2bProvider,
       });
-      const started = await e2bProvider.startCodeServer(plan);
-      const session: StoredIdeSession = {
-        ...started,
-        id: randomUUID(),
-        proxyToken: randomUUID(),
-        userId: user.userId,
-        status: 'running',
-      };
-      await sessionStore.set(session);
 
       return reply.status(201).send({
         success: true,

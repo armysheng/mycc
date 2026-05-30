@@ -73,4 +73,57 @@ describe('ensureE2bIdeSession', () => {
     }));
     expect(await store.findReusableByUser(42)).toEqual(session);
   });
+
+  it('coalesces concurrent session creation for the same user', async () => {
+    const store = new InMemoryIdeSessionStore();
+    let resolveStart: ((value: {
+      provider: 'e2b';
+      sandboxId: string;
+      codeServerPid: number;
+      host: string;
+      trafficAccessToken: string;
+      port: number;
+      accessMode: 'mycc-proxy';
+      expiresAt: string;
+    }) => void) | undefined;
+    const startCodeServer = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      resolveStart = resolve;
+    }));
+
+    const first = ensureE2bIdeSession({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+      sessionStore: store,
+      e2bProvider: { startCodeServer },
+      env: { MYCC_IDE_PROVIDER: 'e2b' },
+    });
+    const second = ensureE2bIdeSession({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+      sessionStore: store,
+      e2bProvider: { startCodeServer },
+      env: { MYCC_IDE_PROVIDER: 'e2b' },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(startCodeServer).toHaveBeenCalledOnce();
+
+    resolveStart?.({
+      provider: 'e2b',
+      sandboxId: 'sbx_singleflight',
+      codeServerPid: 4321,
+      host: '18080-sbx_singleflight.e2b.app',
+      trafficAccessToken: 'singleflight-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const [firstSession, secondSession] = await Promise.all([first, second]);
+
+    expect(firstSession).toEqual(secondSession);
+    expect(await store.findReusableByUser(42)).toEqual(firstSession);
+  });
 });

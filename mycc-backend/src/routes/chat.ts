@@ -563,8 +563,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
 
       let didInjectProjectContext = false;
       try {
-        const shouldInjectProjectContext = shouldLoadProjectContextFromVpsWorkspace()
-          && !onboardingBootstrapRequest
+        const shouldInjectProjectContext = !onboardingBootstrapRequest
           && !hasInjectedProjectContextForSession(userId, body.sessionId);
         if (shouldInjectProjectContext) {
           const projectContextPrompt = await getProjectContextPromptCached({
