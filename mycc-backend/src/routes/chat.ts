@@ -17,6 +17,7 @@ import { createAgentRuntime } from '../agent-runtime/index.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
 import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
+import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import {
@@ -72,7 +73,8 @@ type CachedContextPrompt = {
   prompt: string;
   expiresAt: number;
 };
-type E2bProjectContextProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>;
+type E2bProjectContextProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
+  & Partial<Pick<E2bSandboxProvider, 'startCodeServer'>>;
 type ChatProjectContextOptions = {
   env?: NodeJS.ProcessEnv;
   e2bProvider?: E2bProjectContextProvider;
@@ -381,6 +383,10 @@ export function shouldLoadProjectContextFromVpsWorkspace(env: NodeJS.ProcessEnv 
   return runtime !== 'e2b-claude-cli' && runtime !== 'e2b-claude-agent-sdk';
 }
 
+export function hasUsableBootstrapContent(files: WorkspaceBootstrapFile[]): boolean {
+  return files.some((file) => !file.missing && Boolean(file.content?.trim()));
+}
+
 async function resolveProjectContextSource(params: {
   userId: number;
   linuxUser: string;
@@ -402,9 +408,20 @@ async function resolveProjectContextSource(params: {
     linuxUser: params.linuxUser,
     workspaceDir: params.vpsWorkspaceDir,
   }, params.options.env);
-  const session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+  let session = await params.options.ideSessionStore.findReusableByUser(params.userId);
   if (!session) {
-    return null;
+    if (!params.options.e2bProvider.startCodeServer) {
+      return null;
+    }
+    session = await ensureE2bIdeSession({
+      userId: params.userId,
+      linuxUser: params.linuxUser,
+      workspaceDir: params.vpsWorkspaceDir,
+      sessionStore: params.options.ideSessionStore,
+      e2bProvider: params.options.e2bProvider,
+      env: params.options.env,
+      missingStartCodeServerMessage: 'E2B chat context provider cannot create IDE sessions',
+    });
   }
 
   return {
@@ -464,6 +481,9 @@ async function getProjectContextPromptCached(params: {
   }
 
   const bootstrapFiles = await source.loadFiles();
+  if (!hasUsableBootstrapContent(bootstrapFiles)) {
+    return '';
+  }
   const contextFiles = buildBootstrapContextFiles(bootstrapFiles);
   const prompt = buildProjectContextPrompt(contextFiles);
   contextPromptCache.set(cacheKey, {

@@ -233,7 +233,7 @@ npm run smoke:e2b-agent-sdk-workspace
 
 当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B IDE session。没有 running session 时，Workspace API 会返回 `409`，提示先打开 Remote IDE，避免一次普通文件树请求隐式创建昂贵 sandbox。
 
-E2B agent runtime 的 chat 项目上下文也会优先复用 running E2B IDE session，从 `/home/mycc/workspace/0-System/about-me` 读取；如果 chat-first 时还没有 sandbox，会跳过上下文注入，避免误读 VPS workspace。
+E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSession` 提前创建或复用 E2B IDE session，从 `/home/mycc/workspace/0-System/about-me` 读取；全新 sandbox 若还没有任何可用 about-me 内容，会跳过注入且不缓存 missing context，后续可通过首次同步/初始化补齐。
 
 ## 开发说明
 

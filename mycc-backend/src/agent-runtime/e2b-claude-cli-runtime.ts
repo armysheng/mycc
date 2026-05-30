@@ -1,8 +1,7 @@
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { parseStreamLine } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provider.js';
-import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
+import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
@@ -54,30 +53,14 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
   }
 
   private async findOrCreateSession(params: AgentChatParams, workspaceDir: string): Promise<StoredIdeSession> {
-    const userId = params.userId as number;
-    const reusable = await this.sessionStore.findReusableByUser(userId);
-    if (reusable) {
-      return reusable;
-    }
-    if (!this.e2bProvider.startCodeServer) {
-      throw new Error('E2B runtime provider cannot create IDE sessions');
-    }
-
-    const plan = buildE2bCodeServerSessionPlan({
-      userId,
+    return ensureE2bIdeSession({
+      userId: params.userId as number,
       linuxUser: params.linuxUser,
       workspaceDir,
+      sessionStore: this.sessionStore,
+      e2bProvider: this.e2bProvider,
+      missingStartCodeServerMessage: 'E2B runtime provider cannot create IDE sessions',
     });
-    const started = await this.e2bProvider.startCodeServer(plan);
-    const session: StoredIdeSession = {
-      ...started,
-      id: randomUUID(),
-      proxyToken: randomUUID(),
-      userId,
-      status: 'running',
-    };
-    await this.sessionStore.set(session);
-    return session;
   }
 
   private async *runClaudeCommand(

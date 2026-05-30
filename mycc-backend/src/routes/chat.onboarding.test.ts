@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  hasUsableBootstrapContent,
   loadWorkspaceBootstrapFilesFromE2b,
   parseOnboardingBootstrapRequest,
   shouldLoadProjectContextFromVpsWorkspace,
@@ -105,5 +106,23 @@ describe('parseOnboardingBootstrapRequest', () => {
     const command = runCommandInSession.mock.calls[0]![1] as string;
     expect(command).toContain('/home/mycc/workspace/0-System/about-me/README.md');
     expect(command).not.toContain('sudo -n -u');
+  });
+
+  it('treats all-missing bootstrap files as unusable context', () => {
+    expect(hasUsableBootstrapContent([
+      {
+        name: 'README.md',
+        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        missing: true,
+      },
+    ])).toBe(false);
+    expect(hasUsableBootstrapContent([
+      {
+        name: 'README.md',
+        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        content: 'hello',
+        missing: false,
+      },
+    ])).toBe(true);
   });
 });
