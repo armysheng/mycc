@@ -123,6 +123,18 @@ export class E2bSandboxProvider {
     });
   }
 
+  async isCodeServerListening(session: StartedCodeServerSession): Promise<boolean> {
+    const result = await this.runCommandInSession(
+      session,
+      `node -e "fetch('http://127.0.0.1:${session.port}/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`,
+      {
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 5000,
+      },
+    );
+    return result.exitCode === 0;
+  }
+
   private async connect(sandboxId: string): Promise<E2bSandboxLike> {
     const apiKey = this.requireApiKey();
     if (!this.sandboxFactory.connect) {

@@ -19,7 +19,7 @@ import { sanitizeLinuxUsername } from '../utils/validation.js';
 
 export type IdeRoutesOptions = {
   e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>
-    & Partial<Pick<E2bSandboxProvider, 'renewCodeServer' | 'stopCodeServer'>>;
+    & Partial<Pick<E2bSandboxProvider, 'isCodeServerListening' | 'renewCodeServer' | 'stopCodeServer'>>;
   proxyServer?: IdeProxyServer;
   sessionStore?: IdeSessionStore;
 };
@@ -75,7 +75,11 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         return reply.status(401).send({ error: '未提供认证 token' });
       }
 
-      const reusableSession = await sessionStore.findReusableByUser(user.userId);
+      const reusableSession = await findLiveReusableSession({
+        sessionStore,
+        e2bProvider,
+        userId: user.userId,
+      });
       if (reusableSession) {
         return reply.status(200).send({
           success: true,
@@ -112,7 +116,11 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         return reply.status(401).send({ error: '未提供认证 token' });
       }
 
-      const reusableSession = await sessionStore.findReusableByUser(user.userId);
+      const reusableSession = await findLiveReusableSession({
+        sessionStore,
+        e2bProvider,
+        userId: user.userId,
+      });
       if (reusableSession) {
         return reply.status(200).send({
           success: true,
@@ -327,6 +335,22 @@ async function getOwnedSession(
   const session = await sessionStore.get(sessionId);
   if (!session || session.userId !== userId) return null;
   return session;
+}
+
+async function findLiveReusableSession(params: {
+  sessionStore: IdeSessionStore;
+  e2bProvider: IdeRoutesOptions['e2bProvider'];
+  userId: number;
+}): Promise<StoredIdeSession | null> {
+  const session = await params.sessionStore.findReusableByUser(params.userId);
+  if (!session) return null;
+  if (!params.e2bProvider?.isCodeServerListening) return session;
+
+  const isListening = await params.e2bProvider.isCodeServerListening(session);
+  if (isListening) return session;
+
+  await params.sessionStore.set({ ...session, status: 'stopped' });
+  return null;
 }
 
 function toPublicSession(session: StoredIdeSession) {

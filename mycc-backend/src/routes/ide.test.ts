@@ -203,6 +203,48 @@ describe('ide routes', () => {
     expect(startCodeServer).toHaveBeenCalledOnce();
   });
 
+  it('replaces a reusable session when the E2B sandbox is alive but code-server is not listening', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const isCodeServerListening = vi.fn().mockResolvedValue(false);
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_replacement',
+      codeServerPid: 5678,
+      host: '18080-sbx_replacement.e2b.app',
+      trafficAccessToken: 'replacement-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T15:00:00.000Z',
+    });
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: {
+        isCodeServerListening,
+        startCodeServer,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toEqual(expect.objectContaining({
+      sandboxId: 'sbx_replacement',
+      codeServerPid: 5678,
+      status: 'running',
+    }));
+    expect(isCodeServerListening).toHaveBeenCalledWith(runningSession);
+    expect(startCodeServer).toHaveBeenCalledOnce();
+    await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
+      status: 'stopped',
+    }));
+  });
+
   it('returns stored IDE session status without provider secrets', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const app = await buildApp({
