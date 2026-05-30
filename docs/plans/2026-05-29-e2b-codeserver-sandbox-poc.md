@@ -25,7 +25,7 @@
 
 - `GET /api/ide/config`：返回 Remote IDE 能力状态。默认 `disabled`。
 - `POST /api/ide/sessions/plan`：在 `MYCC_IDE_PROVIDER=e2b` 时生成 E2B/code-server session plan；仅返回安全的公开 plan。
-- `POST /api/ide/sessions`：在 `MYCC_IDE_PROVIDER=e2b` 且配置 `MYCC_E2B_API_KEY` 后，通过 provider 创建 POC session；响应隐藏 E2B host 和 traffic token。
+- `POST /api/ide/sessions`：在 `MYCC_IDE_PROVIDER=e2b` 且配置 `MYCC_E2B_API_KEY` 或 `E2B_API_KEY` 后，通过 provider 创建 POC session；响应隐藏 E2B host 和 traffic token。
 - `GET /api/ide/sessions/:id/open`：使用一次性 open token 换取 HttpOnly proxy cookie，然后 302 到后端 proxy。
 - `GET /api/ide/sessions/:id/status`：查询持久化 session 状态，按登录用户隔离。
 - `POST /api/ide/sessions/:id/renew` / `DELETE /api/ide/sessions/:id`：续期或停止 E2B/code-server session。
@@ -57,7 +57,7 @@ bridge 通过 env 接收 `MYCC_AGENT_PROMPT_B64`、`MYCC_AGENT_WORKSPACE_CWD=/ho
 
 ## 下一步实现切片
 
-1. 用真实 `MYCC_E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
+1. 用真实 `MYCC_E2B_API_KEY` 或 `E2B_API_KEY` 和已发布 template 跑 `npm run smoke:e2b-ide`。
 2. 用真实 E2B + Claude/CCR 凭据跑 `npm run smoke:e2b-agent-workspace`，验证 Claude CLI runtime 和 code-server 共享 `/home/mycc/workspace`，并覆盖 chat-first 自动创建 session 后 Remote IDE 复用的产品路径。
 3. 用同一组凭据跑 `npm run smoke:e2b-agent-sdk-workspace`，验证 Agent SDK bridge runtime 也能复用同一 sandbox/workspace；该 smoke 会设置写文件所需的 SDK 工具/权限默认值，产品默认仍保持只读工具集。
 4. 将 `npm run cleanup:ide-sessions` 接到生产 cron 或部署平台定时任务；生产环境对 `traffic_access_token` 做加密或改为 token reference。

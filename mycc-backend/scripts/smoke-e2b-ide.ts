@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { Template } from 'e2b';
 import jwt from 'jsonwebtoken';
+import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
 
 dotenv.config();
 
@@ -33,7 +34,8 @@ const LINUX_USER = process.env.MYCC_SMOKE_LINUX_USER || 'mycc';
 let sessionId: string | undefined;
 
 async function main() {
-  const apiKey = requireEnv('MYCC_E2B_API_KEY');
+  const apiKey = requireE2bApiKey();
+  process.env.MYCC_E2B_API_KEY = apiKey;
   const templateExists = await Template.exists(TEMPLATE_NAME, { apiKey });
   if (!templateExists) {
     throw new Error(`E2B template does not exist: ${TEMPLATE_NAME}`);
@@ -159,14 +161,6 @@ function resolveUrl(pathOrUrl: string): string {
     return pathOrUrl;
   }
   return `${BASE_URL}/${pathOrUrl.replace(/^\/+/, '')}`;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }
 
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {

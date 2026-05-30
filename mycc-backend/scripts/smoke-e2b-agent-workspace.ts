@@ -4,6 +4,7 @@ import type { AgentRuntime } from '../src/agent-runtime/types.js';
 import { resolveClaudeProviderEnv } from '../src/agent-runtime/claude-env.js';
 import { E2bClaudeAgentSdkRuntime } from '../src/agent-runtime/e2b-claude-agent-sdk-runtime.js';
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
+import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 import { escapeShellArg } from '../src/utils/validation.js';
@@ -28,10 +29,7 @@ let session: StoredIdeSession | undefined;
 const provider = new E2bSandboxProvider();
 
 async function main() {
-  const apiKey = process.env.MYCC_E2B_API_KEY || process.env.E2B_API_KEY;
-  if (!apiKey) {
-    throw new Error('MYCC_E2B_API_KEY or E2B_API_KEY is required');
-  }
+  const apiKey = requireE2bApiKey();
   process.env.MYCC_E2B_API_KEY = apiKey;
   process.env.MYCC_IDE_PROVIDER = 'e2b';
   process.env.MYCC_E2B_TEMPLATE = TEMPLATE_NAME;

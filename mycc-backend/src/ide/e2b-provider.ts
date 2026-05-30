@@ -1,4 +1,5 @@
 import { Sandbox } from 'e2b';
+import { requireE2bApiKey } from './e2b-api-key.js';
 import type { E2bCodeServerSessionPlan, IdeAccessMode } from './service.js';
 
 type CommandHandleLike = {
@@ -131,10 +132,6 @@ export class E2bSandboxProvider {
   }
 
   private requireApiKey(): string {
-    const apiKey = process.env.MYCC_E2B_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error('MYCC_E2B_API_KEY is required');
-    }
-    return apiKey;
+    return requireE2bApiKey();
   }
 }

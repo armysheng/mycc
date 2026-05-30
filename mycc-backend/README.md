@@ -172,7 +172,7 @@ Authorization: Bearer <token>
 | MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
-| MYCC_E2B_API_KEY | E2B API key，后续真实 provider 使用 | - |
+| MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY` | - |
 | MYCC_E2B_TEMPLATE | E2B code-server 模板名 | mycc-code-server-dev |
 | MYCC_E2B_ALLOW_PUBLIC_TRAFFIC | 是否允许 E2B host 直接公网访问；产品路径必须为 false | false |
 
@@ -204,6 +204,8 @@ MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 ```bash
 MYCC_IDE_PROVIDER=e2b
 MYCC_E2B_TEMPLATE=mycc-code-server-dev
+MYCC_E2B_API_KEY=e2b_xxx
+# 或使用 E2B_API_KEY=e2b_xxx
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 ```
 

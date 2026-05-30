@@ -6,6 +6,7 @@ describe('E2bSandboxProvider', () => {
   afterEach(() => {
     vi.clearAllMocks();
     delete process.env.MYCC_E2B_API_KEY;
+    delete process.env.E2B_API_KEY;
     delete process.env.MYCC_IDE_PROVIDER;
     delete process.env.MYCC_E2B_TEMPLATE;
   });
@@ -69,8 +70,31 @@ describe('E2bSandboxProvider', () => {
       workspaceDir: '/home/tester/workspace',
     });
 
-    await expect(provider.startCodeServer(plan)).rejects.toThrow('MYCC_E2B_API_KEY is required');
+    await expect(provider.startCodeServer(plan)).rejects.toThrow('MYCC_E2B_API_KEY or E2B_API_KEY is required');
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('uses the generic E2B_API_KEY fallback', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.E2B_API_KEY = 'generic-e2b-key';
+    const run = vi.fn().mockResolvedValue({ pid: 1234 });
+    const create = vi.fn().mockResolvedValue({
+      sandboxId: 'sbx_123',
+      commands: { run },
+      getHost: vi.fn().mockReturnValue('18080-sbx_123.e2b.app'),
+    });
+    const provider = new E2bSandboxProvider({ create });
+    const plan = buildE2bCodeServerSessionPlan({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+    });
+
+    await provider.startCodeServer(plan);
+
+    expect(create).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      apiKey: 'generic-e2b-key',
+    }));
   });
 
   it('kills the code-server process and sandbox when stopping a session', async () => {
