@@ -104,6 +104,25 @@ systemctl status mycc-backend
 journalctl -u mycc-backend -f
 ```
 
+### E2B / Agent SDK 产品路径
+
+如果本次发布要启用 E2B code-server + Claude Agent SDK 路径，先按 `docs/e2b-release-readiness.md` 完成专门门禁。至少需要：
+
+```bash
+cd mycc/mycc-backend
+npm run verify:e2b-release
+npm run doctor:e2b-agent
+```
+
+在目标环境启动后，再用同一份 `.env` 跑真实 smoke：
+
+```bash
+BASE_URL=http://localhost:8080 npm run smoke:e2b-ide
+BASE_URL=http://localhost:8080 npm run smoke:e2b-agent-sdk-workspace
+```
+
+生产启用值必须保持 `MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false`。若需要快速回滚，优先改配置为 `MYCC_AGENT_RUNTIME=remote-claude`、`MYCC_IDE_PROVIDER=disabled`、`MYCC_WORKSPACE_PROVIDER=ssh`，重启服务后再运行 `npm run cleanup:ide-sessions`。
+
 ### 6. 配置反向代理（可选）
 
 使用 Nginx 作为反向代理：

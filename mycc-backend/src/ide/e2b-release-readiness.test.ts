@@ -1,0 +1,20 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { describe, expect, it } from 'vitest';
+
+const execFileAsync = promisify(execFile);
+
+describe('E2B release readiness checklist', () => {
+  it('passes the static production-readiness gate', async () => {
+    const { stdout } = await execFileAsync('npm', ['run', '--silent', 'verify:e2b-release'], {
+      cwd: new URL('../..', import.meta.url),
+      timeout: 15_000,
+    });
+
+    expect(stdout).toContain('[ok] package scripts expose E2B release gates');
+    expect(stdout).toContain('[ok] release checklist covers migration, smoke, and rollback');
+    expect(stdout).toContain('[ok] IDE smoke proves raw E2B host stays private');
+    expect(stdout).toContain('[ok] Agent SDK bridge has a local protocol contract');
+    expect(stdout).toContain('E2B release readiness: ready');
+  });
+});

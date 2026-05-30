@@ -12,6 +12,7 @@
     "backfill:id-soul": "tsx scripts/backfill-legacy-id-soul.ts",
     "cleanup:ide-sessions": "tsx scripts/cleanup-expired-ide-sessions.ts",
     "doctor:e2b-agent": "tsx scripts/doctor-e2b-agent.ts",
+    "verify:e2b-release": "tsx scripts/verify-e2b-release-readiness.ts",
     "template:e2b-code-server:create": "bash scripts/create-e2b-code-server-template.sh",
     "smoke:e2b-ide": "tsx scripts/smoke-e2b-ide.ts",
     "smoke:e2b-agent-workspace": "tsx scripts/smoke-e2b-agent-workspace.ts",

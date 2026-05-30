@@ -224,11 +224,14 @@ MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 本地 smoke：
 
 ```bash
+npm run verify:e2b-release
 npm run doctor:e2b-agent
 npm run smoke:e2b-ide
 npm run smoke:e2b-agent-workspace
 npm run smoke:e2b-agent-sdk-workspace
 ```
+
+生产启用/回滚门禁请按 `docs/e2b-release-readiness.md` 执行；`verify:e2b-release` 会在不读取外部密钥的前提下确认迁移、template 发布脚本、runtime contract、bridge contract 和 smoke 安全断言没有漂移。
 
 先跑 `doctor:e2b-agent` 可以在不打印密钥的前提下检查 E2B key、template、Agent runtime、IDE/Workspace provider、Claude/CCR 凭据和全局 `OPENAI_*` 误注入风险。有有效 E2B key 时，它会额外向 E2B 查询 `MYCC_E2B_TEMPLATE` 是否存在。
 
