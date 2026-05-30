@@ -21,7 +21,7 @@ cd mycc-backend/templates/e2b-code-server
 e2b template create mycc-code-server-dev \
   --path . \
   --dockerfile e2b.Dockerfile \
-  --ready-cmd "code-server --version && node --version && npm --version && claude --version && rg --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version"
+  --ready-cmd 'code-server --version && node --version && npm --version && claude --version && cd /opt/mycc-agent-runtime && node -e "import(\"@anthropic-ai/claude-agent-sdk\").then(() => console.log(\"agent-sdk ok\"))" && test -f /opt/mycc-agent-runtime/bridge.mjs && rg --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version'
 ```
 
 If the template already exists, use the equivalent E2B CLI update/build flow for your account.
