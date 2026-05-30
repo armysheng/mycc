@@ -13,7 +13,7 @@ import { ideRoutes } from './routes/ide.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
-import { shouldInitializeSshAtStartup } from './startup/ssh-startup.js';
+import { shouldInitializeSshAtStartup, shouldStartAutomationScheduler } from './startup/ssh-startup.js';
 import { validateRegistry } from './skills/skill-registry.js';
 import { AutomationScheduler } from './automations/scheduler.js';
 import * as path from 'path';
@@ -121,15 +121,17 @@ async function start() {
       console.log('ℹ️ E2B runtime configured; skipping VPS SSH startup check');
     }
 
-    const schedulerEnabled = process.env.AUTOMATIONS_SCHEDULER_ENABLED !== 'false';
+    const schedulerEnabled = shouldStartAutomationScheduler();
     if (schedulerEnabled) {
       const tickMs = parseInt(process.env.AUTOMATIONS_SCHEDULER_TICK_MS || '60000', 10);
       const maxUsersPerTick = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_USERS_PER_TICK || '500', 10);
       const maxConcurrentRuns = parseInt(process.env.AUTOMATIONS_SCHEDULER_MAX_CONCURRENT_RUNS || '8', 10);
       automationScheduler = new AutomationScheduler(tickMs, maxUsersPerTick, maxConcurrentRuns);
       automationScheduler.start();
-    } else {
+    } else if (process.env.AUTOMATIONS_SCHEDULER_ENABLED === 'false') {
       console.log('ℹ️ 自动化调度器已禁用（AUTOMATIONS_SCHEDULER_ENABLED=false）');
+    } else {
+      console.log('ℹ️ 自动化调度器已禁用（当前运行时未初始化 SSH，等待 E2B 自动化后端接入）');
     }
 
     // 技能注册表一致性校验

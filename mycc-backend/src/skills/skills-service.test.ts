@@ -50,4 +50,29 @@ describe('SkillsService list cache', () => {
 
     expect(store.listSkillInfos).toHaveBeenCalledTimes(2);
   });
+
+  it('SSH 运行时不可用时返回注册表降级列表而不是抛出 500', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockRejectedValue(new Error('SSH 连接池未初始化，请先调用 initSSHPool()')),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+
+    const result = await service.listSkills(context);
+
+    expect(result.catalogAvailable).toBe(false);
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.skills).toContainEqual(expect.objectContaining({
+      id: 'tell-me',
+      status: 'available',
+      installed: false,
+      source: 'registry',
+    }));
+  });
 });

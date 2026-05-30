@@ -1,13 +1,14 @@
 import { validateLinuxUsername } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
-import { getMarketSkills as registryMarketSkills } from './skill-registry.js';
+import { getMarketSkills as registryMarketSkills, getReadySkills as registryReadySkills } from './skill-registry.js';
 import type { ISkillsService } from './contracts.js';
 import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition } from './types.js';
 
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 250;
+const SSH_RUNTIME_UNAVAILABLE_MESSAGE = '技能运行环境尚未就绪，请稍后重试';
 const parsedSkillsListCacheTtl = Number.parseInt(process.env.SKILLS_LIST_CACHE_TTL_MS || '10000', 10);
 const LIST_CACHE_TTL_MS = Number.isFinite(parsedSkillsListCacheTtl) && parsedSkillsListCacheTtl > 0
   ? parsedSkillsListCacheTtl
@@ -63,6 +64,18 @@ export class SkillsService implements ISkillsService {
           total: result.skills.length,
           catalogAvailable: result.catalogAvailable,
         };
+        SkillsService.listCache.set(cacheKey, {
+          data,
+          expiresAt: Date.now() + LIST_CACHE_TTL_MS,
+        });
+        return data;
+      })
+      .catch((err) => {
+        if (!this.isSshRuntimeUnavailableError(err)) {
+          throw err;
+        }
+
+        const data = this.buildRegistryFallbackList();
         SkillsService.listCache.set(cacheKey, {
           data,
           expiresAt: Date.now() + LIST_CACHE_TTL_MS,
@@ -172,6 +185,31 @@ export class SkillsService implements ISkillsService {
     }
   }
 
+  private buildRegistryFallbackList(): SkillsListResult {
+    const skills: SkillInfo[] = registryReadySkills().map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      trigger: skill.trigger,
+      icon: skill.icon,
+      status: 'available',
+      installed: false,
+      version: '1.0.0',
+      installedVersion: null,
+      latestVersion: '1.0.0',
+      source: 'registry',
+      legacy: false,
+      enabled: false,
+      upgradable: false,
+    }));
+
+    return {
+      skills,
+      total: skills.length,
+      catalogAvailable: false,
+    };
+  }
+
   private async executeSkillOperation<T>(
     fn: () => Promise<T>,
     timeoutMs: number,
@@ -241,13 +279,27 @@ export class SkillsService implements ISkillsService {
     const msg = err instanceof Error ? err.message : String(err);
     return (
       this.isRetryableTransientError(err) ||
+      this.isSshRuntimeUnavailableError(err) ||
       msg.includes('Timeout waiting for SSH connection') ||
       msg.includes('命令执行超时')
     );
   }
 
+  private isSshRuntimeUnavailableError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      msg.includes(SSH_RUNTIME_UNAVAILABLE_MESSAGE) ||
+      msg.includes('SSH 连接池未初始化') ||
+      msg.includes('initSSHPool') ||
+      (msg.includes('SSH') && msg.includes('not initialized'))
+    );
+  }
+
   private toServiceUnavailableError(err: unknown): SkillsError {
     const msg = err instanceof Error ? err.message : String(err);
+    if (this.isSshRuntimeUnavailableError(err)) {
+      return new SkillsError(503, SSH_RUNTIME_UNAVAILABLE_MESSAGE);
+    }
     if (msg.includes('Timeout waiting for SSH connection') || msg.includes('命令执行超时')) {
       return new SkillsError(503, '技能服务连接超时，请稍后重试');
     }

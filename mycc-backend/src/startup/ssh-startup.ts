@@ -9,3 +9,11 @@ export function shouldInitializeSshAtStartup(env: NodeJS.ProcessEnv = process.en
 
   return !(runtime === 'e2b-claude-agent-sdk' && ideProvider === 'e2b' && workspaceProvider === 'e2b');
 }
+
+export function shouldStartAutomationScheduler(env: NodeJS.ProcessEnv = process.env): boolean {
+  if ((env.AUTOMATIONS_SCHEDULER_ENABLED || '').trim() === 'false') {
+    return false;
+  }
+
+  return shouldInitializeSshAtStartup(env);
+}
