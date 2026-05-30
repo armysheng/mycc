@@ -7,18 +7,36 @@ RUN apt-get update && apt-get install -y \
   bash \
   build-essential \
   ca-certificates \
+  coreutils \
   curl \
   dumb-init \
+  file \
+  findutils \
+  gawk \
   git \
   gnupg \
+  grep \
+  gzip \
   jq \
+  less \
+  lsof \
+  make \
+  nano \
+  net-tools \
+  openssh-client \
   pkg-config \
   procps \
   python3 \
   python3-pip \
+  python3-venv \
   ripgrep \
+  sed \
+  tar \
+  tree \
   unzip \
+  vim \
   xz-utils \
+  zip \
   && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \

@@ -12,7 +12,7 @@ describe('E2bSandboxProvider', () => {
   });
 
   it('creates a private E2B sandbox and starts code-server in the background', async () => {
-    process.env.MYCC_E2B_API_KEY = 'e2b-key';
+    process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
     const run = vi.fn().mockResolvedValue({ pid: 1234 });
@@ -32,7 +32,7 @@ describe('E2bSandboxProvider', () => {
     const session = await provider.startCodeServer(plan);
 
     expect(create).toHaveBeenCalledWith('mycc-code-server-dev', {
-      apiKey: 'e2b-key',
+      apiKey: 'e2b_deadbeef',
       timeoutMs: 3600000,
       metadata: {
         app: 'mycc',
@@ -76,7 +76,7 @@ describe('E2bSandboxProvider', () => {
 
   it('uses the generic E2B_API_KEY fallback', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
-    process.env.E2B_API_KEY = 'generic-e2b-key';
+    process.env.E2B_API_KEY = 'e2b_cafebabe';
     const run = vi.fn().mockResolvedValue({ pid: 1234 });
     const create = vi.fn().mockResolvedValue({
       sandboxId: 'sbx_123',
@@ -93,12 +93,12 @@ describe('E2bSandboxProvider', () => {
     await provider.startCodeServer(plan);
 
     expect(create).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-      apiKey: 'generic-e2b-key',
+      apiKey: 'e2b_cafebabe',
     }));
   });
 
   it('kills the code-server process and sandbox when stopping a session', async () => {
-    process.env.MYCC_E2B_API_KEY = 'e2b-key';
+    process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     const killCommand = vi.fn().mockResolvedValue(true);
     const killSandbox = vi.fn().mockResolvedValue(undefined);
     const connect = vi.fn().mockResolvedValue({
@@ -118,13 +118,13 @@ describe('E2bSandboxProvider', () => {
       expiresAt: '2026-05-29T14:00:00.000Z',
     });
 
-    expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b-key' });
+    expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b_deadbeef' });
     expect(killCommand).toHaveBeenCalledWith(1234);
     expect(killSandbox).toHaveBeenCalledOnce();
   });
 
   it('renews the sandbox timeout for a running session', async () => {
-    process.env.MYCC_E2B_API_KEY = 'e2b-key';
+    process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     const setTimeout = vi.fn().mockResolvedValue(undefined);
     const connect = vi.fn().mockResolvedValue({ setTimeout });
     const provider = new E2bSandboxProvider({ create: vi.fn(), connect });
@@ -139,7 +139,7 @@ describe('E2bSandboxProvider', () => {
       expiresAt: '2026-05-29T14:00:00.000Z',
     }, 7200);
 
-    expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b-key' });
+    expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b_deadbeef' });
     expect(setTimeout).toHaveBeenCalledWith(7200000);
     expect(result.expiresAt).toEqual(expect.any(String));
   });

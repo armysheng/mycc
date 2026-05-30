@@ -48,7 +48,7 @@
 
 实际模板在 `mycc-backend/templates/e2b-code-server`。模板需要包含：
 
-- GNU/Linux 工具链：`bash`、`git`、`ripgrep`、`jq`、`build-essential`、`python3`。
+- GNU/Linux 工具链：`bash`、`coreutils`、`findutils`、`grep`、`sed`、`gawk`、`tar`、`gzip`、`git`、`openssh-client`、`ripgrep`、`jq`、`build-essential`、`make`、`pkg-config`、`python3`、`python3-venv`、`lsof`、`net-tools`、`file`、`tree`、`less`、`vim`、`nano`、`zip`、`unzip`。
 - Node.js 22、`code-server`、全局 `@anthropic-ai/claude-code`。
 - `/opt/mycc-agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk`。
 - `/opt/mycc-agent-runtime/bridge.mjs`，供 `e2b-claude-agent-sdk` runtime 默认执行 `cd /opt/mycc-agent-runtime && node bridge.mjs`。
@@ -62,3 +62,13 @@ bridge 通过 env 接收 `MYCC_AGENT_PROMPT_B64`、`MYCC_AGENT_WORKSPACE_CWD=/ho
 3. 用同一组凭据跑 `npm run smoke:e2b-agent-sdk-workspace`，验证 Agent SDK bridge runtime 也能复用同一 sandbox/workspace；该 smoke 会设置写文件所需的 SDK 工具/权限默认值，产品默认仍保持只读工具集。
 4. 将 `npm run cleanup:ide-sessions` 接到生产 cron 或部署平台定时任务；生产环境对 `traffic_access_token` 做加密或改为 token reference。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。
+6. 把 Workspace API 抽成 provider：VPS 模式继续走 SSH `/home/{linuxUser}/workspace`；E2B 模式走当前用户 running sandbox 的 `/home/mycc/workspace`。否则 Workspace 页内置文件树/Monaco、Remote IDE、Agent runtime 会指向不同文件系统。
+7. E2B 模式下调整 chat 项目上下文注入：不要继续从 VPS `/home/{linuxUser}/workspace` 读取上下文；应从 E2B workspace 读取，或在首次创建 sandbox 时显式同步项目文件。
+
+## Claude UI / SDK 调研结论
+
+- Anthropic 当前提供的是 Claude Code、Claude Code SDK（`@anthropic-ai/claude-code`）和 Claude Agent SDK（`@anthropic-ai/claude-agent-sdk`），没有官方可嵌入 MyCC 的 Claude/Claude Code UI SDK。
+- 2026-05-30 查询到 npm 最新版本：`@anthropic-ai/claude-code@2.1.157`、`@anthropic-ai/claude-agent-sdk@0.3.157`。
+- 后端已可升级到 `@anthropic-ai/claude-code@2.1.157` 和 `@anthropic-ai/claude-agent-sdk@0.3.157`；前端 `mycc-web-react` 暂时保留 `@anthropic-ai/claude-code@1.0.108` 作为 `SDKMessage` 类型来源，因为 2.x 不再提供当前代码使用的模块类型声明。
+- MyCC 继续自研 ClaudeCode Web 壳更合适；`opcode`、`claudecodeui` 等开源项目适合做体验 benchmark，但许可证、单机优先架构、多租户隔离和计费都不适合直接并入。
+- 前端下一阶段优先级：权限审批、文件 diff 可视化、命令 stdout/stderr、断线恢复、长任务后台状态和移动端审批队列。

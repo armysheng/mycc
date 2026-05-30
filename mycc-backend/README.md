@@ -160,8 +160,14 @@ Authorization: Bearer <token>
 | PLAN_PRO_TOKENS | 专业版额度 | 12000000 |
 | PLAN_BASIC_PRICE_CNY | 基础版月费（人民币） | 39 |
 | PLAN_PRO_PRICE_CNY | 专业版月费（人民币） | 99 |
-| MYCC_AGENT_RUNTIME | Agent 运行时：`remote-claude` 或 `claude-agent-sdk` | remote-claude |
-| MYCC_AGENT_SDK_BASE_URL | Agent SDK 的 Anthropic/CCR base URL | - |
+| MYCC_AGENT_RUNTIME | Agent 运行时：`remote-claude`、`claude-agent-sdk`、`e2b-claude-cli` 或 `e2b-claude-agent-sdk` | remote-claude |
+| MYCC_CCR_BASE_URL | Claude/Anthropic 请求的 CCR router base URL，优先级最高 | - |
+| MYCC_CCR_AUTH_TOKEN | CCR router auth token，和 `MYCC_CCR_API_KEY` 二选一 | - |
+| MYCC_CCR_API_KEY | CCR router API key，优先级低于 `MYCC_CCR_AUTH_TOKEN` | - |
+| MYCC_CLAUDE_BASE_URL | 非 CCR 的 Claude/Anthropic 代理 base URL | - |
+| MYCC_CLAUDE_AUTH_TOKEN | 非 CCR 代理 auth token | - |
+| MYCC_CLAUDE_API_KEY | 非 CCR 代理 API key | - |
+| MYCC_AGENT_SDK_BASE_URL | Agent SDK 的 legacy Anthropic/CCR base URL | - |
 | MYCC_AGENT_SDK_AUTH_TOKEN | Agent SDK/CCR auth token | - |
 | MYCC_AGENT_SDK_API_KEY | Agent SDK Anthropic API key | ANTHROPIC_API_KEY |
 | MYCC_AGENT_SDK_MODEL | Agent SDK 默认模型 | claude-sonnet-4-6 |
@@ -172,7 +178,7 @@ Authorization: Bearer <token>
 | MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
-| MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY` | - |
+| MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY`，格式必须为 `e2b_<hex>` | - |
 | MYCC_E2B_TEMPLATE | E2B code-server 模板名 | mycc-code-server-dev |
 | MYCC_E2B_ALLOW_PUBLIC_TRAFFIC | 是否允许 E2B host 直接公网访问；产品路径必须为 false | false |
 
@@ -182,15 +188,17 @@ Authorization: Bearer <token>
 
 - `remote-claude`：默认稳定路径，保持现有行为，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
 - `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: dontAsk`、`allowedTools: Read,Glob,Grep`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+- `e2b-claude-cli`：在 E2B/code-server sandbox 内执行 `claude --print --output-format stream-json`，优先复用当前用户未过期 Remote IDE session；如果 chat 先发生，会自动创建 sandbox/session。
+- `e2b-claude-agent-sdk`：在同一个 E2B/code-server sandbox 内执行 `/opt/mycc-agent-runtime/bridge.mjs`，由 bridge 调用 `@anthropic-ai/claude-agent-sdk`，同样复用 Remote IDE workspace。
 
 `claude-agent-sdk` runtime 会覆盖传给 SDK 子进程的 `HOME`、`CLAUDE_CONFIG_DIR`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`。默认每个用户写到 `/home/{linux_user}/.mycc`；如果运行在 E2B/容器沙箱或希望挂载专用 runtime 卷，可设置 `MYCC_AGENT_SDK_CONFIG_ROOT=/srv/mycc/runtime`，最终目录为 `/srv/mycc/runtime/{linux_user}/{home,.claude}`。
 
-如果要让 Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再配置：
+如果要让 Claude/Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再优先配置 `MYCC_CCR_*`；mycc 会把它映射为 Anthropic runtime 需要的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。不要把全局 `OPENAI_*` 直接复用于 Claude runtime，避免误用其他 OpenAI-compatible 服务凭据。
 
 ```bash
 MYCC_AGENT_RUNTIME=claude-agent-sdk
-MYCC_AGENT_SDK_BASE_URL=http://127.0.0.1:3456
-MYCC_AGENT_SDK_AUTH_TOKEN=<ccr-api-key-or-token>
+MYCC_CCR_BASE_URL=http://127.0.0.1:3456
+MYCC_CCR_AUTH_TOKEN=<ccr-api-key-or-token>
 MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
 MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 ```
@@ -199,17 +207,29 @@ MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 
 ### Remote IDE / code-server POC
 
-后端已预留 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions` 和 `/api/ide/sessions/:id/status`，用于下一阶段接 E2B sandbox + code-server。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会生成 proxy-only session plan，并可通过 `E2bSandboxProvider` 创建 POC 会话。当前响应会隐藏 E2B host 与 traffic token，等待反向代理层接入。
+后端已接入 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions`、`/api/ide/sessions/:id/open`、`/api/ide/sessions/:id/status`、renew/delete 和 `/api/ide/sessions/:id/proxy/*`。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会创建或复用用户未过期的 E2B/code-server session。响应会隐藏 E2B host 与 traffic token，浏览器只拿 mycc 一次性 open token，后端 proxy 再注入 `e2b-traffic-access-token`。
 
 ```bash
 MYCC_IDE_PROVIDER=e2b
 MYCC_E2B_TEMPLATE=mycc-code-server-dev
-MYCC_E2B_API_KEY=e2b_xxx
-# 或使用 E2B_API_KEY=e2b_xxx
+MYCC_E2B_API_KEY=e2b_<hex>
+# 或使用 E2B_API_KEY=e2b_<hex>
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 ```
 
 安全默认值是：code-server 只作为 mycc 反向代理后的能力暴露，沙箱内部固定端口 `18080`，启动命令使用 `--auth none` 但必须配合 `E2B allowPublicTraffic:false + mycc 一次性访问 token + 后端注入 e2b-traffic-access-token`。不要把 E2B public host 或裸 code-server password 页面直接给产品用户。
+
+本地 smoke：
+
+```bash
+npm run smoke:e2b-ide
+npm run smoke:e2b-agent-workspace
+npm run smoke:e2b-agent-sdk-workspace
+```
+
+这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<hex>` 或 `E2B_API_KEY=e2b_<hex>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
+
+当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；内置 Workspace API 仍是 VPS `/home/{linux_user}/workspace` 路径，后续需要做 provider 抽象后才能三者完全统一。
 
 ## 开发说明
 

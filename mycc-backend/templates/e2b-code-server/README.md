@@ -4,7 +4,7 @@ This template builds the `mycc-code-server-dev` sandbox image used by the Remote
 
 It installs:
 
-- GNU/Linux userland tools: `bash`, `git`, `ripgrep`, `jq`, `build-essential`, `python3`
+- GNU/Linux userland and build tools: `bash`, `coreutils`, `findutils`, `grep`, `sed`, `gawk`, `tar`, `gzip`, `git`, `openssh-client`, `ripgrep`, `jq`, `build-essential`, `make`, `pkg-config`, `python3`, `python3-venv`, `lsof`, `net-tools`, `file`, `tree`, `less`, `vim`, `nano`, `zip`, `unzip`
 - Node.js 22 and npm
 - `code-server`
 - `@anthropic-ai/claude-code`
@@ -21,7 +21,7 @@ cd mycc-backend/templates/e2b-code-server
 e2b template create mycc-code-server-dev \
   --path . \
   --dockerfile e2b.Dockerfile \
-  --ready-cmd "code-server --version && node --version && npm --version && claude --version && rg --version && git --version && python3 --version && gcc --version"
+  --ready-cmd "code-server --version && node --version && npm --version && claude --version && rg --version && git --version && python3 --version && gcc --version && make --version && find --version && gawk --version && lsof -v && tree --version"
 ```
 
 If the template already exists, use the equivalent E2B CLI update/build flow for your account.
@@ -78,6 +78,11 @@ rg --version
 git --version
 python3 --version
 gcc --version
+make --version
+find --version
+gawk --version
+lsof -v
+tree --version
 pwd
 whoami
 ```
