@@ -162,6 +162,9 @@ describe("WorkspacePage", () => {
       if (url === "/api/ide/config") {
         return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
       }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
 
@@ -173,6 +176,52 @@ describe("WorkspacePage", () => {
 
     expect(await screen.findByText("E2B Remote IDE 就绪")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeEnabled();
+  });
+
+  it("shows the current running E2B IDE session without creating a new one", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        expect(init?.method).toBeUndefined();
+        return Promise.resolve(okJson({
+          id: "ide_123",
+          provider: "e2b",
+          sandboxId: "sbx_123",
+          status: "running",
+          openPath: "/api/ide/sessions/ide_123/open?token=open-token",
+        }) as Response);
+      }
+      if (url === "/api/ide/sessions") {
+        return Promise.reject(new Error("Current session status must not create a sandbox"));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("E2B sandbox 已连接")).toBeInTheDocument();
+    expect(screen.getByText(/sbx_123/)).toBeInTheDocument();
   });
 
   it("shows a Remote IDE CTA when E2B workspace files require a running session", async () => {
@@ -187,6 +236,9 @@ describe("WorkspacePage", () => {
       }
       if (url === "/api/ide/config") {
         return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });

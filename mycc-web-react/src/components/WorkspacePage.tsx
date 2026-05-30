@@ -19,6 +19,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   getAuthHeaders,
   getIdeConfigUrl,
+  getIdeCurrentSessionUrl,
   getIdeSessionsUrl,
   getWorkspaceFileUrl,
   getWorkspaceSaveFileUrl,
@@ -56,6 +57,11 @@ interface IdeConfigData {
 }
 
 interface IdeSessionData {
+  id?: string;
+  provider?: string;
+  sandboxId?: string;
+  status?: string;
+  expiresAt?: string;
   openPath?: string;
 }
 
@@ -181,6 +187,7 @@ export function WorkspacePage() {
   const [saving, setSaving] = useState(false);
   const [ideOpening, setIdeOpening] = useState(false);
   const [ideConfig, setIdeConfig] = useState<IdeConfigData | null>(null);
+  const [ideSession, setIdeSession] = useState<IdeSessionData | null>(null);
   const [ideConfigLoading, setIdeConfigLoading] = useState(false);
   const [ideConfigError, setIdeConfigError] = useState<string | null>(null);
 
@@ -229,19 +236,35 @@ export function WorkspacePage() {
     }
   }, [apiFetch]);
 
+  const loadCurrentIdeSession = useCallback(async () => {
+    try {
+      const sessionJson = await apiFetch(getIdeCurrentSessionUrl());
+      setIdeSession((sessionJson?.data as IdeSessionData | null | undefined) ?? null);
+    } catch {
+      setIdeSession(null);
+    }
+  }, [apiFetch]);
+
   const loadIdeConfig = useCallback(async () => {
     setIdeConfigLoading(true);
     setIdeConfigError(null);
     try {
       const configJson = await apiFetch(getIdeConfigUrl());
-      setIdeConfig((configJson?.data as IdeConfigData | undefined) ?? null);
+      const config = (configJson?.data as IdeConfigData | undefined) ?? null;
+      setIdeConfig(config);
+      if (config?.enabled === false) {
+        setIdeSession(null);
+      } else {
+        await loadCurrentIdeSession();
+      }
     } catch (err) {
       setIdeConfig(null);
+      setIdeSession(null);
       setIdeConfigError(err instanceof Error ? err.message : "Remote IDE 状态检查失败");
     } finally {
       setIdeConfigLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, loadCurrentIdeSession]);
 
   const loadFile = useCallback(async (filePath: string) => {
     setFileLoading(true);
@@ -317,6 +340,7 @@ export function WorkspacePage() {
       if (!session?.openPath) {
         throw new Error("Remote IDE 会话创建成功，但缺少打开地址");
       }
+      setIdeSession(session);
 
       const openUrl = resolveIdeOpenUrl(session.openPath);
       if (ideWindow) {
@@ -393,10 +417,14 @@ export function WorkspacePage() {
 
   const data = treeRoot ? [treeRoot] : [];
   const ideDisabled = ideOpening || ideConfig?.enabled === false;
+  const isRunningE2bSession = ideSession?.status === "running" && (
+    ideSession.provider === "e2b" || ideConfig?.provider === "e2b"
+  );
   const ideStatusLabel = (() => {
     if (ideConfigLoading) return "Remote IDE 状态检查中";
     if (ideConfigError) return "Remote IDE 状态未知";
     if (ideConfig?.enabled === false) return "Remote IDE 未启用";
+    if (isRunningE2bSession) return "E2B sandbox 已连接";
     if (ideConfig?.provider === "e2b") return "E2B Remote IDE 就绪";
     if (ideConfig?.enabled) return "Remote IDE 就绪";
     return "Remote IDE 状态待检测";
@@ -404,6 +432,11 @@ export function WorkspacePage() {
   const ideStatusDetail = (() => {
     if (ideConfigError) return ideConfigError;
     if (ideConfig?.enabled === false) return "后端 MYCC_IDE_PROVIDER 仍为 disabled，不会创建 E2B sandbox。";
+    if (isRunningE2bSession) {
+      const sandbox = ideSession?.sandboxId ? `sandbox ${ideSession.sandboxId}` : "当前用户会话";
+      const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
+      return `${sandbox}${expires}`;
+    }
     if (ideConfig?.provider === "e2b") {
       const template = ideConfig.e2bTemplate ? ` · ${ideConfig.e2bTemplate}` : "";
       return `code-server 通过 MyCC 代理打开${template}`;

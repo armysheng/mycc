@@ -141,6 +141,21 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     }
   });
 
+  fastify.get('/api/ide/sessions/current', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    const user = request.user;
+    if (!user) {
+      return reply.status(401).send({ error: '未提供认证 token' });
+    }
+
+    const session = await sessionStore.findReusableByUser(user.userId);
+    return {
+      success: true,
+      data: session ? toPublicSession(session) : null,
+    };
+  });
+
   fastify.get<{ Params: { id: string }; Querystring: { token?: string } }>('/api/ide/sessions/:id/open', async (request, reply) => {
     const session = await sessionStore.get(request.params.id);
     if (!session || session.proxyToken !== request.query.token) {

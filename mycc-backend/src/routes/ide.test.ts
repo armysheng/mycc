@@ -2,9 +2,24 @@ import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ideRoutes, type IdeRoutesOptions } from './ide.js';
-import { InMemoryIdeSessionStore } from '../ide/session-store.js';
+import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 
 const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
+
+const runningSession: StoredIdeSession = {
+  id: 'ide_123',
+  provider: 'e2b',
+  sandboxId: 'sbx_123',
+  codeServerPid: 1234,
+  host: '18080-sbx_123.e2b.app',
+  trafficAccessToken: 'secret-token',
+  port: 18080,
+  accessMode: 'mycc-proxy',
+  expiresAt: '2099-05-29T14:00:00.000Z',
+  proxyToken: 'proxy-token',
+  userId: 42,
+  status: 'running',
+};
 
 function authHeader(overrides: Partial<{ userId: number; linuxUser: string }> = {}): string {
   const token = jwt.sign({
@@ -211,6 +226,85 @@ describe('ide routes', () => {
         openPath: expect.stringMatching(new RegExp(`^/api/ide/sessions/${id}/open\\?token=.+`)),
       },
     });
+  });
+
+  it('returns the current reusable IDE session without creating a sandbox', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const startCodeServer = vi.fn();
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/current',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        id: 'ide_123',
+        provider: 'e2b',
+        sandboxId: 'sbx_123',
+        codeServerPid: 1234,
+        port: 18080,
+        accessMode: 'mycc-proxy',
+        status: 'running',
+        expiresAt: '2099-05-29T14:00:00.000Z',
+        openPath: '/api/ide/sessions/ide_123/open?token=proxy-token',
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain('secret-token');
+    expect(JSON.stringify(response.json())).not.toContain('18080-sbx_123.e2b.app');
+    expect(startCodeServer).not.toHaveBeenCalled();
+  });
+
+  it('returns null for current IDE session when none is reusable without creating a sandbox', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const startCodeServer = vi.fn();
+    const app = await buildApp({
+      e2bProvider: { startCodeServer },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/current',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: null,
+    });
+    expect(startCodeServer).not.toHaveBeenCalled();
+  });
+
+  it('requires auth before returning the current IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const startCodeServer = vi.fn();
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/current',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      error: '未提供认证 token',
+    });
+    expect(startCodeServer).not.toHaveBeenCalled();
   });
 
   it('exchanges an IDE open token for an httpOnly proxy cookie', async () => {

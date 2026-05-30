@@ -120,6 +120,10 @@ export const getIdeSessionsUrl = () => {
   return `${API_CONFIG.ENDPOINTS.IDE}/sessions`;
 };
 
+export const getIdeCurrentSessionUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.IDE}/sessions/current`;
+};
+
 export const resolveIdeOpenUrl = (openPath: string) => {
   if (/^https?:\/\//i.test(openPath)) {
     return openPath;
