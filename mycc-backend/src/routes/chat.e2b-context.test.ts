@@ -3,11 +3,16 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatRoutes } from './chat.js';
 import { InMemoryIdeSessionStore } from '../ide/session-store.js';
+import {
+  __resetOnboardingBootstrapTicketStoreForTests,
+  issueOnboardingBootstrapTicket,
+} from '../onboarding/bootstrap-ticket-store.js';
 
 const mocks = vi.hoisted(() => ({
   checkQuota: vi.fn(),
   createAgentRuntime: vi.fn(),
   findUserById: vi.fn(),
+  getSSHPool: vi.fn(),
   logUsage: vi.fn(),
   markUserInitialized: vi.fn(),
   renameConversation: vi.fn(),
@@ -19,6 +24,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../agent-runtime/index.js', () => ({
   createAgentRuntime: mocks.createAgentRuntime,
+}));
+
+vi.mock('../ssh/pool.js', () => ({
+  getSSHPool: mocks.getSSHPool,
 }));
 
 vi.mock('../db/client.js', () => ({
@@ -57,10 +66,14 @@ async function buildApp(options: Parameters<typeof chatRoutes>[1]) {
 
 describe('chat E2B project context injection', () => {
   beforeEach(() => {
+    __resetOnboardingBootstrapTicketStoreForTests();
     vi.stubEnv('MYCC_AGENT_RUNTIME', 'e2b-claude-cli');
     mocks.checkQuota.mockResolvedValue({ allowed: true, remaining: 1000 });
     mocks.createAgentRuntime.mockReturnValue({ chat: mocks.runtimeChat });
     mocks.findUserById.mockResolvedValue(null);
+    mocks.getSSHPool.mockImplementation(() => {
+      throw new Error('SSH 连接池未初始化，请先调用 initSSHPool()');
+    });
     mocks.logUsage.mockResolvedValue(undefined);
     mocks.markUserInitialized.mockResolvedValue(undefined);
     mocks.renameConversation.mockResolvedValue(true);
@@ -134,6 +147,74 @@ describe('chat E2B project context injection', () => {
     const runtimeMessage = mocks.runtimeChat.mock.calls[0]![0].message as string;
     expect(runtimeMessage).toContain('# Project Context');
     expect(runtimeMessage).toContain('## User Request\n请总结当前项目');
+    await app.close();
+  });
+
+  it('verifies onboarding bootstrap in the E2B sandbox without using SSH', async () => {
+    const ticket = issueOnboardingBootstrapTicket({
+      userId: 42,
+      assistantName: '小满',
+      ownerName: '大辉',
+    });
+    const bootstrapMessage = [
+      '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。',
+      '2. 按以下信息个性化初始化：',
+      `   - 初始化票据：${ticket.token}`,
+      '   - 助手名称：小满',
+      '   - 用户称呼：大辉',
+    ].join('\n');
+    const sessionStore = new InMemoryIdeSessionStore();
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_bootstrap',
+      codeServerPid: 4321,
+      host: '18080-sbx_bootstrap.e2b.app',
+      trafficAccessToken: 'traffic-secret',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true }),
+      stderr: '',
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+      },
+      e2bProvider: {
+        startCodeServer,
+        runCommandInSession,
+      },
+      ideSessionStore: sessionStore,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { authorization: authHeader() },
+      payload: { message: bootstrapMessage },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('"type":"done"');
+    expect(startCodeServer).toHaveBeenCalledOnce();
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sandboxId: 'sbx_bootstrap', userId: 42 }),
+      expect.stringContaining('IDENTITY.md'),
+      {
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 30000,
+      },
+    );
+    expect(mocks.getSSHPool).not.toHaveBeenCalled();
+    expect(mocks.markUserInitialized).toHaveBeenCalledWith({
+      userId: 42,
+      assistantName: '小满',
+    });
     await app.close();
   });
 });

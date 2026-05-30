@@ -192,6 +192,71 @@ export function parseOnboardingBootstrapRequest(message: string): OnboardingBoot
 }
 
 async function verifyOnboardingWorkspaceState(params: {
+  userId: number;
+  linuxUser: string;
+  workspaceDir: string;
+  assistantName: string;
+  ownerName: string;
+  options: Required<ChatProjectContextOptions>;
+}): Promise<{ ok: boolean; reason?: string }> {
+  if (!shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
+    return verifyOnboardingWorkspaceStateFromE2b(params);
+  }
+
+  return verifyOnboardingWorkspaceStateFromRemote(params);
+}
+
+function buildOnboardingWorkspaceVerificationScript(params: {
+  aboutMeDir: string;
+  assistantName: string;
+  ownerName: string;
+}): string {
+  return [
+    'const fs=require("fs");',
+    `const aboutMeDir=${JSON.stringify(params.aboutMeDir)};`,
+    `const expectedAssistant=${JSON.stringify(params.assistantName)};`,
+    `const expectedOwner=${JSON.stringify(params.ownerName)};`,
+    'const checks=[',
+    '  `${aboutMeDir}/README.md`,',
+    '  `${aboutMeDir}/IDENTITY.md`,',
+    '  `${aboutMeDir}/USER.md`,',
+    '  `${aboutMeDir}/MEMORY.md`,',
+    '  `${aboutMeDir}/SOUL.md`,',
+    '  `${aboutMeDir}/TOOLS.md`,',
+    '  `${aboutMeDir}/HEARTBEAT.md`,',
+    '  `${aboutMeDir}/../memory`,',
+    '];',
+    'for(const p of checks){',
+    '  if(!fs.existsSync(p)){',
+    '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
+    '    process.exit(0);',
+    '  }',
+    '}',
+    'const identity=fs.readFileSync(`${aboutMeDir}/IDENTITY.md`,"utf8");',
+    'const user=fs.readFileSync(`${aboutMeDir}/USER.md`,"utf8");',
+    'const memory=fs.readFileSync(`${aboutMeDir}/MEMORY.md`,"utf8");',
+    'if(!identity.includes(expectedAssistant)){',
+    '  process.stdout.write(JSON.stringify({ok:false,reason:"identity_missing_assistant_name"}));',
+    '  process.exit(0);',
+    '}',
+    'if(!user.includes(expectedOwner)){',
+    '  process.stdout.write(JSON.stringify({ok:false,reason:"user_missing_owner_name"}));',
+    '  process.exit(0);',
+    '}',
+    'if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){',
+    '  process.stdout.write(JSON.stringify({ok:false,reason:"memory_missing_identity_fields"}));',
+    '  process.exit(0);',
+    '}',
+    'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
+    'if(fs.existsSync(bootstrapPath)){',
+    '  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));',
+    '  process.exit(0);',
+    '}',
+    'process.stdout.write(JSON.stringify({ok:true}));',
+  ].join('');
+}
+
+async function verifyOnboardingWorkspaceStateFromRemote(params: {
   linuxUser: string;
   workspaceDir: string;
   assistantName: string;
@@ -201,49 +266,11 @@ async function verifyOnboardingWorkspaceState(params: {
   const connection = await sshPool.acquire();
   try {
     const aboutMeDir = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
-    const script = [
-      'const fs=require("fs");',
-      `const aboutMeDir=${JSON.stringify(aboutMeDir)};`,
-      `const expectedAssistant=${JSON.stringify(params.assistantName)};`,
-      `const expectedOwner=${JSON.stringify(params.ownerName)};`,
-      'const checks=[',
-      '  `${aboutMeDir}/README.md`,',
-      '  `${aboutMeDir}/IDENTITY.md`,',
-      '  `${aboutMeDir}/USER.md`,',
-      '  `${aboutMeDir}/MEMORY.md`,',
-      '  `${aboutMeDir}/SOUL.md`,',
-      '  `${aboutMeDir}/TOOLS.md`,',
-      '  `${aboutMeDir}/HEARTBEAT.md`,',
-      '  `${aboutMeDir}/../memory`,',
-      '];',
-      'for(const p of checks){',
-      '  if(!fs.existsSync(p)){',
-      '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
-      '    process.exit(0);',
-      '  }',
-      '}',
-      'const identity=fs.readFileSync(`${aboutMeDir}/IDENTITY.md`,"utf8");',
-      'const user=fs.readFileSync(`${aboutMeDir}/USER.md`,"utf8");',
-      'const memory=fs.readFileSync(`${aboutMeDir}/MEMORY.md`,"utf8");',
-      'if(!identity.includes(expectedAssistant)){',
-      '  process.stdout.write(JSON.stringify({ok:false,reason:"identity_missing_assistant_name"}));',
-      '  process.exit(0);',
-      '}',
-      'if(!user.includes(expectedOwner)){',
-      '  process.stdout.write(JSON.stringify({ok:false,reason:"user_missing_owner_name"}));',
-      '  process.exit(0);',
-      '}',
-      'if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){',
-      '  process.stdout.write(JSON.stringify({ok:false,reason:"memory_missing_identity_fields"}));',
-      '  process.exit(0);',
-      '}',
-      'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
-      'if(fs.existsSync(bootstrapPath)){',
-      '  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));',
-      '  process.exit(0);',
-      '}',
-      'process.stdout.write(JSON.stringify({ok:true}));',
-    ].join('');
+    const script = buildOnboardingWorkspaceVerificationScript({
+      aboutMeDir,
+      assistantName: params.assistantName,
+      ownerName: params.ownerName,
+    });
 
     const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
     const result = await sshPool.exec(connection, cmd);
@@ -259,6 +286,68 @@ async function verifyOnboardingWorkspaceState(params: {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {
     sshPool.release(connection);
+  }
+}
+
+async function verifyOnboardingWorkspaceStateFromE2b(params: {
+  userId: number;
+  linuxUser: string;
+  workspaceDir: string;
+  assistantName: string;
+  ownerName: string;
+  options: Required<ChatProjectContextOptions>;
+}): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const plan = buildE2bCodeServerSessionPlan({
+      userId: params.userId,
+      linuxUser: params.linuxUser,
+      workspaceDir: params.workspaceDir,
+    }, params.options.env);
+    let session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+    if (!session) {
+      if (!params.options.e2bProvider.startCodeServer) {
+        return { ok: false, reason: 'e2b_session_missing' };
+      }
+      session = await ensureE2bIdeSession({
+        userId: params.userId,
+        linuxUser: params.linuxUser,
+        workspaceDir: plan.workspaceDir,
+        sessionStore: params.options.ideSessionStore,
+        e2bProvider: params.options.e2bProvider,
+        env: params.options.env,
+        missingStartCodeServerMessage: 'E2B onboarding verification provider cannot create IDE sessions',
+      });
+    }
+
+    const script = buildOnboardingWorkspaceVerificationScript({
+      aboutMeDir: `${plan.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`,
+      assistantName: params.assistantName,
+      ownerName: params.ownerName,
+    });
+    const result = await params.options.e2bProvider.runCommandInSession(
+      session,
+      `node -e ${escapeShellArg(script)}`,
+      {
+        cwd: plan.workspaceDir,
+        timeoutMs: 30000,
+      },
+    );
+    if (result.exitCode !== 0) {
+      return { ok: false, reason: result.stderr || result.error || 'e2b_verify_failed' };
+    }
+    const parsed = JSON.parse(result.stdout || '{}') as { ok?: boolean; reason?: string };
+    return {
+      ok: Boolean(parsed.ok),
+      reason: parsed.reason,
+    };
+  } catch (err) {
+    if (isLikelyStaleE2bSessionError(err)) {
+      const reusable = await params.options.ideSessionStore.findReusableByUser(params.userId);
+      if (reusable) {
+        await params.options.ideSessionStore.set({ ...reusable, status: 'stopped' });
+      }
+    }
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -715,10 +804,12 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
 
             if (!streamHasError) {
               const verification = await verifyOnboardingWorkspaceState({
+                userId,
                 linuxUser,
                 workspaceDir: cwd,
                 assistantName: onboardingBootstrapRequest.assistantName,
                 ownerName: onboardingBootstrapRequest.ownerName,
+                options: projectContextOptions,
               });
               if (verification.ok) {
                 await markUserInitialized({
