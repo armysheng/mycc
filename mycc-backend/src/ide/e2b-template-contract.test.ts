@@ -37,6 +37,21 @@ describe('E2B template contract', () => {
     expect(command).toContain('sed --version');
     expect(command).toContain('grep --version');
     expect(command).toContain('realpath --version');
+    expect(command).toContain('grep -Eiq');
+    expect(command).toContain('gnu:sed');
+    expect(command).toContain('gnu:realpath');
+  });
+
+  it('can require native build tools for npm packages inside the GNU E2B template', () => {
+    const command = buildE2bTemplateContractCommand({
+      requireNativeBuildTools: true,
+    });
+
+    expect(command).toContain('make');
+    expect(command).toContain('gcc');
+    expect(command).toContain('g++');
+    expect(command).toContain('pkg-config');
+    expect(command).toContain('gnu:make');
   });
 
   it('runs the contract check inside the E2B workspace', async () => {

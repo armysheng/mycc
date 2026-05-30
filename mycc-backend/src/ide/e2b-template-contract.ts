@@ -7,6 +7,7 @@ export type E2bTemplateContractOptions = {
   requireCodeServer?: boolean;
   requireClaudeCli?: boolean;
   requireAgentSdkBridge?: boolean;
+  requireNativeBuildTools?: boolean;
   bridgePath?: string;
 };
 
@@ -38,25 +39,53 @@ const BASE_REQUIRED_COMMANDS = [
 ] as const;
 
 const GNU_VERSION_COMMANDS = [
+  'bash',
   'sed',
   'grep',
   'find',
   'xargs',
   'tar',
+  'gzip',
   'realpath',
   'stat',
   'timeout',
 ] as const;
 
+const NATIVE_BUILD_TOOL_COMMANDS = [
+  'make',
+  'gcc',
+  'g++',
+  'pkg-config',
+] as const;
+
+const GNU_IDENTITY_PATTERNS: Record<string, string> = {
+  bash: 'gnu bash',
+  sed: 'gnu sed',
+  grep: 'gnu grep',
+  find: 'gnu findutils|gnu find',
+  xargs: 'gnu findutils|gnu xargs',
+  tar: 'gnu tar',
+  gzip: 'free software foundation|gnu gzip',
+  realpath: 'gnu coreutils|coreutils',
+  stat: 'gnu coreutils|coreutils',
+  timeout: 'gnu coreutils|coreutils',
+  make: 'gnu make',
+};
+
 const DEFAULT_AGENT_SDK_BRIDGE_PATH = '/opt/mycc-agent-runtime/bridge.mjs';
 
 export function buildE2bTemplateContractCommand(options: E2bTemplateContractOptions = {}): string {
   const requiredCommands = new Set<string>(BASE_REQUIRED_COMMANDS);
+  const gnuCommands = new Set<string>(GNU_VERSION_COMMANDS);
   if (options.requireCodeServer) {
     requiredCommands.add('code-server');
   }
   if (options.requireClaudeCli) {
     requiredCommands.add('claude');
+  }
+  if (options.requireNativeBuildTools) {
+    NATIVE_BUILD_TOOL_COMMANDS.forEach((cmd) => requiredCommands.add(cmd));
+    gnuCommands.add('make');
   }
 
   const bridgePath = options.bridgePath || DEFAULT_AGENT_SDK_BRIDGE_PATH;
@@ -68,8 +97,8 @@ export function buildE2bTemplateContractCommand(options: E2bTemplateContractOpti
     '    missing="$missing command:$cmd"',
     '  fi',
     'done',
-    ...GNU_VERSION_COMMANDS.flatMap((cmd) => [
-      `if command -v ${escapeShellArg(cmd)} >/dev/null 2>&1 && ! ${cmd} --version >/dev/null 2>&1; then`,
+    ...Array.from(gnuCommands).flatMap((cmd) => [
+      `if command -v ${escapeShellArg(cmd)} >/dev/null 2>&1 && ! ${cmd} --version 2>&1 | grep -Eiq ${escapeShellArg(GNU_IDENTITY_PATTERNS[cmd] || 'gnu')}; then`,
       `  missing="$missing gnu:${cmd}"`,
       'fi',
     ]),

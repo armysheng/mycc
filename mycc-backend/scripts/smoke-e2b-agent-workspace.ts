@@ -128,6 +128,7 @@ async function assertTemplateContract(activeSession: StoredIdeSession): Promise<
     requireCodeServer: true,
     requireClaudeCli: AGENT_RUNTIME === 'e2b-claude-cli',
     requireAgentSdkBridge: AGENT_RUNTIME === 'e2b-claude-agent-sdk',
+    requireNativeBuildTools: true,
   });
 }
 
