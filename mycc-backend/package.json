@@ -11,6 +11,7 @@
     "test": "vitest",
     "backfill:id-soul": "tsx scripts/backfill-legacy-id-soul.ts",
     "cleanup:ide-sessions": "tsx scripts/cleanup-expired-ide-sessions.ts",
+    "doctor:e2b-agent": "tsx scripts/doctor-e2b-agent.ts",
     "smoke:e2b-ide": "tsx scripts/smoke-e2b-ide.ts",
     "smoke:e2b-agent-workspace": "tsx scripts/smoke-e2b-agent-workspace.ts",
     "smoke:e2b-agent-sdk-workspace": "MYCC_SMOKE_E2B_AGENT_RUNTIME=e2b-claude-agent-sdk tsx scripts/smoke-e2b-agent-workspace.ts"

@@ -224,10 +224,13 @@ MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 本地 smoke：
 
 ```bash
+npm run doctor:e2b-agent
 npm run smoke:e2b-ide
 npm run smoke:e2b-agent-workspace
 npm run smoke:e2b-agent-sdk-workspace
 ```
+
+先跑 `doctor:e2b-agent` 可以在不打印密钥的前提下检查 E2B key、template、Agent runtime、IDE/Workspace provider、Claude/CCR 凭据和全局 `OPENAI_*` 误注入风险。有有效 E2B key 时，它会额外向 E2B 查询 `MYCC_E2B_TEMPLATE` 是否存在。
 
 这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<token>` 或 `E2B_API_KEY=e2b_<token>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
 
