@@ -49,6 +49,10 @@ interface WorkspaceFileData {
 
 interface IdeConfigData {
   enabled?: boolean;
+  provider?: string;
+  e2bTemplate?: string;
+  codeServerPort?: number;
+  sessionTtlSeconds?: number;
 }
 
 interface IdeSessionData {
@@ -156,6 +160,9 @@ export function WorkspacePage() {
   const [draftContent, setDraftContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [ideOpening, setIdeOpening] = useState(false);
+  const [ideConfig, setIdeConfig] = useState<IdeConfigData | null>(null);
+  const [ideConfigLoading, setIdeConfigLoading] = useState(false);
+  const [ideConfigError, setIdeConfigError] = useState<string | null>(null);
 
   const [treeHeight, setTreeHeight] = useState(620);
 
@@ -191,6 +198,20 @@ export function WorkspacePage() {
       setError(err instanceof Error ? err.message : "加载目录失败");
     } finally {
       setTreeLoading(false);
+    }
+  }, [apiFetch]);
+
+  const loadIdeConfig = useCallback(async () => {
+    setIdeConfigLoading(true);
+    setIdeConfigError(null);
+    try {
+      const configJson = await apiFetch(getIdeConfigUrl());
+      setIdeConfig((configJson?.data as IdeConfigData | undefined) ?? null);
+    } catch (err) {
+      setIdeConfig(null);
+      setIdeConfigError(err instanceof Error ? err.message : "Remote IDE 状态检查失败");
+    } finally {
+      setIdeConfigLoading(false);
     }
   }, [apiFetch]);
 
@@ -258,6 +279,7 @@ export function WorkspacePage() {
     try {
       const configJson = await apiFetch(getIdeConfigUrl());
       const config = configJson?.data as IdeConfigData | undefined;
+      setIdeConfig(config ?? null);
       if (config?.enabled === false) {
         throw new Error("Remote IDE 当前未启用");
       }
@@ -286,6 +308,10 @@ export function WorkspacePage() {
   useEffect(() => {
     void loadTree();
   }, [loadTree]);
+
+  useEffect(() => {
+    void loadIdeConfig();
+  }, [loadIdeConfig]);
 
   useEffect(() => {
     const updateHeight = () => setTreeHeight(Math.max(420, window.innerHeight - 260));
@@ -336,6 +362,24 @@ export function WorkspacePage() {
   }, [activePath, onTreeNodeClick]);
 
   const data = treeRoot ? [treeRoot] : [];
+  const ideDisabled = ideOpening || ideConfig?.enabled === false;
+  const ideStatusLabel = (() => {
+    if (ideConfigLoading) return "Remote IDE 状态检查中";
+    if (ideConfigError) return "Remote IDE 状态未知";
+    if (ideConfig?.enabled === false) return "Remote IDE 未启用";
+    if (ideConfig?.provider === "e2b") return "E2B Remote IDE 就绪";
+    if (ideConfig?.enabled) return "Remote IDE 就绪";
+    return "Remote IDE 状态待检测";
+  })();
+  const ideStatusDetail = (() => {
+    if (ideConfigError) return ideConfigError;
+    if (ideConfig?.enabled === false) return "后端 MYCC_IDE_PROVIDER 仍为 disabled，不会创建 E2B sandbox。";
+    if (ideConfig?.provider === "e2b") {
+      const template = ideConfig.e2bTemplate ? ` · ${ideConfig.e2bTemplate}` : "";
+      return `code-server 通过 MyCC 代理打开${template}`;
+    }
+    return "打开后会复用或创建当前用户的 Remote IDE session。";
+  })();
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -350,6 +394,13 @@ export function WorkspacePage() {
               </div>
               <h1 className="text-2xl font-semibold tracking-tight">工作区文件编辑</h1>
               <p className="text-xs text-slate-500 mt-1">轻量、直接、可保存。命令行面板已暂时移除。</p>
+              <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-800/80 dark:bg-emerald-900/25 dark:text-emerald-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="font-medium">{ideStatusLabel}</span>
+                <span className="hidden max-w-[360px] truncate text-emerald-600/80 dark:text-emerald-200/70 md:inline">
+                  {ideStatusDetail}
+                </span>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -357,7 +408,7 @@ export function WorkspacePage() {
                 onClick={() => {
                   void openRemoteIde();
                 }}
-                disabled={ideOpening}
+                disabled={ideDisabled}
                 className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
               >
                 {ideOpening ? "打开中..." : "打开 Remote IDE"}

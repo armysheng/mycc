@@ -100,4 +100,70 @@ describe("WorkspacePage", () => {
       );
     });
   });
+
+  it("shows Remote IDE as disabled when the backend provider is off", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: false, provider: "disabled" }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Remote IDE 未启用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeDisabled();
+  });
+
+  it("shows E2B Remote IDE readiness when the backend provider is enabled", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("E2B Remote IDE 就绪")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 Remote IDE" })).toBeEnabled();
+  });
 });
