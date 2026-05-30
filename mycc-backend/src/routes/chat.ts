@@ -14,6 +14,7 @@ import {
   userOwnsConversation,
 } from '../db/client.js';
 import { createAgentRuntime } from '../agent-runtime/index.js';
+import { describeAgentRuntimeConfig } from '../agent-runtime/factory.js';
 import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
 import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
@@ -505,6 +506,19 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
     e2bProvider: options.e2bProvider ?? new E2bSandboxProvider(),
     ideSessionStore: options.ideSessionStore ?? new PostgresIdeSessionStore(),
   };
+
+  fastify.get('/api/chat/runtime/config', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    return {
+      success: true,
+      data: describeAgentRuntimeConfig(projectContextOptions.env),
+    };
+  });
 
   // POST /api/chat - 发送消息（SSE 流式响应）
   fastify.post('/api/chat', {

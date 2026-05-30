@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
+import { describeClaudeProviderEnv, omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
 
 describe('Claude provider env resolver', () => {
   it('prefers CCR base URL and credential aliases over all fallbacks', () => {
@@ -85,5 +85,25 @@ describe('Claude provider env resolver', () => {
       OPENAI_API_KEY: 'openai-key',
       OTHER_ENV: 'keep-me',
     });
+  });
+
+  it('describes CCR provider configuration without exposing URLs or credentials', () => {
+    const description = describeClaudeProviderEnv({
+      MYCC_CCR_BASE_URL: 'https://ccr.example.test/v1',
+      MYCC_CCR_AUTH_TOKEN: 'ccr-token',
+      ANTHROPIC_API_KEY: 'stale-anthropic-key',
+    });
+
+    expect(description).toEqual({
+      provider: 'ccr',
+      baseUrlConfigured: true,
+      baseUrlSource: 'MYCC_CCR_BASE_URL',
+      credentialConfigured: true,
+      credentialSource: 'MYCC_CCR_AUTH_TOKEN',
+      credentialTarget: 'ANTHROPIC_AUTH_TOKEN',
+    });
+    expect(JSON.stringify(description)).not.toContain('ccr-token');
+    expect(JSON.stringify(description)).not.toContain('ccr.example.test');
+    expect(JSON.stringify(description)).not.toContain('stale-anthropic-key');
   });
 });

@@ -9,6 +9,17 @@ type ClaudeCredentialEnv = {
   target: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
 };
 
+export type ClaudeProviderKind = 'ccr' | 'custom' | 'anthropic' | 'vps' | 'none';
+
+export type ClaudeProviderEnvDescription = {
+  provider: ClaudeProviderKind;
+  baseUrlConfigured: boolean;
+  baseUrlSource?: string;
+  credentialConfigured: boolean;
+  credentialSource?: string;
+  credentialTarget?: ClaudeCredentialEnv['target'];
+};
+
 const BASE_URL_ENV_KEYS = [
   'MYCC_CCR_BASE_URL',
   'MYCC_CLAUDE_BASE_URL',
@@ -35,12 +46,29 @@ const CLAUDE_PROVIDER_ENV_KEYS = new Set([
 ]);
 
 export function resolveClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): ClaudeProviderEnv {
-  const baseUrl = pickFirstEnv(env, BASE_URL_ENV_KEYS);
+  const baseUrl = pickFirstEnvEntry(env, BASE_URL_ENV_KEYS);
   const credential = pickFirstCredentialEnv(env);
 
   return {
-    ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
+    ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl.value } : {}),
     ...(credential ? { [credential.target]: credential.value } : {}),
+  };
+}
+
+export function describeClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): ClaudeProviderEnvDescription {
+  const baseUrl = pickFirstEnvEntry(env, BASE_URL_ENV_KEYS);
+  const credential = pickFirstCredentialEnv(env);
+  const provider = classifyProvider(baseUrl?.source, credential?.source);
+
+  return {
+    provider,
+    baseUrlConfigured: Boolean(baseUrl),
+    ...(baseUrl ? { baseUrlSource: baseUrl.source } : {}),
+    credentialConfigured: Boolean(credential),
+    ...(credential ? {
+      credentialSource: credential.source,
+      credentialTarget: credential.target,
+    } : {}),
   };
 }
 
@@ -52,22 +80,37 @@ export function omitClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): Nod
   return cleanEnv;
 }
 
-function pickFirstEnv(env: NodeJS.ProcessEnv, keys: string[]): string | undefined {
+function pickFirstEnvEntry(
+  env: NodeJS.ProcessEnv,
+  keys: string[],
+): { source: string; value: string } | undefined {
   for (const key of keys) {
     const value = env[key]?.trim();
-    if (value) return value;
+    if (value) return { source: key, value };
   }
   return undefined;
 }
 
 function pickFirstCredentialEnv(
   env: NodeJS.ProcessEnv,
-): { target: ClaudeCredentialEnv['target']; value: string } | undefined {
+): { source: string; target: ClaudeCredentialEnv['target']; value: string } | undefined {
   for (const credential of CREDENTIAL_ENV_KEYS) {
     const value = env[credential.source]?.trim();
     if (value) {
-      return { target: credential.target, value };
+      return { source: credential.source, target: credential.target, value };
     }
   }
   return undefined;
+}
+
+function classifyProvider(
+  baseUrlSource: string | undefined,
+  credentialSource: string | undefined,
+): ClaudeProviderKind {
+  const source = baseUrlSource || credentialSource;
+  if (!source) return 'none';
+  if (source.startsWith('MYCC_CCR_')) return 'ccr';
+  if (source.startsWith('VPS_')) return 'vps';
+  if (source.startsWith('ANTHROPIC_')) return 'anthropic';
+  return 'custom';
 }
