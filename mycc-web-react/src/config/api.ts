@@ -30,6 +30,10 @@ export const getChatUrl = () => {
   return API_CONFIG.ENDPOINTS.CHAT;
 };
 
+export const getChatRuntimeConfigUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.CHAT}/runtime/config`;
+};
+
 // Helper function to get sessions URL
 export const getChatSessionsUrl = () => {
   return API_CONFIG.ENDPOINTS.CHAT_SESSIONS;

@@ -18,6 +18,7 @@ import { SettingsModal } from "./SettingsModal";
 import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
+import { ChatRuntimeStatusBadge } from "./chat/ChatRuntimeStatusBadge";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import { getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
@@ -708,6 +709,7 @@ export function ChatPage() {
                   )}
                 </div>
               )}
+              {!isHistoryView && <ChatRuntimeStatusBadge token={token} />}
             </div>
           </div>
           <div className="flex items-center gap-3">
