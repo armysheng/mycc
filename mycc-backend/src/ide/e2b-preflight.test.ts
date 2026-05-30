@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertE2bAgentPreflightReady,
   buildE2bAgentPreflightReport,
   formatE2bAgentPreflightReport,
   type E2bPreflightReport,
@@ -86,6 +87,50 @@ describe('E2B Agent preflight', () => {
     const output = formatE2bAgentPreflightReport(report);
     expect(output).toContain('Remote E2B template lookup failed');
     expect(output).not.toContain('e2b_liveKey-ABC_123');
+  });
+
+  it('throws a doctor-style checklist for smoke preflight gaps without leaking secrets', async () => {
+    await expect(assertE2bAgentPreflightReady({ env: {} }))
+      .rejects.toThrowError(expect.objectContaining({
+        message: expect.stringContaining('E2B Agent preflight: needs attention'),
+      }));
+
+    let missingConfigError: unknown;
+    try {
+      await assertE2bAgentPreflightReady({ env: {} });
+    } catch (error) {
+      missingConfigError = error;
+    }
+    const missingConfigOutput = missingConfigError instanceof Error ? missingConfigError.message : String(missingConfigError);
+    expect(missingConfigOutput).toContain('[error] E2B API key: Missing MYCC_E2B_API_KEY or E2B_API_KEY.');
+    expect(missingConfigOutput).toContain('[error] Claude/CCR credential: No Claude credential is configured.');
+    expect(missingConfigOutput).toContain('[skip] E2B template: Skipped remote template check for mycc-code-server-dev');
+
+    await expect(assertE2bAgentPreflightReady({
+      env: {
+        MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
+        MYCC_E2B_TEMPLATE: 'missing-template',
+        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+      },
+      templateExists: vi.fn().mockResolvedValue(false),
+    })).rejects.toThrowError(expect.objectContaining({
+      message: expect.stringContaining('[error] E2B template: E2B template does not exist: missing-template.'),
+    }));
+
+    try {
+      await assertE2bAgentPreflightReady({
+        env: {
+          MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
+          MYCC_E2B_TEMPLATE: 'missing-template',
+          MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        },
+        templateExists: vi.fn().mockResolvedValue(false),
+      });
+    } catch (error) {
+      const output = error instanceof Error ? error.message : String(error);
+      expect(output).not.toContain('e2b_liveKey-ABC_123');
+      expect(output).not.toContain('ccr-secret');
+    }
   });
 
   it('does not let host process credentials satisfy an explicit empty env preflight', async () => {

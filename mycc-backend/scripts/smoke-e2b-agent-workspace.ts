@@ -1,10 +1,13 @@
 import dotenv from 'dotenv';
 import { Template } from 'e2b';
 import type { AgentRuntime } from '../src/agent-runtime/types.js';
-import { resolveClaudeProviderEnv } from '../src/agent-runtime/claude-env.js';
 import { E2bClaudeAgentSdkRuntime } from '../src/agent-runtime/e2b-claude-agent-sdk-runtime.js';
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
-import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
+import {
+  assertE2bAgentPreflightReady,
+  DEFAULT_E2B_AGENT_TEMPLATE_NAME,
+  E2bAgentPreflightError,
+} from '../src/ide/e2b-preflight.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { assertE2bTemplateContract } from '../src/ide/e2b-template-contract.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
@@ -12,7 +15,7 @@ import { escapeShellArg } from '../src/utils/validation.js';
 
 dotenv.config();
 
-const TEMPLATE_NAME = process.env.MYCC_E2B_TEMPLATE || 'mycc-code-server-dev';
+const TEMPLATE_NAME = process.env.MYCC_E2B_TEMPLATE?.trim() || DEFAULT_E2B_AGENT_TEMPLATE_NAME;
 const SESSION_TTL_SECONDS = parsePositiveInteger(process.env.MYCC_IDE_SESSION_TTL_SECONDS, 900);
 const SMOKE_USER_ID = parsePositiveInteger(process.env.MYCC_SMOKE_USER_ID, 42);
 const CODE_SERVER_READY_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_CODE_SERVER_READY_TIMEOUT_MS, 120_000);
@@ -30,21 +33,19 @@ let session: StoredIdeSession | undefined;
 const provider = new E2bSandboxProvider();
 
 async function main() {
-  const apiKey = requireE2bApiKey();
+  const { apiKey, templateName } = await assertE2bAgentPreflightReady({
+    env: process.env,
+    templateExists: (candidateTemplateName, candidateApiKey) => Template.exists(candidateTemplateName, {
+      apiKey: candidateApiKey,
+    }),
+  });
   process.env.MYCC_E2B_API_KEY = apiKey;
   process.env.MYCC_IDE_PROVIDER = 'e2b';
-  process.env.MYCC_E2B_TEMPLATE = TEMPLATE_NAME;
+  process.env.MYCC_E2B_TEMPLATE = templateName;
   process.env.MYCC_E2B_LINUX_USER = SANDBOX_LINUX_USER;
   process.env.MYCC_E2B_WORKSPACE_DIR = WORKSPACE_DIR;
   process.env.MYCC_IDE_SESSION_TTL_SECONDS = String(SESSION_TTL_SECONDS);
   applyRuntimeSmokeDefaults();
-
-  requireClaudeCredential();
-
-  const templateExists = await Template.exists(TEMPLATE_NAME, { apiKey });
-  if (!templateExists) {
-    throw new Error(`E2B template does not exist: ${TEMPLATE_NAME}`);
-  }
 
   const store = new InMemoryIdeSessionStore();
   const runtime = createSmokeRuntime(store);
@@ -185,14 +186,6 @@ async function cleanup(): Promise<void> {
   console.log(`[cleanup] E2B Agent+IDE workspace smoke cleanup complete: sandbox=${session.sandboxId}`);
 }
 
-function requireClaudeCredential(): void {
-  const env = resolveClaudeProviderEnv();
-  if (env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY) {
-    return;
-  }
-  throw new Error('A Claude credential is required: set MYCC_CCR_AUTH_TOKEN, ANTHROPIC_AUTH_TOKEN, MYCC_CCR_API_KEY, or ANTHROPIC_API_KEY');
-}
-
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
@@ -207,6 +200,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error('[error] E2B Agent+IDE workspace smoke failed:', error);
+  if (error instanceof E2bAgentPreflightError) {
+    console.error(error.message);
+    console.error('[error] E2B Agent+IDE workspace smoke failed: fix the preflight checklist above.');
+  } else {
+    console.error('[error] E2B Agent+IDE workspace smoke failed:', error);
+  }
   process.exitCode = 1;
 });

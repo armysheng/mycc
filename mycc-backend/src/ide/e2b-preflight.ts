@@ -25,7 +25,23 @@ export type E2bPreflightOptions = {
   templateExists?: (templateName: string, apiKey: string) => Promise<boolean>;
 };
 
-const DEFAULT_TEMPLATE_NAME = 'mycc-code-server-dev';
+export const DEFAULT_E2B_AGENT_TEMPLATE_NAME = 'mycc-code-server-dev';
+
+export type E2bPreflightReadyResult = {
+  apiKey: string;
+  templateName: string;
+  report: E2bPreflightReport;
+};
+
+export class E2bAgentPreflightError extends Error {
+  readonly report: E2bPreflightReport;
+
+  constructor(report: E2bPreflightReport) {
+    super(formatE2bAgentPreflightReport(report));
+    this.name = 'E2bAgentPreflightError';
+    this.report = report;
+  }
+}
 
 export async function buildE2bAgentPreflightReport(
   options: E2bPreflightOptions = {},
@@ -35,7 +51,7 @@ export async function buildE2bAgentPreflightReport(
   const apiKey = resolveE2bApiKey(env);
   const apiKeyValid = Boolean(apiKey && isValidE2bApiKey(apiKey));
   const configuredTemplateName = env.MYCC_E2B_TEMPLATE?.trim();
-  const templateName = configuredTemplateName || DEFAULT_TEMPLATE_NAME;
+  const templateName = configuredTemplateName || DEFAULT_E2B_AGENT_TEMPLATE_NAME;
   const claudeProvider = describeClaudeProviderEnv(env);
 
   checks.push(checkE2bApiKey(apiKey));
@@ -56,6 +72,27 @@ export async function buildE2bAgentPreflightReport(
   return {
     ok: checks.every((check) => check.status !== 'error'),
     checks,
+  };
+}
+
+export async function assertE2bAgentPreflightReady(
+  options: E2bPreflightOptions = {},
+): Promise<E2bPreflightReadyResult> {
+  const env = options.env ?? process.env;
+  const report = await buildE2bAgentPreflightReport(options);
+  if (!report.ok) {
+    throw new E2bAgentPreflightError(report);
+  }
+
+  const apiKey = resolveE2bApiKey(env);
+  if (!apiKey) {
+    throw new E2bAgentPreflightError(report);
+  }
+
+  return {
+    apiKey,
+    templateName: env.MYCC_E2B_TEMPLATE?.trim() || DEFAULT_E2B_AGENT_TEMPLATE_NAME,
+    report,
   };
 }
 
