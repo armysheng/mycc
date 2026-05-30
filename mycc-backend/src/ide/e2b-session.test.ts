@@ -126,4 +126,60 @@ describe('ensureE2bIdeSession', () => {
     expect(firstSession).toEqual(secondSession);
     expect(await store.findReusableByUser(42)).toEqual(firstSession);
   });
+
+  it('coalesces concurrent session creation across store instances for the same user', async () => {
+    const sessions = new Map<string, StoredIdeSession>();
+    const firstStore = new InMemoryIdeSessionStore(sessions);
+    const secondStore = new InMemoryIdeSessionStore(sessions);
+    let resolveStart: ((value: {
+      provider: 'e2b';
+      sandboxId: string;
+      codeServerPid: number;
+      host: string;
+      trafficAccessToken: string;
+      port: number;
+      accessMode: 'mycc-proxy';
+      expiresAt: string;
+    }) => void) | undefined;
+    const startCodeServer = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      resolveStart = resolve;
+    }));
+
+    const first = ensureE2bIdeSession({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+      sessionStore: firstStore,
+      e2bProvider: { startCodeServer },
+      env: { MYCC_IDE_PROVIDER: 'e2b' },
+    });
+    const second = ensureE2bIdeSession({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+      sessionStore: secondStore,
+      e2bProvider: { startCodeServer },
+      env: { MYCC_IDE_PROVIDER: 'e2b' },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(startCodeServer).toHaveBeenCalledOnce();
+
+    resolveStart?.({
+      provider: 'e2b',
+      sandboxId: 'sbx_shared_store_singleflight',
+      codeServerPid: 4321,
+      host: '18080-sbx_shared_store_singleflight.e2b.app',
+      trafficAccessToken: 'shared-store-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const [firstSession, secondSession] = await Promise.all([first, second]);
+
+    expect(firstSession).toEqual(secondSession);
+    expect(await firstStore.findReusableByUser(42)).toEqual(firstSession);
+    expect(await secondStore.findReusableByUser(42)).toEqual(firstSession);
+  });
 });

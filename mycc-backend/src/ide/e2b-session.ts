@@ -6,16 +6,7 @@ import type { IdeSessionStore, StoredIdeSession } from './session-store.js';
 export type E2bIdeSessionProvider = Partial<Pick<E2bSandboxProvider, 'startCodeServer'>>;
 type E2bIdeSessionProviderWithStart = Pick<E2bSandboxProvider, 'startCodeServer'>;
 
-const pendingSessionsByStore = new WeakMap<IdeSessionStore, Map<number, Promise<StoredIdeSession>>>();
-
-function getPendingSessionsForStore(sessionStore: IdeSessionStore): Map<number, Promise<StoredIdeSession>> {
-  let pending = pendingSessionsByStore.get(sessionStore);
-  if (!pending) {
-    pending = new Map();
-    pendingSessionsByStore.set(sessionStore, pending);
-  }
-  return pending;
-}
+const pendingSessionsByUser = new Map<number, Promise<StoredIdeSession>>();
 
 export async function ensureE2bIdeSession(params: {
   userId: number;
@@ -35,16 +26,15 @@ export async function ensureE2bIdeSession(params: {
   }
   const e2bProvider = params.e2bProvider as E2bIdeSessionProviderWithStart;
 
-  const pendingSessions = getPendingSessionsForStore(params.sessionStore);
-  const pending = pendingSessions.get(params.userId);
+  const pending = pendingSessionsByUser.get(params.userId);
   if (pending) {
     return pending;
   }
 
   const creation = createAndStoreE2bIdeSession({ ...params, e2bProvider }).finally(() => {
-    pendingSessions.delete(params.userId);
+    pendingSessionsByUser.delete(params.userId);
   });
-  pendingSessions.set(params.userId, creation);
+  pendingSessionsByUser.set(params.userId, creation);
   return creation;
 }
 
