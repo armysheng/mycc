@@ -231,6 +231,8 @@ npm run smoke:e2b-agent-sdk-workspace
 
 这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<hex>` 或 `E2B_API_KEY=e2b_<hex>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
 
+`smoke:e2b-agent-workspace` 和 `smoke:e2b-agent-sdk-workspace` 会额外验证 E2B template 契约：`code-server`、Node/Python/Git/curl、GNU 常用工具链必须可用；CLI runtime 需要 `claude`，Agent SDK runtime 需要 `/opt/mycc-agent-runtime/bridge.mjs`。
+
 当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B IDE session。没有 running session 时，Workspace API 会返回 `409`，提示先打开 Remote IDE，避免一次普通文件树请求隐式创建昂贵 sandbox。
 
 E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSession` 提前创建或复用 E2B IDE session，从 `/home/mycc/workspace/0-System/about-me` 读取；全新 sandbox 若还没有任何可用 about-me 内容，会跳过注入且不缓存 missing context，后续可通过首次同步/初始化补齐。

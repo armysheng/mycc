@@ -6,6 +6,7 @@ import { E2bClaudeAgentSdkRuntime } from '../src/agent-runtime/e2b-claude-agent-
 import { E2bClaudeCliRuntime } from '../src/agent-runtime/e2b-claude-cli-runtime.js';
 import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
+import { assertE2bTemplateContract } from '../src/ide/e2b-template-contract.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 import { escapeShellArg } from '../src/utils/validation.js';
 
@@ -59,6 +60,7 @@ async function main() {
       throw new Error('E2B runtime did not persist a reusable IDE session');
     }
 
+    await assertTemplateContract(session);
     await assertCodeServerLocalHealth(session);
     await assertWorkspaceFileEquals(session, AGENT_MARKER_FILE, MARKER);
     await writeWorkspaceFile(session, IDE_MARKER_FILE, MARKER);
@@ -116,6 +118,17 @@ async function runAgentPrompt(runtime: AgentRuntime, prompt: string): Promise<vo
   if (!events.some((event) => event.type === 'result')) {
     throw new Error(`Claude runtime did not emit a result event: ${JSON.stringify(events.slice(-5))}`);
   }
+}
+
+async function assertTemplateContract(activeSession: StoredIdeSession): Promise<void> {
+  await assertE2bTemplateContract({
+    e2bProvider: provider,
+    session: activeSession,
+    workspaceDir: WORKSPACE_DIR,
+    requireCodeServer: true,
+    requireClaudeCli: AGENT_RUNTIME === 'e2b-claude-cli',
+    requireAgentSdkBridge: AGENT_RUNTIME === 'e2b-claude-agent-sdk',
+  });
 }
 
 async function assertCodeServerLocalHealth(activeSession: StoredIdeSession): Promise<void> {
