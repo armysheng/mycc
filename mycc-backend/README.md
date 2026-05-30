@@ -175,6 +175,7 @@ Authorization: Bearer <token>
 | MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | dontAsk |
 | MYCC_AGENT_SDK_PARTIAL_MESSAGES | 是否输出 SDK partial stream event | false |
 | MYCC_AGENT_SDK_CONFIG_ROOT | Agent SDK 每用户 HOME/Claude 配置根目录；为空时使用 `/home/{linux_user}/.mycc` | - |
+| MYCC_WORKSPACE_PROVIDER | 内置 Workspace API provider：`ssh` 走 VPS，`e2b` 复用当前用户 running E2B IDE session | ssh |
 | MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
@@ -211,6 +212,7 @@ MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
 
 ```bash
 MYCC_IDE_PROVIDER=e2b
+MYCC_WORKSPACE_PROVIDER=e2b
 MYCC_E2B_TEMPLATE=mycc-code-server-dev
 MYCC_E2B_API_KEY=e2b_<hex>
 # 或使用 E2B_API_KEY=e2b_<hex>
@@ -229,7 +231,7 @@ npm run smoke:e2b-agent-sdk-workspace
 
 这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<hex>` 或 `E2B_API_KEY=e2b_<hex>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
 
-当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；内置 Workspace API 仍是 VPS `/home/{linux_user}/workspace` 路径，后续需要做 provider 抽象后才能三者完全统一。
+当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B IDE session。没有 running session 时，Workspace API 会返回 `409`，提示先打开 Remote IDE，避免一次普通文件树请求隐式创建昂贵 sandbox。
 
 ## 开发说明
 

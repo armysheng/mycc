@@ -62,8 +62,8 @@ bridge 通过 env 接收 `MYCC_AGENT_PROMPT_B64`、`MYCC_AGENT_WORKSPACE_CWD=/ho
 3. 用同一组凭据跑 `npm run smoke:e2b-agent-sdk-workspace`，验证 Agent SDK bridge runtime 也能复用同一 sandbox/workspace；该 smoke 会设置写文件所需的 SDK 工具/权限默认值，产品默认仍保持只读工具集。
 4. 将 `npm run cleanup:ide-sessions` 接到生产 cron 或部署平台定时任务；生产环境对 `traffic_access_token` 做加密或改为 token reference。
 5. 做 POC 验收：直接访问 E2B host 失败，通过 mycc 一次性 URL 打开 IDE，IDE 修改文件后 Claude 能读到，Claude 修改文件后 IDE 能看到。
-6. 把 Workspace API 抽成 provider：VPS 模式继续走 SSH `/home/{linuxUser}/workspace`；E2B 模式走当前用户 running sandbox 的 `/home/mycc/workspace`。否则 Workspace 页内置文件树/Monaco、Remote IDE、Agent runtime 会指向不同文件系统。
-7. E2B 模式下调整 chat 项目上下文注入：不要继续从 VPS `/home/{linuxUser}/workspace` 读取上下文；应从 E2B workspace 读取，或在首次创建 sandbox 时显式同步项目文件。
+6. 已新增 Workspace API provider 切换：默认 `MYCC_WORKSPACE_PROVIDER=ssh` 继续走 VPS `/home/{linuxUser}/workspace`；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后复用当前用户 running E2B IDE session，在 `/home/mycc/workspace` 提供文件树、读取、保存和管理员 exec。没有 running session 时返回 `409`，避免隐式创建昂贵 sandbox。
+7. E2B agent runtime 下已停止从 VPS `/home/{linuxUser}/workspace` 注入项目上下文，避免给 sandbox agent 错误文件系统描述。完整版本仍需补 E2B workspace context reader，或在首次创建 sandbox 时显式同步项目文件。
 
 ## Claude UI / SDK 调研结论
 

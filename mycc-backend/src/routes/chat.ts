@@ -336,6 +336,11 @@ function hasInjectedProjectContextForSession(userId: number, sessionId?: string)
   return true;
 }
 
+export function shouldLoadProjectContextFromVpsWorkspace(env: NodeJS.ProcessEnv = process.env): boolean {
+  const runtime = (env.MYCC_AGENT_RUNTIME || 'remote-claude').trim();
+  return runtime !== 'e2b-claude-cli' && runtime !== 'e2b-claude-agent-sdk';
+}
+
 function markProjectContextInjectedForSession(userId: number, sessionId: string): void {
   const currentTime = nowMs();
   pruneExpiredSessionInjectionMarks(currentTime);
@@ -439,7 +444,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
       let didInjectProjectContext = false;
       try {
-        const shouldInjectProjectContext = !onboardingBootstrapRequest
+        const shouldInjectProjectContext = shouldLoadProjectContextFromVpsWorkspace()
+          && !onboardingBootstrapRequest
           && !hasInjectedProjectContextForSession(userId, body.sessionId);
         if (shouldInjectProjectContext) {
           const projectContextPrompt = await getProjectContextPromptCached({

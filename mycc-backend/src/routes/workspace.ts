@@ -1,6 +1,10 @@
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import type { JWTPayload } from '../auth/service.js';
+import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
+import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { getSSHPool } from '../ssh/pool.js';
 import type { SSHExecResult } from '../ssh/types.js';
@@ -14,6 +18,27 @@ class WorkspaceRouteError extends Error {
 }
 
 type RunCommand = (command: string, timeoutMs?: number) => Promise<SSHExecResult>;
+type WorkspaceProviderKind = 'ssh' | 'e2b';
+type WorkspaceCommandResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  error?: string;
+};
+type WorkspaceCommandRunner = {
+  provider: WorkspaceProviderKind;
+  linuxUser: string;
+  workspaceRoot: string;
+  useSudo: boolean;
+  run: (command: string, timeoutMs?: number) => Promise<WorkspaceCommandResult>;
+};
+type E2bWorkspaceProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>;
+
+export type WorkspaceRoutesOptions = {
+  env?: NodeJS.ProcessEnv;
+  e2bProvider?: E2bWorkspaceProvider;
+  ideSessionStore?: IdeSessionStore;
+};
 
 const treeQuerySchema = z.object({
   path: z.string().optional().default('/'),
@@ -207,19 +232,29 @@ export function isWorkspaceExecEnabled(): boolean {
   return process.env.WORKSPACE_EXEC_ENABLED === 'true';
 }
 
+export function resolveWorkspaceProviderKind(env: NodeJS.ProcessEnv = process.env): WorkspaceProviderKind {
+  const provider = (env.MYCC_WORKSPACE_PROVIDER || 'ssh').trim();
+  if (provider === 'ssh' || provider === 'e2b') {
+    return provider;
+  }
+  throw new Error(`Unsupported workspace provider: ${provider}`);
+}
+
 async function runNodeTask<T>(
-  run: RunCommand,
-  linuxUser: string,
+  runner: WorkspaceCommandRunner,
   script: string,
   args: string[],
   timeoutMs: number,
 ): Promise<T> {
   const commandArgs = args.map((arg) => escapeShellArg(arg)).join(' ');
-  const command = `sudo -n -u ${escapeShellArg(linuxUser)} node -e ${escapeShellArg(script)} -- ${commandArgs}`;
-  const result = await run(command, timeoutMs);
+  const nodeCommand = `node -e ${escapeShellArg(script)} -- ${commandArgs}`;
+  const command = runner.useSudo
+    ? `sudo -n -u ${escapeShellArg(runner.linuxUser)} ${nodeCommand}`
+    : nodeCommand;
+  const result = await runner.run(command, timeoutMs);
 
   if (result.exitCode !== 0) {
-    const stderr = (result.stderr || '').trim();
+    const stderr = (result.stderr || result.error || '').trim();
     if (stderr.includes('path-outside-workspace') || stderr.includes('ENOENT')) {
       throw new WorkspaceRouteError(400, '路径不存在或越界');
     }
@@ -247,21 +282,76 @@ async function runNodeTask<T>(
   }
 }
 
-export async function workspaceRoutes(fastify: FastifyInstance) {
-  const withRunner = async <T>(linuxUserRaw: string, handler: (run: RunCommand, linuxUser: string) => Promise<T>) => {
+export async function workspaceRoutes(fastify: FastifyInstance, options: WorkspaceRoutesOptions = {}) {
+  const env = options.env ?? process.env;
+  const sessionStore = options.ideSessionStore ?? new PostgresIdeSessionStore();
+  const e2bProvider = options.e2bProvider ?? new E2bSandboxProvider();
+
+  const withSshRunner = async <T>(
+    linuxUserRaw: string,
+    handler: (runner: WorkspaceCommandRunner) => Promise<T>,
+  ) => {
     const linuxUser = sanitizeLinuxUsername(linuxUserRaw);
     const sshPool = getSSHPool();
     const connection = await sshPool.acquire();
 
-    const run: RunCommand = (command: string, timeoutMs: number = 30000) => {
+    const run: RunCommand = (command: string, timeoutMs: number = 30000): Promise<SSHExecResult> => {
       return sshPool.exec(connection, command, { timeout: timeoutMs });
     };
 
     try {
-      return await handler(run, linuxUser);
+      return await handler({
+        provider: 'ssh',
+        linuxUser,
+        workspaceRoot: `/home/${linuxUser}/workspace`,
+        useSudo: true,
+        run,
+      });
     } finally {
       sshPool.release(connection);
     }
+  };
+
+  const withE2bRunner = async <T>(
+    user: JWTPayload,
+    handler: (runner: WorkspaceCommandRunner) => Promise<T>,
+  ) => {
+    const linuxUser = sanitizeLinuxUsername(user.linuxUser);
+    const plan = buildE2bCodeServerSessionPlan({
+      userId: user.userId,
+      linuxUser,
+      workspaceDir: `/home/${linuxUser}/workspace`,
+    }, env);
+    const session = await sessionStore.findReusableByUser(user.userId);
+    if (!session) {
+      throw new WorkspaceRouteError(409, 'E2B 工作区会话不存在，请先打开 Remote IDE');
+    }
+
+    const run = async (command: string, timeoutMs: number = 30000): Promise<WorkspaceCommandResult> => {
+      return e2bProvider.runCommandInSession(session as StoredIdeSession, command, {
+        cwd: plan.workspaceDir,
+        timeoutMs,
+      });
+    };
+
+    return handler({
+      provider: 'e2b',
+      linuxUser: plan.linuxUser,
+      workspaceRoot: plan.workspaceDir,
+      useSudo: false,
+      run,
+    });
+  };
+
+  const withWorkspaceRunner = async <T>(
+    user: JWTPayload,
+    handler: (runner: WorkspaceCommandRunner) => Promise<T>,
+  ) => {
+    const provider = resolveWorkspaceProviderKind(env);
+    if (provider === 'e2b') {
+      return withE2bRunner(user, handler);
+    }
+    return withSshRunner(user.linuxUser, handler);
   };
 
   fastify.get('/api/workspace/tree', {
@@ -274,18 +364,16 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
     try {
       const query = treeQuerySchema.parse(request.query);
       const relPath = normalizeWorkspacePath(query.path);
-      const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
 
-      const data = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
+      const data = await withWorkspaceRunner(request.user, async (runner) => {
         return runNodeTask<{
           tree: Record<string, unknown>;
           truncated: boolean;
           nodeCount: number;
         }>(
-          run,
-          linuxUser,
+          runner,
           TREE_SCRIPT,
-          [workspaceRoot, relPath, String(query.depth), '1600'],
+          [runner.workspaceRoot, relPath, String(query.depth), '1600'],
           30000,
         );
       });
@@ -309,9 +397,8 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
     try {
       const query = fileQuerySchema.parse(request.query);
       const relPath = normalizeWorkspacePath(query.path);
-      const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
 
-      const file = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
+      const file = await withWorkspaceRunner(request.user, async (runner) => {
         return runNodeTask<{
           path: string;
           size: number;
@@ -320,10 +407,9 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
           binary: boolean;
           content: string | null;
         }>(
-          run,
-          linuxUser,
+          runner,
           READ_FILE_SCRIPT,
-          [workspaceRoot, relPath],
+          [runner.workspaceRoot, relPath],
           30000,
         );
       });
@@ -347,18 +433,16 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
     try {
       const body = saveFileSchema.parse(request.body);
       const relPath = normalizeWorkspacePath(body.path);
-      const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
 
-      const saved = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
+      const saved = await withWorkspaceRunner(request.user, async (runner) => {
         return runNodeTask<{
           path: string;
           size: number;
           mtime: string;
         }>(
-          run,
-          linuxUser,
+          runner,
           WRITE_FILE_SCRIPT,
-          [workspaceRoot, relPath, body.content],
+          [runner.workspaceRoot, relPath, body.content],
           30000,
         );
       });
@@ -386,9 +470,8 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
       try {
         const body = execSchema.parse(request.body);
         const relCwd = normalizeWorkspacePath(body.cwd);
-        const workspaceRoot = `/home/${request.user.linuxUser}/workspace`;
 
-        const result = await withRunner(request.user.linuxUser, async (run, linuxUser) => {
+        const result = await withWorkspaceRunner(request.user, async (runner) => {
           return runNodeTask<{
             cwd: string;
             exitCode: number;
@@ -396,10 +479,9 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
             stderr: string;
             timedOut: boolean;
           }>(
-            run,
-            linuxUser,
+            runner,
             EXEC_SCRIPT,
-            [workspaceRoot, relCwd, body.command],
+            [runner.workspaceRoot, relCwd, body.command],
             125000,
           );
         });

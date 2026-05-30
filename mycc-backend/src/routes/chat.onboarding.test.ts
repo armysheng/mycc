@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseOnboardingBootstrapRequest } from './chat.js';
+import { parseOnboardingBootstrapRequest, shouldLoadProjectContextFromVpsWorkspace } from './chat.js';
 
 describe('parseOnboardingBootstrapRequest', () => {
   it('extracts assistant name from onboarding bootstrap prompt', () => {
@@ -29,5 +29,20 @@ describe('parseOnboardingBootstrapRequest', () => {
       '   - 用户称呼：元婴',
     ].join('\n');
     expect(parseOnboardingBootstrapRequest(message)).toBeNull();
+  });
+
+  it('does not load VPS project context for E2B runtimes', () => {
+    expect(shouldLoadProjectContextFromVpsWorkspace({
+      MYCC_AGENT_RUNTIME: 'remote-claude',
+    })).toBe(true);
+    expect(shouldLoadProjectContextFromVpsWorkspace({
+      MYCC_AGENT_RUNTIME: 'claude-agent-sdk',
+    })).toBe(true);
+    expect(shouldLoadProjectContextFromVpsWorkspace({
+      MYCC_AGENT_RUNTIME: 'e2b-claude-cli',
+    })).toBe(false);
+    expect(shouldLoadProjectContextFromVpsWorkspace({
+      MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+    })).toBe(false);
   });
 });
