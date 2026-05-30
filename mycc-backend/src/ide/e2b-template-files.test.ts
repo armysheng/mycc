@@ -7,6 +7,7 @@ const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const templateTs = path.join(backendRoot, 'templates/e2b-code-server/template.ts');
 const dockerfile = path.join(backendRoot, 'templates/e2b-code-server/e2b.Dockerfile');
 const readme = path.join(backendRoot, 'templates/e2b-code-server/README.md');
+const createTemplateScript = path.join(backendRoot, 'scripts/create-e2b-code-server-template.sh');
 
 describe('E2B code-server template files', () => {
   it('keeps the SDK template ready command aligned with the GNU/native contract', () => {
@@ -48,5 +49,17 @@ describe('E2B code-server template files', () => {
     expect(source).toContain('cd /opt/mycc-agent-runtime');
     expect(source).toContain('import(\\"@anthropic-ai/claude-agent-sdk\\")');
     expect(source).toContain('test -f /opt/mycc-agent-runtime/bridge.mjs');
+  });
+
+  it('documents the E2B CLI access token gate for template builds', () => {
+    const script = readFileSync(createTemplateScript, 'utf8');
+    const docs = readFileSync(readme, 'utf8');
+
+    expect(script).toContain('E2B_ACCESS_TOKEN');
+    expect(script).toContain('https://e2b.dev/dashboard?tab=personal');
+    expect(script).toContain('npx --yes @e2b/cli template create');
+    expect(script).toContain('test -f /opt/mycc-agent-runtime/bridge.mjs');
+    expect(docs).toContain('E2B_ACCESS_TOKEN');
+    expect(docs).toContain('npm run template:e2b-code-server:create');
   });
 });

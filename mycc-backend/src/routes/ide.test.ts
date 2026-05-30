@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ideRoutes, type IdeRoutesOptions } from './ide.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 
@@ -41,6 +41,11 @@ async function buildApp(options: IdeRoutesOptions = {}) {
 }
 
 describe('ide routes', () => {
+  beforeEach(() => {
+    delete process.env.MYCC_IDE_PROVIDER;
+    delete process.env.MYCC_E2B_TEMPLATE;
+  });
+
   afterEach(() => {
     delete process.env.MYCC_IDE_PROVIDER;
     delete process.env.MYCC_E2B_TEMPLATE;

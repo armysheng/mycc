@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import { ClaudeAgentSdkRuntime } from './claude-agent-sdk-runtime.js';
 import { E2bClaudeAgentSdkRuntime } from './e2b-claude-agent-sdk-runtime.js';
@@ -6,8 +6,13 @@ import { E2bClaudeCliRuntime } from './e2b-claude-cli-runtime.js';
 import { createAgentRuntime, describeAgentRuntimeConfig } from './factory.js';
 
 describe('createAgentRuntime', () => {
+  beforeEach(() => {
+    delete process.env.MYCC_AGENT_RUNTIME;
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
+    delete process.env.MYCC_AGENT_RUNTIME;
   });
 
   it('uses remote claude runtime by default', () => {

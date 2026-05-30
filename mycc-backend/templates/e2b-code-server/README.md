@@ -16,6 +16,17 @@ The default sandbox user is `mycc` and the default workspace is `/home/mycc/work
 
 Run this manually; do not wire it into the normal backend build.
 
+The E2B SDK/API key is enough for smoke tests, but template builds use the E2B CLI auth flow. Before building, either run `npx --yes @e2b/cli auth login` or set `E2B_ACCESS_TOKEN` from <https://e2b.dev/dashboard?tab=personal>.
+
+Recommended:
+
+```bash
+cd mycc-backend
+npm run template:e2b-code-server:create
+```
+
+Equivalent raw CLI command:
+
 ```bash
 cd mycc-backend/templates/e2b-code-server
 e2b template create mycc-code-server-dev \
