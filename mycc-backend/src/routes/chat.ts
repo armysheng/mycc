@@ -41,6 +41,7 @@ import {
   injectWorkspaceOperatingPrompt,
   type WorkspaceBootstrapFile,
 } from '../chat/openclaw-context.js';
+import { isUserVisibleConversation } from '../chat/conversation-visibility.js';
 import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 // 发送消息请求验证
@@ -934,12 +935,13 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
         limitNum,
         offsetNum
       );
+      const visibleConversations = conversations.filter(isUserVisibleConversation);
 
       return reply.send({
         success: true,
         data: {
-          conversations,
-          total: conversations.length,
+          conversations: visibleConversations,
+          total: visibleConversations.length,
           hasMore: conversations.length === limitNum,
         },
       });

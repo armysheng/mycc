@@ -2,6 +2,7 @@ import type React from "react";
 import type {
   AssistantDeliverableCard,
   AssistantHomeData,
+  AssistantTaskCard,
 } from "../../types";
 
 type AssistantHomePanelProps = {
@@ -29,7 +30,7 @@ export function AssistantHomePanel({
   workspaceName,
   modeLabel = "本地模式",
 }: AssistantHomePanelProps) {
-  const tasks = data?.tasks ?? [];
+  const tasks = (data?.tasks ?? []).filter(isUserVisibleTask);
   const deliverables = data?.deliverables ?? [];
   const primaryDeliverable = deliverables[0] ?? null;
   const memoryAvailable = (data?.memory.sources ?? []).some((source) => source.status !== "missing");
@@ -48,7 +49,7 @@ export function AssistantHomePanel({
           {headline}
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-          直接描述你想完成的事，{assistantName} 会帮你拆解、执行，并在需要时打开成果空间让你查看和深度编辑。
+          直接描述你想完成的事，{assistantName} 会帮你拆解、执行，并在需要时打开成果空间让你查看和编辑。
         </p>
 
         <div className="mt-8">
@@ -190,7 +191,7 @@ function getDeliverableKindLabel(kind: AssistantDeliverableCard["kind"]) {
     link: "链接",
     preview: "预览",
     screenshot: "截图",
-    log: "运行记录",
+    log: "处理记录",
     pr: "协作记录",
     dataset: "数据集",
   };
@@ -205,6 +206,25 @@ function getDeliverableSourceLabel(source: AssistantDeliverableCard["source"]) {
 function toProductWorkspaceLabel(label?: string | null) {
   if (!label) return "";
   return label.replace(/工作区/g, "项目空间");
+}
+
+function isUserVisibleTask(task: AssistantTaskCard) {
+  const title = task.title.trim();
+  const lowerTitle = title.toLowerCase();
+  const hiddenMarkers = [
+    "你正在执行用户工作区首次初始化",
+    "初始化票据",
+    "初始化尚未完成",
+    "初始化流程执行失败",
+    "BOOTSTRAP.md",
+    "onboarding bootstrap",
+  ];
+
+  if (!title) return false;
+  if (lowerTitle === "continue" || lowerTitle === "accept") return false;
+  if (hiddenMarkers.some((marker) => lowerTitle.includes(marker.toLowerCase()))) return false;
+
+  return true;
 }
 
 function formatDeliverableTime(value: string) {

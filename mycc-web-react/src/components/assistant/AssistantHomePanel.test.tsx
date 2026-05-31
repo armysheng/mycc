@@ -94,6 +94,65 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText("失败")).not.toBeInTheDocument();
   });
 
+  it("filters control and bootstrap conversations before rendering continuation chips", () => {
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        data={{
+          ...baseData,
+          tasks: [
+            {
+              id: "session_bootstrap",
+              source: "conversation",
+              status: "recent",
+              title: "你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_continue",
+              source: "conversation",
+              status: "recent",
+              title: "continue",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_accept",
+              source: "conversation",
+              status: "recent",
+              title: "accept",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_init_failed",
+              source: "conversation",
+              status: "recent",
+              title: "初始化流程执行失败：权限异常",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_real_task",
+              source: "conversation",
+              status: "recent",
+              title: "整理当前项目状态",
+              messageCount: 8,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "继续：整理当前项目状态" })).toBeInTheDocument();
+    expect(screen.queryByText(/首次初始化/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "继续：continue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "继续：accept" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/初始化流程执行失败/)).not.toBeInTheDocument();
+  });
+
   it("renders derived deliverable cards with user-facing source labels", () => {
     const onOpenDeliverable = vi.fn();
     render(
@@ -171,7 +230,7 @@ describe("AssistantHomePanel", () => {
 
     expect(screen.getByText("最近成果")).toBeInTheDocument();
     expect(screen.getByText("变更说明")).toBeInTheDocument();
-    expect(screen.getByText("运行记录")).toBeInTheDocument();
+    expect(screen.getByText("处理记录")).toBeInTheDocument();
     expect(screen.getByText("UI change diff")).toBeInTheDocument();
     expect(screen.getByText("Agent run log")).toBeInTheDocument();
     expect(screen.getByText("Homepage screenshot")).toBeInTheDocument();

@@ -135,6 +135,22 @@ describe('assistant routes', () => {
         updatedAt: new Date('2026-05-30T09:00:00.000Z'),
       },
       {
+        sessionId: 'session_accept',
+        title: 'accept',
+        messageCount: 1,
+        totalTokens: 20,
+        createdAt: new Date('2026-05-30T09:10:00.000Z'),
+        updatedAt: new Date('2026-05-30T09:10:00.000Z'),
+      },
+      {
+        sessionId: 'session_init_failed',
+        title: '初始化流程执行失败：BOOTSTRAP.md 未归档',
+        messageCount: 2,
+        totalTokens: 300,
+        createdAt: new Date('2026-05-30T09:30:00.000Z'),
+        updatedAt: new Date('2026-05-30T09:30:00.000Z'),
+      },
+      {
         sessionId: 'session_user_task',
         title: '整理当前项目状态',
         messageCount: 6,
@@ -158,6 +174,8 @@ describe('assistant routes', () => {
     ]);
     expect(response.body).not.toContain('首次初始化');
     expect(response.body).not.toContain('"continue"');
+    expect(response.body).not.toContain('"accept"');
+    expect(response.body).not.toContain('BOOTSTRAP.md');
     await app.close();
   });
 

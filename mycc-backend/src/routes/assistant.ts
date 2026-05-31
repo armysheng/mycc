@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { findUserById as defaultFindUserById, getUserConversations as defaultGetUserConversations } from '../db/client.js';
 import type { ConversationSummary, User } from '../db/client.js';
+import { isUserVisibleConversation } from '../chat/conversation-visibility.js';
 import { E2bSandboxProvider } from '../ide/e2b-provider.js';
 import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
@@ -243,19 +244,6 @@ function toTaskCard(conversation: ConversationSummary) {
     updatedAt: conversation.updatedAt.toISOString(),
     description: '最近会话，可继续让助理接着处理。',
   };
-}
-
-function isUserVisibleConversation(conversation: ConversationSummary): boolean {
-  const title = (conversation.title || '').trim();
-  const lowerTitle = title.toLowerCase();
-
-  if (lowerTitle === 'continue') return false;
-  if (title.includes('你正在执行用户工作区首次初始化')) return false;
-  if (title.includes('初始化票据')) return false;
-  if (title.includes('BOOTSTRAP.md')) return false;
-  if (lowerTitle.includes('onboarding bootstrap')) return false;
-
-  return true;
 }
 
 function buildMemorySources(

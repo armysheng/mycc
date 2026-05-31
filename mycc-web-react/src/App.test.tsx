@@ -76,7 +76,9 @@ describe("App Routing", () => {
     await waitFor(() => {
       expect(screen.getByText("我们应该在 mycc-main 中构建什么？")).toBeInTheDocument();
     });
+    expect(screen.getAllByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…")).toHaveLength(1);
     expect(screen.queryByLabelText("Return to new chat in /")).not.toBeInTheDocument();
+    expect(screen.queryByText(/首次初始化|bootstrap|continue|最近会话|继续：/i)).not.toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
