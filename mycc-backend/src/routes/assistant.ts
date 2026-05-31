@@ -75,8 +75,8 @@ const DELIVERABLE_SCAN_SCRIPT = [
   'const maxDepth=5;',
   'const maxItems=16;',
   'const ignoreDirs=new Set([".git",".claude",".config",".ssh","node_modules","dist","build","coverage",".next",".vite"]);',
-  'const deliverableWords=["report","summary","spec","plan","proposal","design","research","review","deliverable","artifact","preview","screenshot","log","diff","patch","报告","总结","方案","计划","规划","调研","设计","复盘","制品","交付","预览","截图","日志"];',
-  'const deliverableExts=new Set([".md",".html",".htm",".png",".jpg",".jpeg",".webp",".svg",".log",".txt",".diff",".patch"]);',
+  'const deliverableWords=["report","summary","spec","plan","proposal","design","research","review","deliverable","artifact","preview","screenshot","log","diff","patch","dataset","data","spreadsheet","报告","总结","方案","计划","规划","调研","设计","复盘","制品","交付","预览","截图","日志","数据","数据集","表格"];',
+  'const deliverableExts=new Set([".md",".pdf",".doc",".docx",".ppt",".pptx",".xls",".xlsx",".csv",".tsv",".html",".htm",".png",".jpg",".jpeg",".webp",".svg",".log",".txt",".diff",".patch"]);',
   'const secretWords=[".env","secret","token","credential","password","passwd","private","apikey","api_key","auth"];',
   'const out=[];',
   'const inside=(base,p)=>p===base||p.startsWith(base+path.sep);',
@@ -565,6 +565,9 @@ function isUsefulDeliverableCandidate(path: string, title: string): boolean {
     'log',
     'diff',
     'patch',
+    'dataset',
+    'data',
+    'spreadsheet',
     '报告',
     '总结',
     '方案',
@@ -578,11 +581,20 @@ function isUsefulDeliverableCandidate(path: string, title: string): boolean {
     '预览',
     '截图',
     '日志',
+    '数据',
+    '数据集',
+    '表格',
   ].some((word) => haystack.includes(word));
 }
 
 function inferDeliverableKind(path: string, title: string): AssistantDeliverableCard['kind'] {
   const haystack = `${path} ${title}`.toLowerCase();
+  if (
+    /\.(csv|tsv|xls|xlsx)$/i.test(path)
+    || ['dataset', 'data', 'spreadsheet', '数据', '数据集', '表格'].some((word) => haystack.includes(word))
+  ) {
+    return 'dataset';
+  }
   if (/\.(diff|patch)$/i.test(path) || ['diff', 'patch'].some((word) => haystack.includes(word))) {
     return 'diff';
   }
@@ -623,6 +635,15 @@ function isDeliverableStatus(value: unknown): value is AssistantDeliverableCard[
 function isSupportedDeliverablePath(lowerPath: string): boolean {
   return [
     '.md',
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.ppt',
+    '.pptx',
+    '.xls',
+    '.xlsx',
+    '.csv',
+    '.tsv',
     '.html',
     '.htm',
     '.png',

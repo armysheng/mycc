@@ -242,6 +242,7 @@ function flattenWorkspaceFiles(node: WorkspaceTreeNode | null): WorkspaceTreeNod
 
 function getDeliverableKind(node: WorkspaceTreeNode): string {
   const lower = node.path.toLowerCase();
+  if (/\.(csv|tsv|xls|xlsx)$/.test(lower) || lower.includes("dataset") || lower.includes("数据集")) return "数据集";
   if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "截图";
   if (/\.(log|txt)$/.test(lower)) return "处理记录";
   if (/\.(html|htm)$/.test(lower) || lower.includes("preview")) return "预览";
@@ -296,6 +297,9 @@ function isLikelyDeliverable(node: WorkspaceTreeNode): boolean {
     "design",
     "artifact",
     "deliverable",
+    "dataset",
+    "data",
+    "spreadsheet",
     "preview",
     "screenshot",
     "log",
@@ -306,8 +310,11 @@ function isLikelyDeliverable(node: WorkspaceTreeNode): boolean {
     "调研",
     "设计",
     "制品",
+    "数据",
+    "数据集",
+    "表格",
   ].some((word) => lower.includes(word));
-  const deliverableExtension = /\.(md|pdf|html?|png|jpe?g|webp|svg|log|txt|patch)$/i.test(node.name);
+  const deliverableExtension = /\.(md|pdf|docx?|pptx?|xlsx?|csv|tsv|html?|png|jpe?g|webp|svg|log|txt|patch)$/i.test(node.name);
 
   return deliverableExtension && (deliverablePath || deliverableName);
 }

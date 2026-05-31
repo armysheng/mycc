@@ -564,6 +564,102 @@ describe("WorkspacePage", () => {
     );
   });
 
+  it("surfaces office documents, PDFs, and datasets as workspace deliverables", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [
+              {
+                id: "/deliverables",
+                mtime: new Date(0).toISOString(),
+                name: "deliverables",
+                path: "/deliverables",
+                size: 0,
+                type: "directory",
+                children: [
+                  {
+                    id: "/deliverables/product-roadmap.pdf",
+                    mtime: "2026-05-31T10:00:00.000Z",
+                    name: "product-roadmap.pdf",
+                    path: "/deliverables/product-roadmap.pdf",
+                    size: 8192,
+                    type: "file",
+                  },
+                  {
+                    id: "/deliverables/customer-interview.docx",
+                    mtime: "2026-05-31T10:05:00.000Z",
+                    name: "customer-interview.docx",
+                    path: "/deliverables/customer-interview.docx",
+                    size: 16384,
+                    type: "file",
+                  },
+                  {
+                    id: "/deliverables/revenue-analysis.xlsx",
+                    mtime: "2026-05-31T10:10:00.000Z",
+                    name: "revenue-analysis.xlsx",
+                    path: "/deliverables/revenue-analysis.xlsx",
+                    size: 32768,
+                    type: "file",
+                  },
+                ],
+              },
+              {
+                id: "/output",
+                mtime: new Date(0).toISOString(),
+                name: "output",
+                path: "/output",
+                size: 0,
+                type: "directory",
+                children: [
+                  {
+                    id: "/output/research-dataset.csv",
+                    mtime: "2026-05-31T10:15:00.000Z",
+                    name: "research-dataset.csv",
+                    path: "/output/research-dataset.csv",
+                    size: 4096,
+                    type: "file",
+                  },
+                ],
+              },
+            ],
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({ deliverables: [] }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("button", { name: "打开 research-dataset.csv" })).toBeInTheDocument();
+    expect(screen.getAllByText("数据集").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "打开 revenue-analysis.xlsx" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 customer-interview.docx" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 product-roadmap.pdf" })).toBeInTheDocument();
+    expect(screen.getAllByText("文档").length).toBeGreaterThan(0);
+  });
+
   it("uses assistant deliverables as the workbench source and opens their workspace path", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {

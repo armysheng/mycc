@@ -417,6 +417,77 @@ describe('assistant routes', () => {
     await app.close();
   });
 
+  it('includes document and dataset file deliverables produced by office-capable skills', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          path: '/deliverables/product-roadmap.pdf',
+          title: '产品路线图 PDF',
+          size: 8192,
+          mtime: '2026-05-31T10:00:00.000Z',
+        },
+        {
+          path: '/deliverables/customer-interview.docx',
+          title: '客户访谈文档',
+          size: 16384,
+          mtime: '2026-05-31T10:05:00.000Z',
+        },
+        {
+          path: '/reports/revenue-analysis.xlsx',
+          title: '营收分析表',
+          size: 32768,
+          mtime: '2026-05-31T10:10:00.000Z',
+        },
+        {
+          path: '/output/research-dataset.csv',
+          title: '调研数据集',
+          size: 4096,
+          mtime: '2026-05-31T10:15:00.000Z',
+        },
+      ]),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deliverables).toEqual([
+      expect.objectContaining({
+        kind: 'dataset',
+        path: '/output/research-dataset.csv',
+        title: '调研数据集',
+      }),
+      expect.objectContaining({
+        kind: 'dataset',
+        path: '/reports/revenue-analysis.xlsx',
+        title: '营收分析表',
+      }),
+      expect.objectContaining({
+        kind: 'document',
+        path: '/deliverables/customer-interview.docx',
+        title: '客户访谈文档',
+      }),
+      expect.objectContaining({
+        kind: 'document',
+        path: '/deliverables/product-roadmap.pdf',
+        title: '产品路线图 PDF',
+      }),
+    ]);
+    await app.close();
+  });
+
   it('prefers safe manifest deliverables while filtering sensitive registry and scan entries', async () => {
     const runCommandInSession = vi.fn().mockResolvedValue({
       exitCode: 0,
