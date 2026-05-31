@@ -127,6 +127,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         userId: user.userId,
       });
       if (reusableSession) {
+        attachProxyCookie(reply, reusableSession, 'editor');
         return reply.status(200).send({
           success: true,
           data: toPublicSession(reusableSession),
@@ -163,7 +164,11 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       return reply.status(401).send({ error: '未提供认证 token' });
     }
 
-    const session = await sessionStore.findReusableByUser(user.userId);
+    const session = await findLiveReusableSession({
+      sessionStore,
+      e2bProvider,
+      userId: user.userId,
+    });
     return {
       success: true,
       data: session ? toPublicSession(session) : null,

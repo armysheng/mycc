@@ -305,6 +305,63 @@ describe('ide routes', () => {
     }));
   });
 
+  it('refreshes the proxy cookie when reusing an existing IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: {
+        startCodeServer: vi.fn(),
+        isCodeServerListening: vi.fn().mockResolvedValue(true),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('HttpOnly'));
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('Path=/api/ide/sessions/ide_123/proxy'));
+    expect(response.json().data).toEqual(expect.objectContaining({
+      id: 'ide_123',
+      status: 'running',
+    }));
+  });
+
+  it('marks stale reusable sessions stopped before returning the current IDE session', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const isCodeServerListening = vi.fn().mockResolvedValue(false);
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: {
+        startCodeServer: vi.fn(),
+        isCodeServerListening,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/current',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: null,
+    });
+    expect(isCodeServerListening).toHaveBeenCalledWith(runningSession);
+    await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
+      status: 'stopped',
+    }));
+  });
+
   it('returns stored IDE session status without provider secrets', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const app = await buildApp({

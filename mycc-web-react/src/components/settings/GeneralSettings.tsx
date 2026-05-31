@@ -28,6 +28,13 @@ function toUserFacingQuotaText(text: string) {
   return text.replace(/\btokens?\b/gi, "额度");
 }
 
+function toUserFacingBillingError(text: string) {
+  return toUserFacingQuotaText(text)
+    .replace(/\bbase URL\b/gi, "服务地址")
+    .replace(/\bsessions?\b/gi, "对话")
+    .replace(/\btoken\b/gi, "额度");
+}
+
 function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="mb-3 flex items-center gap-2">
@@ -157,7 +164,7 @@ export function GeneralSettings() {
         }
       } catch (error) {
         if (!cancelled) {
-          setBillingError(error instanceof Error ? error.message : "加载套餐信息失败");
+          setBillingError(error instanceof Error ? toUserFacingBillingError(error.message) : "加载套餐信息失败");
         }
       } finally {
         if (!cancelled) {
@@ -186,7 +193,7 @@ export function GeneralSettings() {
       setPlansData(plans);
       await refreshUser();
     } catch (error) {
-      setBillingError(error instanceof Error ? error.message : "升级失败，请稍后重试");
+      setBillingError(error instanceof Error ? toUserFacingBillingError(error.message) : "升级失败，请稍后重试");
     } finally {
       setUpgradingPlan(null);
     }

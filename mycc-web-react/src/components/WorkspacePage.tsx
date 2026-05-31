@@ -124,6 +124,8 @@ function safeWorkspaceErrorMessage(error: unknown, fallback: string): string {
     .replace(/\bAgent SDK\b/gi, "助理运行环境")
     .replace(/\bGNU\b/gi, "桌面工作间")
     .replace(/\bsandbox\b/gi, "工作区")
+    .replace(/\bsessions?\b/gi, "工作区")
+    .replace(/会话 ID/g, "打开凭据")
     .replace(/沙盒/g, "工作区");
 }
 
@@ -568,7 +570,7 @@ export function WorkspacePage() {
       const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
       const session = sessionJson?.data as IdeSessionData | undefined;
       if (!session?.id) {
-        throw new Error("工作区会话创建成功，但缺少会话 ID");
+        throw new Error("工作区准备成功，但缺少打开凭据");
       }
 
       const desktopJson = await apiFetch(getIdeDesktopSessionUrl(session.id), { method: "POST" });

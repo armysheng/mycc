@@ -11,6 +11,20 @@ export interface ParsedApiError {
   remaining: number | null;
 }
 
+function toUserFacingBackendError(error: string): string {
+  return error
+    .replace(/\bE2B\b/gi, "工作区")
+    .replace(/\bCCR\b/gi, "模型连接")
+    .replace(/\bAgent SDK\b/gi, "助理能力")
+    .replace(/\bcode-server\b/gi, "代码编辑器")
+    .replace(/\bGNU\b/gi, "远程桌面")
+    .replace(/\bsandbox\b/gi, "工作区")
+    .replace(/\bsessions?\b/gi, "对话")
+    .replace(/\btokens?\b/gi, "额度")
+    .replace(/\bbase URL\b/gi, "服务地址")
+    .replace(/沙盒/g, "工作区");
+}
+
 export async function parseApiErrorResponse(
   response: Response,
 ): Promise<ParsedApiError> {
@@ -57,8 +71,10 @@ export async function parseApiErrorResponse(
     message = backendError;
   }
 
-  const rawDetail = backendError
-    ? `原始错误: ${backendError}`
+  message = toUserFacingBackendError(message);
+  const safeBackendError = toUserFacingBackendError(backendError);
+  const rawDetail = safeBackendError
+    ? `详细信息: ${safeBackendError}`
     : `HTTP ${response.status}`;
 
   if (!message.includes(rawDetail)) {
@@ -78,13 +94,13 @@ export function getNetworkErrorMessage(
   fallback = "请求失败，请稍后重试。",
 ): string {
   if (error instanceof Error) {
-    if (error.message.includes("原始错误:")) {
+    if (error.message.includes("详细信息:")) {
       return error.message;
     }
     if (error.message === "Failed to fetch") {
-      return "网络连接失败，请检查前后端服务和 CORS 配置。（原始错误: Failed to fetch）";
+      return "网络连接失败，请检查服务是否已启动后再试。（详细信息: 连接失败）";
     }
-    return error.message || fallback;
+    return toUserFacingBackendError(error.message) || fallback;
   }
   return fallback;
 }
