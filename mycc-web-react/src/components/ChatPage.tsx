@@ -1,6 +1,9 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeftIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronLeftIcon,
+  ComputerDesktopIcon,
+} from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -21,15 +24,24 @@ import { SettingsModal } from "./SettingsModal";
 import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
+import { AssistantWorkbenchDock } from "./chat/AssistantWorkbenchDock";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
-import { getAssistantHomeUrl, getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
+import {
+  getAssistantHomeUrl,
+  getChatUrl,
+  getAuthHeaders,
+  getSkillsUrl,
+} from "../config/api";
 import { AssistantHomePanel } from "./assistant/AssistantHomePanel";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
-import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
+import {
+  getNetworkErrorMessage,
+  parseApiErrorResponse,
+} from "../utils/apiError";
 import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardingBootstrapState";
 import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
 
@@ -42,7 +54,9 @@ export function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { sidebarDefaultOpen } = useSettings();
   // 运行时状态：用户可随时 toggle，不写回设置
-  const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] = useState(sidebarDefaultOpen);
+  const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] =
+    useState(sidebarDefaultOpen);
+  const [isWorkbenchDockOpen, setIsWorkbenchDockOpen] = useState(false);
   // 移动端抽屉：始终默认关闭
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [slashSkills, setSlashSkills] = useState<
@@ -57,9 +71,13 @@ export function ChatPage() {
   >([]);
   const [slashSkillsLoading, setSlashSkillsLoading] = useState(false);
   const [slashSkillsLoaded, setSlashSkillsLoaded] = useState(false);
-  const [assistantHome, setAssistantHome] = useState<AssistantHomeData | null>(null);
+  const [assistantHome, setAssistantHome] = useState<AssistantHomeData | null>(
+    null,
+  );
   const [assistantHomeLoading, setAssistantHomeLoading] = useState(false);
-  const [assistantHomeError, setAssistantHomeError] = useState<string | null>(null);
+  const [assistantHomeError, setAssistantHomeError] = useState<string | null>(
+    null,
+  );
   const slashSkillsFetchInFlightRef = useRef(false);
   const { token, user, refreshUser } = useAuth();
   const onboardingBootstrapStartedRef = useRef(false);
@@ -180,7 +198,9 @@ export function ChatPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setAssistantHomeError(err instanceof Error ? err.message : "助理首页加载失败");
+          setAssistantHomeError(
+            err instanceof Error ? err.message : "助理首页加载失败",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -235,7 +255,9 @@ export function ChatPage() {
             body: JSON.stringify({
               message: content,
               requestId,
-              ...(sessionIdForRequest ? { sessionId: sessionIdForRequest } : {}),
+              ...(sessionIdForRequest
+                ? { sessionId: sessionIdForRequest }
+                : {}),
               allowedTools: tools || allowedTools,
               ...(workingDirectory ? { workingDirectory } : {}),
               permissionMode: overridePermissionMode || permissionMode,
@@ -487,25 +509,31 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
-  const handleOpenDeliverable = useCallback((deliverable: AssistantDeliverableCard) => {
-    const target = resolveDeliverableOpenTarget(deliverable);
-    if (target.kind === "navigate") {
-      navigate(target.to);
-      return;
-    }
-    window.open(target.url, "_blank", "noopener,noreferrer");
-  }, [navigate]);
+  const handleOpenDeliverable = useCallback(
+    (deliverable: AssistantDeliverableCard) => {
+      const target = resolveDeliverableOpenTarget(deliverable);
+      if (target.kind === "navigate") {
+        navigate(target.to);
+        return;
+      }
+      window.open(target.url, "_blank", "noopener,noreferrer");
+    },
+    [navigate],
+  );
 
-  const handleContinueTask = useCallback((task: AssistantTaskCard) => {
-    if (task.source !== "conversation" || !task.id) {
-      setInput(`继续：${task.title}`);
-      return;
-    }
+  const handleContinueTask = useCallback(
+    (task: AssistantTaskCard) => {
+      if (task.source !== "conversation" || !task.id) {
+        setInput(`继续：${task.title}`);
+        return;
+      }
 
-    const nextSearchParams = new URLSearchParams();
-    nextSearchParams.set("sessionId", task.id);
-    navigate({ search: nextSearchParams.toString() });
-  }, [navigate, setInput]);
+      const nextSearchParams = new URLSearchParams();
+      nextSearchParams.set("sessionId", task.id);
+      navigate({ search: nextSearchParams.toString() });
+    },
+    [navigate, setInput],
+  );
 
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });
@@ -547,9 +575,17 @@ export function ChatPage() {
     // 同时清 URL query（确保 sessionId 参数被移除）
     navigate({ search: "" });
   }, [
-    isLoading, currentRequestId, abortRequest, resetRequestState,
-    setMessages, setCurrentSessionId, setHasShownInitMessage,
-    setHasReceivedInit, setCurrentAssistantMessage, clearInput, navigate,
+    isLoading,
+    currentRequestId,
+    abortRequest,
+    resetRequestState,
+    setMessages,
+    setCurrentSessionId,
+    setHasShownInitMessage,
+    setHasReceivedInit,
+    setCurrentAssistantMessage,
+    clearInput,
+    navigate,
   ]);
 
   const loadSlashSkills = useCallback(async () => {
@@ -567,7 +603,9 @@ export function ChatPage() {
           });
           const json = await response.json().catch(() => ({}));
           if (!response.ok || !json?.success) {
-            throw new Error(json?.error || `skills request failed: ${response.status}`);
+            throw new Error(
+              json?.error || `skills request failed: ${response.status}`,
+            );
           }
 
           const skills = (json?.data?.skills || []) as Array<{
@@ -605,43 +643,50 @@ export function ChatPage() {
     }
   }, [token]);
 
-  const renderChatInput = useCallback((variant: "default" | "hero" = "default") => (
-    <ChatInput
-      input={input}
-      isLoading={isLoading}
-      currentRequestId={currentRequestId}
-      onInputChange={setInput}
-      onSubmit={() => sendMessage()}
-      onAbort={handleAbort}
-      permissionMode={permissionMode}
-      onPermissionModeChange={setPermissionMode}
-      showPermissions={isPermissionMode}
-      permissionData={permissionData}
-      planPermissionData={planPermissionData}
-      slashSkills={slashSkills}
-      slashSkillsLoaded={slashSkillsLoaded}
-      slashSkillsLoading={slashSkillsLoading}
-      onSlashRequestRefresh={loadSlashSkills}
-      variant={variant}
-      placeholder={variant === "hero" ? "描述你想完成的事，MyCC 会帮你拆解并执行…" : undefined}
-    />
-  ), [
-    currentRequestId,
-    handleAbort,
-    input,
-    isLoading,
-    isPermissionMode,
-    loadSlashSkills,
-    permissionData,
-    permissionMode,
-    planPermissionData,
-    sendMessage,
-    setInput,
-    setPermissionMode,
-    slashSkills,
-    slashSkillsLoaded,
-    slashSkillsLoading,
-  ]);
+  const renderChatInput = useCallback(
+    (variant: "default" | "hero" = "default") => (
+      <ChatInput
+        input={input}
+        isLoading={isLoading}
+        currentRequestId={currentRequestId}
+        onInputChange={setInput}
+        onSubmit={() => sendMessage()}
+        onAbort={handleAbort}
+        permissionMode={permissionMode}
+        onPermissionModeChange={setPermissionMode}
+        showPermissions={isPermissionMode}
+        permissionData={permissionData}
+        planPermissionData={planPermissionData}
+        slashSkills={slashSkills}
+        slashSkillsLoaded={slashSkillsLoaded}
+        slashSkillsLoading={slashSkillsLoading}
+        onSlashRequestRefresh={loadSlashSkills}
+        variant={variant}
+        placeholder={
+          variant === "hero"
+            ? "描述你想完成的事，MyCC 会帮你拆解并执行…"
+            : undefined
+        }
+      />
+    ),
+    [
+      currentRequestId,
+      handleAbort,
+      input,
+      isLoading,
+      isPermissionMode,
+      loadSlashSkills,
+      permissionData,
+      permissionMode,
+      planPermissionData,
+      sendMessage,
+      setInput,
+      setPermissionMode,
+      slashSkills,
+      slashSkillsLoaded,
+      slashSkillsLoading,
+    ],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -670,7 +715,10 @@ export function ChatPage() {
     const prefill = (location.state as { prefill?: string } | null)?.prefill;
     if (prefill) {
       setInput(prefill);
-      navigate(location.pathname + location.search, { replace: true, state: null });
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: null,
+      });
     }
   }, [location.pathname, location.search, location.state, navigate, setInput]);
 
@@ -681,7 +729,13 @@ export function ChatPage() {
     // 新用户或跨账号场景下 URL 里残留旧 sessionId 时，自动回退到新会话
     setCurrentSessionId(null);
     navigate({ search: "" }, { replace: true });
-  }, [sessionId, historyError, historyErrorStatus, navigate, setCurrentSessionId]);
+  }, [
+    sessionId,
+    historyError,
+    historyErrorStatus,
+    navigate,
+    setCurrentSessionId,
+  ]);
 
   useEffect(() => {
     if (!sessionId || !historyError) return;
@@ -692,7 +746,9 @@ export function ChatPage() {
   }, [sessionId, historyError, historyErrorStatus, setCurrentSessionId]);
 
   useEffect(() => {
-    const state = location.state as { onboardingBootstrapPrompt?: string } | null;
+    const state = location.state as {
+      onboardingBootstrapPrompt?: string;
+    } | null;
     const bootstrapPrompt =
       typeof state?.onboardingBootstrapPrompt === "string"
         ? state.onboardingBootstrapPrompt.trim()
@@ -704,11 +760,15 @@ export function ChatPage() {
     if (messages.length > 0) return;
 
     onboardingBootstrapStartedRef.current = true;
-    navigate(location.pathname + location.search, { replace: true, state: null });
+    navigate(location.pathname + location.search, {
+      replace: true,
+      state: null,
+    });
     addMessage({
       type: "chat",
       role: "assistant",
-      content: "正在为你启动初始化流程。你现在可以继续对话，我会在这个会话里完成配置。",
+      content:
+        "正在为你启动初始化流程。你现在可以继续对话，我会在这个会话里完成配置。",
       timestamp: Date.now(),
     });
     void (async () => {
@@ -723,11 +783,15 @@ export function ChatPage() {
           }),
         ]);
       } catch (err) {
-        console.error("[OnboardingBootstrap] send bootstrap prompt failed:", err);
+        console.error(
+          "[OnboardingBootstrap] send bootstrap prompt failed:",
+          err,
+        );
         addMessage({
           type: "chat",
           role: "assistant",
-          content: "初始化提示发送超时或失败，但你可以继续对话；只要 CLAUDE.md 里的初始化标识还在，助手会继续完成初始化。",
+          content:
+            "初始化提示发送超时或失败，但你可以继续对话；只要 CLAUDE.md 里的初始化标识还在，助手会继续完成初始化。",
           timestamp: Date.now(),
         });
         return;
@@ -737,7 +801,10 @@ export function ChatPage() {
       void refreshUser()
         .then(clearOnboardingBootstrapPendingIfInitialized)
         .catch((err) => {
-          console.error("[OnboardingBootstrap] refresh user after initialize failed:", err);
+          console.error(
+            "[OnboardingBootstrap] refresh user after initialize failed:",
+            err,
+          );
         });
     })();
   }, [
@@ -756,11 +823,18 @@ export function ChatPage() {
     refreshUser,
   ]);
 
-  const isAssistantHomeView = !isHistoryView && messages.length === 0 && !isLoadedConversation;
+  const isAssistantHomeView =
+    !isHistoryView && messages.length === 0 && !isLoadedConversation;
   const isLoadedConversationEmpty =
-    isLoadedConversation && !historyLoading && !historyError && messages.length === 0;
+    isLoadedConversation &&
+    !historyLoading &&
+    !historyError &&
+    messages.length === 0;
   const isLoadedConversationRecoverableError =
-    isLoadedConversation && !historyLoading && Boolean(historyError) && historyErrorStatus !== 403;
+    isLoadedConversation &&
+    !historyLoading &&
+    Boolean(historyError) &&
+    historyErrorStatus !== 403;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -773,180 +847,93 @@ export function ChatPage() {
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      <div className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
-          <div className="flex items-center gap-4 min-w-0">
-            {isHistoryView && (
-              <button
-                onClick={handleBackToChat}
-                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
-                aria-label="Back to chat"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
-            {isLoadedConversation && (
-              <button
-                onClick={handleBackToHistory}
-                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
-                aria-label="Back to history"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
-            <div className="min-w-0">
-              <nav aria-label="Breadcrumb">
-                <div className="flex items-center">
-                  <button
-                    onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
-                    aria-label="Back to project selection"
-                  >
-                    MyCC
-                  </button>
-                  {(isHistoryView || sessionId) && (
-                    <>
-                      <span
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight mx-3 select-none"
-                        aria-hidden="true"
-                      >
-                        {" "}
-                        ›{" "}
-                      </span>
-                      <h1
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight"
-                        aria-current="page"
-                      >
-                        {isHistoryView
-                          ? "历史记录"
-                          : "对话"}
-                      </h1>
-                    </>
-                  )}
-                </div>
-              </nav>
-              {workingDirectory && (
-                <div className="flex items-center text-sm font-mono mt-1">
-                  <button
-                    onClick={handleBackToProjectChat}
-                    className="text-slate-600 dark:text-slate-400 hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
-                    aria-label={`Return to new chat in ${workingDirectory}`}
-                  >
-                    {workingDirectory}
-                  </button>
-                  {sessionId && (
-                    <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                      继续之前的对话
-                    </span>
-                  )}
-                </div>
+      <div className="flex-1 min-w-0 h-screen flex overflow-hidden">
+        <main className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
+            <div className="flex items-center gap-4 min-w-0">
+              {isHistoryView && (
+                <button
+                  onClick={handleBackToChat}
+                  className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                  aria-label="Back to chat"
+                >
+                  <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                </button>
               )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* 桌面端侧栏 toggle（仅 lg 以上显示） */}
-            <button
-              onClick={() => setIsDesktopSidebarVisible(v => !v)}
-              className="hidden lg:inline-flex p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              aria-label={isDesktopSidebarVisible ? "收起侧栏" : "展开侧栏"}
-            >
-              <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            {/* 移动端汉堡按钮 */}
-            <button
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              aria-label="打开菜单"
-            >
-              <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            {/* 移动端技能入口 */}
-            <button
-              onClick={() => navigate("/skills")}
-              className="lg:hidden px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              技能
-            </button>
-            {messages.length > 0 && !isHistoryView && (
-              <button
-                onClick={handleClearChat}
-                className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
-              >
-                清空
-              </button>
-            )}
-            {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
-            <SettingsButton onClick={handleSettingsClick} />
-          </div>
-        </div>
-
-        {/* Main Content */}
-        {isHistoryView ? (
-          <HistoryView onBack={handleBackToChat} />
-        ) : historyLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 dark:text-slate-400">
-                正在读取旧对话...
-              </p>
-            </div>
-          </div>
-        ) : isLoadedConversationRecoverableError ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-lg px-6">
-                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
-                  <svg
-                    className="w-8 h-8 text-amber-600 dark:text-amber-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                  旧对话暂时没读出来
-                </h2>
-                <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
-                  {historyError}
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={handleBackToHistory}
-                    className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    回到历史记录
-                  </button>
-                  <button
-                    onClick={() => navigate({ search: "" })}
-                    className="px-4 py-2 text-[var(--text-inverse)] rounded-lg text-sm transition-colors"
-                    style={{ background: "var(--accent)" }}
-                  >
-                    开始新对话
-                  </button>
-                </div>
+              {isLoadedConversation && (
+                <button
+                  onClick={handleBackToHistory}
+                  className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 shadow-sm hover:shadow-md"
+                  aria-label="Back to history"
+                >
+                  <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                </button>
+              )}
+              <div className="min-w-0">
+                <nav aria-label="Breadcrumb">
+                  <div className="flex items-center">
+                    <button
+                      onClick={handleBackToProjects}
+                      className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
+                      aria-label="Back to project selection"
+                    >
+                      MyCC
+                    </button>
+                    {(isHistoryView || sessionId) && (
+                      <>
+                        <span
+                          className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight mx-3 select-none"
+                          aria-hidden="true"
+                        >
+                          {" "}
+                          ›{" "}
+                        </span>
+                        <h1
+                          className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight"
+                          aria-current="page"
+                        >
+                          {isHistoryView ? "历史记录" : "对话"}
+                        </h1>
+                      </>
+                    )}
+                  </div>
+                </nav>
+                {workingDirectory && (
+                  <div className="flex items-center text-sm font-mono mt-1">
+                    <button
+                      onClick={handleBackToProjectChat}
+                      className="text-slate-600 dark:text-slate-400 hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
+                      aria-label={`Return to new chat in ${workingDirectory}`}
+                    >
+                      {workingDirectory}
+                    </button>
+                    {sessionId && (
+                      <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
+                        继续之前的对话
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-            {renderChatInput()}
-          </div>
-        ) : historyError ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center max-w-md">
-              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsWorkbenchDockOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                aria-label="打开工作台"
+              >
+                <ComputerDesktopIcon className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">工作台</span>
+              </button>
+              {/* 桌面端侧栏 toggle（仅 lg 以上显示） */}
+              <button
+                onClick={() => setIsDesktopSidebarVisible((v) => !v)}
+                className="hidden lg:inline-flex p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label={isDesktopSidebarVisible ? "收起侧栏" : "展开侧栏"}
+              >
                 <svg
-                  className="w-8 h-8 text-red-500"
+                  className="w-5 h-5 text-slate-600 dark:text-slate-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -955,32 +942,112 @@ export function ChatPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M4 6h16M4 12h16M4 18h16"
                   />
                 </svg>
-              </div>
-              <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                旧对话暂时没读出来
-              </h2>
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-                {historyError}
-              </p>
-              <button
-                onClick={() => navigate({ search: "" })}
-                className="px-4 py-2 text-[var(--text-inverse)] rounded-lg transition-colors"
-                style={{ background: "var(--accent)" }}
-              >
-                回到新对话
               </button>
+              {/* 移动端汉堡按钮 */}
+              <button
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="lg:hidden p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="打开菜单"
+              >
+                <svg
+                  className="w-5 h-5 text-slate-600 dark:text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+              {/* 移动端技能入口 */}
+              <button
+                onClick={() => navigate("/skills")}
+                className="lg:hidden px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                技能
+              </button>
+              {messages.length > 0 && !isHistoryView && (
+                <button
+                  onClick={handleClearChat}
+                  className="px-3 py-2 rounded-lg panel-surface border text-sm text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
+                >
+                  清空
+                </button>
+              )}
+              {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
+              <SettingsButton onClick={handleSettingsClick} />
             </div>
           </div>
-        ) : isLoadedConversationEmpty ? (
-          <div className="flex-1 min-h-0 flex flex-col">
+
+          {/* Main Content */}
+          {isHistoryView ? (
+            <HistoryView onBack={handleBackToChat} />
+          ) : historyLoading ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-lg px-6">
-                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-600 dark:text-slate-400">
+                  正在读取旧对话...
+                </p>
+              </div>
+            </div>
+          ) : isLoadedConversationRecoverableError ? (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center max-w-lg px-6">
+                  <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
+                    <svg
+                      className="w-8 h-8 text-amber-600 dark:text-amber-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
+                      />
+                    </svg>
+                  </div>
+                  <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
+                    旧对话暂时没读出来
+                  </h2>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
+                    {historyError}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      onClick={handleBackToHistory}
+                      className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      回到历史记录
+                    </button>
+                    <button
+                      onClick={() => navigate({ search: "" })}
+                      className="px-4 py-2 text-[var(--text-inverse)] rounded-lg text-sm transition-colors"
+                      style={{ background: "var(--accent)" }}
+                    >
+                      开始新对话
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {renderChatInput()}
+            </div>
+          ) : historyError ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
                   <svg
-                    className="w-8 h-8 text-amber-600 dark:text-amber-300"
+                    className="w-8 h-8 text-red-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -989,60 +1056,105 @@ export function ChatPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
                 </div>
                 <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                  旧对话暂无可显示内容
+                  旧对话暂时没读出来
                 </h2>
-                <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
-                  原记录不会被删除，只是这段旧对话的正文暂时没读出来。你可以直接继续提问，MyCC 会从这里重新接上。
+                <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                  {historyError}
                 </p>
                 <button
-                  onClick={handleBackToHistory}
-                  className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  onClick={() => navigate({ search: "" })}
+                  className="px-4 py-2 text-[var(--text-inverse)] rounded-lg transition-colors"
+                  style={{ background: "var(--accent)" }}
                 >
-                  回到历史记录
+                  回到新对话
                 </button>
               </div>
             </div>
-            {renderChatInput()}
-          </div>
-        ) : (
-          <>
-            {isAssistantHomeView ? (
-              <div className="flex-1 overflow-y-auto">
-                <AssistantHomePanel
-                  assistantName={assistantDisplayName}
-                  data={assistantHome}
-                  loading={assistantHomeLoading}
-                  error={assistantHomeError}
-                  onStartPrompt={setInput}
-                  onContinueTask={handleContinueTask}
-                  onOpenWorkspace={() => navigate("/workspace")}
-                  onOpenDeliverable={handleOpenDeliverable}
-                  inputSlot={renderChatInput("hero")}
-                  workspaceName={workingDirectory}
-                />
+          ) : isLoadedConversationEmpty ? (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center max-w-lg px-6">
+                  <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
+                    <svg
+                      className="w-8 h-8 text-amber-600 dark:text-amber-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
+                      />
+                    </svg>
+                  </div>
+                  <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
+                    旧对话暂无可显示内容
+                  </h2>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
+                    原记录不会被删除，只是这段旧对话的正文暂时没读出来。你可以直接继续提问，MyCC
+                    会从这里重新接上。
+                  </p>
+                  <button
+                    onClick={handleBackToHistory}
+                    className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    回到历史记录
+                  </button>
+                </div>
               </div>
-            ) : (
-              <>
-                <ChatMessages
-                  messages={messages}
-                  isLoading={isLoading}
-                  assistantDisplayName={assistantDisplayName}
-                  assistantAvatarText={assistantAvatarText}
-                />
-                {renderChatInput()}
-              </>
-            )}
-          </>
+              {renderChatInput()}
+            </div>
+          ) : (
+            <>
+              {isAssistantHomeView ? (
+                <div className="flex-1 overflow-y-auto">
+                  <AssistantHomePanel
+                    assistantName={assistantDisplayName}
+                    data={assistantHome}
+                    loading={assistantHomeLoading}
+                    error={assistantHomeError}
+                    onStartPrompt={setInput}
+                    onContinueTask={handleContinueTask}
+                    onOpenWorkspace={() => navigate("/workspace")}
+                    onOpenDeliverable={handleOpenDeliverable}
+                    inputSlot={renderChatInput("hero")}
+                    workspaceName={workingDirectory}
+                  />
+                </div>
+              ) : (
+                <>
+                  <ChatMessages
+                    messages={messages}
+                    isLoading={isLoading}
+                    assistantDisplayName={assistantDisplayName}
+                    assistantAvatarText={assistantAvatarText}
+                  />
+                  {renderChatInput()}
+                </>
+              )}
+            </>
+          )}
+
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={handleSettingsClose}
+          />
+        </main>
+
+        {isWorkbenchDockOpen && (
+          <AssistantWorkbenchDock
+            token={token}
+            onClose={() => setIsWorkbenchDockOpen(false)}
+          />
         )}
-
-        <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
       </div>
-
     </div>
   );
 }
