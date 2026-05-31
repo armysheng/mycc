@@ -29,9 +29,9 @@ export type AssistantRoutesOptions = {
 };
 
 type AssistantMemorySource = {
-  kind: 'profile' | 'project_context' | 'runtime_memory';
+  kind: 'profile' | 'project_context' | 'long_term_memory';
   label: string;
-  status: 'available' | 'available_when_workspace_running' | 'managed_by_runtime' | 'missing';
+  status: 'available' | 'pending' | 'managed' | 'missing';
   editable: boolean;
   description: string;
 };
@@ -263,16 +263,18 @@ function buildMemorySources(
     {
       kind: 'project_context',
       label: '项目背景',
-      status: hasWorkspace ? 'available' : 'available_when_workspace_running',
+      status: hasWorkspace ? 'available' : 'pending',
       editable: false,
-      description: '来自当前活跃工作区的项目背景，例如 0-System/about-me 和 memory 文件。',
+      description: hasWorkspace
+        ? '来自当前项目空间的项目背景和工作约定。'
+        : '项目空间准备好后，会自动读取当前项目背景。',
     },
     {
-      kind: 'runtime_memory',
+      kind: 'long_term_memory',
       label: '长期记忆',
-      status: 'managed_by_runtime',
+      status: 'managed',
       editable: false,
-      description: '助理在长期协作中积累的偏好、事实和约定，当前以只读来源展示。',
+      description: '助理会在长期协作中沉淀偏好、事实和约定。',
     },
   ];
 }

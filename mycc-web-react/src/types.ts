@@ -266,9 +266,9 @@ export interface AssistantDeliverableCard {
 }
 
 export interface AssistantMemorySource {
-  kind: "profile" | "project_context" | "runtime_memory";
+  kind: "profile" | "project_context" | "long_term_memory";
   label: string;
-  status: "available" | "available_when_workspace_running" | "managed_by_runtime" | "missing";
+  status: "available" | "pending" | "managed" | "missing";
   editable: boolean;
   description: string;
 }

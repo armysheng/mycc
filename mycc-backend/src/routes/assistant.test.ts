@@ -192,8 +192,39 @@ describe('assistant routes', () => {
     expect(response.json().data.sources.map((source: { kind: string }) => source.kind)).toEqual([
       'profile',
       'project_context',
-      'runtime_memory',
+      'long_term_memory',
     ]);
+    await app.close();
+  });
+
+  it('keeps assistant memory public contract product-facing', async () => {
+    const app = await buildApp(defaultOptions());
+
+    for (const url of ['/api/assistant/home', '/api/assistant/memory']) {
+      const response = await app.inject({
+        method: 'GET',
+        url,
+        headers: { authorization: authHeader() },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      const sources = url === '/api/assistant/home'
+        ? body.data.memory.sources
+        : body.data.sources;
+      expect(sources.map((source: { kind: string }) => source.kind)).toEqual([
+        'profile',
+        'project_context',
+        'long_term_memory',
+      ]);
+      expect(sources.map((source: { status: string }) => source.status)).toEqual([
+        'available',
+        'pending',
+        'managed',
+      ]);
+      expect(response.body).not.toMatch(/runtime|available_when_workspace_running|managed_by_runtime/i);
+    }
+
     await app.close();
   });
 
