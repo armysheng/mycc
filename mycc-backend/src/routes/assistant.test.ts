@@ -1,5 +1,9 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { assistantRoutes, type AssistantRoutesOptions } from './assistant.js';
@@ -395,6 +399,91 @@ describe('assistant routes', () => {
     expect(response.body).not.toContain('token leak report');
     expect(response.body).not.toContain('/logs/auth-token.log');
     await app.close();
+  });
+
+  it('reads deliverables registered by the sandbox helper and deduplicates scan fallback', async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'mycc-helper-deliverables-'));
+    const helperPath = path.resolve(
+      process.cwd(),
+      '..',
+      'mycc-sandbox',
+      'templates',
+      'e2b-assistant-sandbox',
+      'bin',
+      'mycc-register-deliverable',
+    );
+    try {
+      execFileSync(process.execPath, [
+        helperPath,
+        '--workspace',
+        workspace,
+        '--path',
+        '/reports/helper-summary.md',
+        '--title',
+        'Helper summary',
+        '--kind',
+        'report',
+        '--description',
+        'Registered through the sandbox helper',
+        '--updated-at',
+        '2026-05-31T09:00:00.000Z',
+      ]);
+      const registry = JSON.parse(readFileSync(path.join(workspace, '.mycc/deliverables.json'), 'utf8'));
+      const runCommandInSession = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          manifest: registry.deliverables,
+          scan: [
+            {
+              path: '/reports/helper-summary.md',
+              title: 'Scanned duplicate summary',
+              size: 2048,
+              mtime: '2026-05-31T10:00:00.000Z',
+            },
+            {
+              path: '/reports/scan-only-report.md',
+              title: 'Scan-only report',
+              size: 1024,
+              mtime: '2026-05-31T08:00:00.000Z',
+            },
+          ],
+        }),
+        stderr: '',
+      });
+      const app = await buildAppWithRunningSession({
+        env: {
+          MYCC_IDE_PROVIDER: 'e2b',
+          MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+        },
+        e2bProvider: { runCommandInSession },
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/assistant/deliverables',
+        headers: { authorization: authHeader() },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data.deliverables).toEqual([
+        expect.objectContaining({
+          id: 'workspace:/reports/helper-summary.md',
+          kind: 'report',
+          title: 'Helper summary',
+          path: '/reports/helper-summary.md',
+          description: 'Registered through the sandbox helper',
+          updatedAt: '2026-05-31T09:00:00.000Z',
+        }),
+        expect.objectContaining({
+          title: 'Scan-only report',
+          path: '/reports/scan-only-report.md',
+        }),
+      ]);
+      expect(response.body).not.toContain('Scanned duplicate summary');
+      await app.close();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   it('deduplicates manifest and scan entries by normalized workspace path', async () => {
