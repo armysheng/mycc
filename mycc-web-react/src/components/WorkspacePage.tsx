@@ -700,8 +700,9 @@ export function WorkspacePage() {
     }
     if (node.type === "file") {
       void loadFile(node.path);
+      void loadPreview(node.path);
     }
-  }, [loadFile, previewData?.path]);
+  }, [loadFile, loadPreview, previewData?.path]);
 
   const renderTreeNode = useCallback(({ node, style }: NodeRendererProps<WorkspaceTreeNode>) => {
     const data = node.data;

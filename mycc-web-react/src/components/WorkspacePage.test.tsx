@@ -452,6 +452,83 @@ describe("WorkspacePage", () => {
     );
   });
 
+  it("previews a workspace file when it is selected from the file list", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [
+              {
+                id: "/today.md",
+                mtime: "2026-05-31T09:00:00.000Z",
+                name: "today.md",
+                path: "/today.md",
+                size: 1024,
+                type: "file",
+              },
+            ],
+          },
+        }) as Response);
+      }
+      if (url === "/api/workspace/file?path=%2Ftoday.md") {
+        return Promise.resolve(okJson({
+          path: "/today.md",
+          size: 1024,
+          mtime: "2026-05-31T09:00:00.000Z",
+          truncated: false,
+          binary: false,
+          content: "# 今日记录",
+        }) as Response);
+      }
+      if (url === "/api/workspace/preview?path=%2Ftoday.md") {
+        return Promise.resolve(okJson({
+          path: "/today.md",
+          size: 1024,
+          mtime: "2026-05-31T09:00:00.000Z",
+          mimeType: "text/markdown",
+          previewType: "markdown",
+          truncated: false,
+          supported: true,
+          content: "# 今日记录\n\n这里是自动展示的资料预览。",
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({ deliverables: [] }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByText("today.md"));
+
+    expect(await screen.findByText(/这里是自动展示的资料预览/)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/workspace/preview?path=%2Ftoday.md",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+      }),
+    );
+  });
+
   it("surfaces derived deliverables from workspace files and opens them in the editor", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
