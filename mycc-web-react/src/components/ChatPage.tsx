@@ -31,6 +31,7 @@ import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { useAuth } from "../contexts/AuthContext";
 import { getNetworkErrorMessage, parseApiErrorResponse } from "../utils/apiError";
 import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardingBootstrapState";
+import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
 
 const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
 
@@ -475,11 +476,12 @@ export function ChatPage() {
   }, []);
 
   const handleOpenDeliverable = useCallback((deliverable: AssistantDeliverableCard) => {
-    if (deliverable.path) {
-      navigate(`/workspace?path=${encodeURIComponent(deliverable.path)}`);
+    const target = resolveDeliverableOpenTarget(deliverable);
+    if (target.kind === "navigate") {
+      navigate(target.to);
       return;
     }
-    navigate("/workspace");
+    window.open(target.url, "_blank", "noopener,noreferrer");
   }, [navigate]);
 
   const handleContinueTask = useCallback((task: AssistantTaskCard) => {

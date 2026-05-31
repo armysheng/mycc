@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
 import { ChatPage } from "./components/ChatPage";
 import { SettingsProvider } from "./contexts/SettingsContext";
@@ -11,6 +11,11 @@ global.fetch = vi.fn();
 
 const FORBIDDEN_PRODUCT_TERMS =
   /E2B|CCR|Agent SDK|code-server|GNU|sandbox|沙盒|Claude Code|Claude 工作空间|base url|tokens?|sessions?/i;
+
+function WorkspaceLocationProbe() {
+  const location = useLocation();
+  return <div data-testid="workspace-location">{location.pathname}{location.search}</div>;
+}
 
 describe("App Routing", () => {
   beforeEach(() => {
@@ -180,5 +185,79 @@ describe("App Routing", () => {
         permissionMode: "bypassPermissions",
       });
     });
+  });
+
+  it("opens assistant deliverables through safe workspace URLs from the home surface", async () => {
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
+      key === "token" ? "test-token" : null
+    ));
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/me")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              id: 42,
+              email: "tester@example.com",
+              assistant_name: "小麦",
+              linux_user: "tester",
+              plan: "free",
+              is_initialized: true,
+            },
+          }),
+        });
+      }
+      if (url.endsWith("/api/assistant/home")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              assistant: { name: "小麦", initialized: true },
+              tasks: [],
+              deliverables: [
+                {
+                  id: "workspace:/reports/product-roadmap.md",
+                  kind: "report",
+                  title: "产品路线报告",
+                  source: "current_workspace",
+                  status: "ready",
+                  url: "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+                },
+              ],
+              memory: { sources: [] },
+              capabilities: [],
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { skills: [] } }),
+      });
+    });
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SettingsProvider>
+            <MemoryRouter initialEntries={["/"]}>
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+                <Route path="/workspace" element={<WorkspaceLocationProbe />} />
+              </Routes>
+            </MemoryRouter>
+          </SettingsProvider>
+        </AuthProvider>,
+      );
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开成果" }));
+
+    expect(await screen.findByTestId("workspace-location")).toHaveTextContent(
+      "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+    );
   });
 });
