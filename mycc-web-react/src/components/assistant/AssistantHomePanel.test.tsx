@@ -316,6 +316,47 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText("失败的报告")).not.toBeInTheDocument();
   });
 
+  it("shows a product status when deliverables exist but are not ready yet", () => {
+    const onOpenWorkspace = vi.fn();
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        inputSlot={<div data-testid="home-input-slot" />}
+        onOpenWorkspace={onOpenWorkspace}
+        data={{
+          ...baseData,
+          tasks: [],
+          deliverables: [
+            {
+              id: "workspace:/reports/pending-report.md",
+              kind: "report",
+              title: "生成中的报告",
+              source: "current_workspace",
+              status: "pending",
+              path: "/reports/pending-report.md",
+            },
+            {
+              id: "workspace:/reports/failed-report.md",
+              kind: "report",
+              title: "失败的报告",
+              source: "current_workspace",
+              status: "error",
+              path: "/reports/failed-report.md",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("成果还在整理")).toBeInTheDocument();
+    expect(screen.getByText("完成后会出现在成果空间。")).toBeInTheDocument();
+    expect(screen.queryByText("生成中的报告")).not.toBeInTheDocument();
+    expect(screen.queryByText("失败的报告")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看成果空间" }));
+    expect(onOpenWorkspace).toHaveBeenCalledOnce();
+  });
+
   it("does not render raw launch URLs or secret-like provider fields", () => {
     const unsafeData = ({
       ...baseData,

@@ -33,8 +33,11 @@ export function AssistantHomePanel({
   modeLabel = "本地模式",
 }: AssistantHomePanelProps) {
   const tasks = (data?.tasks ?? []).filter(isUserVisibleTask);
+  const rawDeliverables = data?.deliverables ?? [];
   const deliverables = (data?.deliverables ?? []).filter(isReadyDeliverable);
   const primaryDeliverable = deliverables[0] ?? null;
+  const hasUnreadyDeliverables = deliverables.length === 0
+    && rawDeliverables.some((deliverable) => deliverable.status !== "ready");
   const memoryAvailable = (data?.memory.sources ?? []).some((source) => source.status !== "missing");
   const workspaceChip = workspaceName || toProductWorkspaceLabel(data?.workspace?.label) || "当前项目";
   const headline = workspaceName
@@ -75,7 +78,7 @@ export function AssistantHomePanel({
           </button>
         </div>
 
-        {(tasks.length > 0 || primaryDeliverable || loading || error) && (
+        {(tasks.length > 0 || primaryDeliverable || hasUnreadyDeliverables || loading || error) && (
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             {tasks.slice(0, 3).map((task) => (
               <button
@@ -98,6 +101,9 @@ export function AssistantHomePanel({
                 deliverable={primaryDeliverable}
                 onOpenDeliverable={onOpenDeliverable}
               />
+            )}
+            {hasUnreadyDeliverables && (
+              <DeliverableProgressPill onOpenWorkspace={onOpenWorkspace} />
             )}
             {loading && (
               <span className="rounded-full border border-slate-200 px-3 py-1.5 dark:border-slate-700">
@@ -155,6 +161,30 @@ function ContextChip({ label }: { label: string }) {
     <span className="rounded-full border border-slate-200 bg-white/55 px-3 py-1.5 font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
       {label}
     </span>
+  );
+}
+
+function DeliverableProgressPill({
+  onOpenWorkspace,
+}: {
+  onOpenWorkspace?: () => void;
+}) {
+  return (
+    <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white/60 px-2 py-1 dark:border-slate-700 dark:bg-slate-900/50">
+      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        成果还在整理
+      </span>
+      <span className="hidden text-slate-400 sm:inline">
+        完成后会出现在成果空间。
+      </span>
+      <button
+        type="button"
+        onClick={onOpenWorkspace}
+        className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+      >
+        查看成果空间
+      </button>
+    </div>
   );
 }
 
