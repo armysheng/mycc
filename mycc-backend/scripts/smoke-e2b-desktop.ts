@@ -84,29 +84,20 @@ async function main() {
     sessionId = created.data.id;
     assertNoProviderSecrets(created.data);
 
-    const desktop = await requestJson<IdeSessionResponse>(`/api/ide/sessions/${sessionId}/desktop`, {
+    const desktop = await requestJsonWithHeaders<IdeSessionResponse>(`/api/ide/sessions/${sessionId}/desktop`, {
       method: 'POST',
       headers: { authorization },
     });
-    assertNoProviderSecrets(desktop.data);
-    if (desktop.data.desktop?.status !== 'running' || !desktop.data.desktop.openPath) {
-      throw new Error(`GNU desktop did not start: ${JSON.stringify(desktop.data)}`);
+    assertNoProviderSecrets(desktop.body.data);
+    if (desktop.body.data.desktop?.status !== 'running' || !desktop.body.data.desktop.openPath) {
+      throw new Error(`GNU desktop did not start: ${JSON.stringify(desktop.body.data)}`);
     }
 
     const privateSession = await getPrivateDesktopSession(sessionId);
     await assertDirectDesktopHostRejectsUnauthenticatedTraffic(privateSession);
 
-    const open = await fetch(resolveUrl(desktop.data.desktop.openPath), {
-      redirect: 'manual',
-    });
-    if (open.status !== 302) {
-      throw new Error(`Expected /desktop/open to return 302, got ${open.status}`);
-    }
-    const cookie = extractProxyCookie(open.headers);
-    const location = open.headers.get('location');
-    if (!location?.includes(`/api/ide/sessions/${sessionId}/desktop/proxy/vnc.html`)) {
-      throw new Error(`Unexpected /desktop/open redirect location: ${location}`);
-    }
+    const cookie = extractProxyCookie(desktop.headers);
+    const location = desktop.body.data.desktop.openPath;
 
     await waitForNoVncProxy(location, cookie);
     console.log(`[ok] E2B desktop smoke passed: session=${sessionId}, template=${templateName}`);
@@ -122,6 +113,14 @@ async function main() {
 }
 
 async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {
+  const { body } = await requestJsonWithHeaders<T>(pathOrUrl, init);
+  return body;
+}
+
+async function requestJsonWithHeaders<T>(
+  pathOrUrl: string,
+  init: RequestInit = {},
+): Promise<{ body: T; headers: Headers }> {
   let response: Response;
   try {
     response = await fetch(resolveUrl(pathOrUrl), {
@@ -142,7 +141,10 @@ async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promis
   if (!response.ok) {
     throw new Error(`${init.method || 'GET'} ${pathOrUrl} failed: ${response.status} ${body}`);
   }
-  return JSON.parse(body) as T;
+  return {
+    body: JSON.parse(body) as T,
+    headers: response.headers,
+  };
 }
 
 async function waitForNoVncProxy(location: string, cookie: string): Promise<void> {
