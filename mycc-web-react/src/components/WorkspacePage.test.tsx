@@ -97,7 +97,7 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开深度编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开编辑视图" }));
 
     expect(open).toHaveBeenCalledWith("about:blank", "_blank");
     expect(openedWindow.opener).toBeNull();
@@ -215,8 +215,8 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("深度编辑未启用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开深度编辑" })).toBeDisabled();
+    expect(await screen.findByText("编辑视图未启用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开编辑视图" })).toBeDisabled();
   });
 
   it("shows workspace readiness without provider jargon when the backend provider is enabled", async () => {
@@ -252,7 +252,7 @@ describe("WorkspacePage", () => {
     );
 
     expect(await screen.findByText("文件空间可用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开深度编辑" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "打开编辑视图" })).toBeEnabled();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
@@ -539,6 +539,81 @@ describe("WorkspacePage", () => {
     );
   });
 
+  it("previews an assistant deliverable through the workspace preview API without exposing provider details", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({
+          deliverables: [
+            {
+              id: "workspace:/reports/product-roadmap.md",
+              kind: "report",
+              title: "产品路线报告",
+              source: "current_workspace",
+              status: "ready",
+              description: "8 KB · 来自当前工作区",
+              path: "/reports/product-roadmap.md",
+              updatedAt: "2026-05-31T08:00:00.000Z",
+            },
+          ],
+        }) as Response);
+      }
+      if (url === "/api/workspace/preview?path=%2Freports%2Fproduct-roadmap.md") {
+        return Promise.resolve(okJson({
+          path: "/reports/product-roadmap.md",
+          size: 8192,
+          mtime: "2026-05-31T08:00:00.000Z",
+          mimeType: "text/markdown",
+          previewType: "markdown",
+          truncated: false,
+          supported: true,
+          content: "# 产品路线报告\n\n下季度重点是提升成果空间体验。",
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("产品路线报告")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "预览 产品路线报告" }));
+
+    expect(await screen.findByText(/下季度重点是提升成果空间体验/)).toBeInTheDocument();
+    expect(screen.getByText("成果预览")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/workspace/preview?path=%2Freports%2Fproduct-roadmap.md",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+      }),
+    );
+    expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
+  });
+
   it("keeps editor capability user-facing without exposing provider or token details", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
@@ -577,8 +652,8 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("更多工具")).toBeInTheDocument();
-    expect(screen.getByText("深度编辑")).toBeInTheDocument();
+    expect(await screen.findByText("需要时使用")).toBeInTheDocument();
+    expect(screen.getByText("编辑视图")).toBeInTheDocument();
     expect(screen.getByText("可使用")).toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
     expect(screen.queryByText(/sbx_secret_123/)).not.toBeInTheDocument();
@@ -612,8 +687,8 @@ describe("WorkspacePage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("需要先打开深度编辑")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开深度编辑" })).toBeEnabled();
+    expect(await screen.findByText("需要先打开编辑视图")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开编辑视图" })).toBeEnabled();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
     expect(screen.queryByText(/系统错误|Workspace session missing|E2B 工作区会话不存在/)).not.toBeInTheDocument();
   });

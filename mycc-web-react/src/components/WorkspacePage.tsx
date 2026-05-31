@@ -26,6 +26,7 @@ import {
   getIdeDesktopSessionUrl,
   getIdeSessionsUrl,
   getWorkspaceFileUrl,
+  getWorkspacePreviewUrl,
   getWorkspaceSaveFileUrl,
   getWorkspaceTreeUrl,
   resolveIdeOpenUrl,
@@ -50,6 +51,19 @@ interface WorkspaceFileData {
   truncated: boolean;
   binary: boolean;
   content: string | null;
+}
+
+interface WorkspacePreviewData {
+  path: string;
+  size: number;
+  mtime: string;
+  mimeType: string;
+  previewType: "image" | "html" | "markdown" | "text" | "pdf" | "unsupported";
+  truncated: boolean;
+  supported: boolean;
+  content?: string;
+  dataUrl?: string;
+  reason?: string;
 }
 
 interface IdeConfigData {
@@ -117,14 +131,18 @@ function safeWorkspaceErrorMessage(error: unknown, fallback: string): string {
     return "工作区暂不可用，请稍后重试。";
   }
   return message
-    .replace(/\bRemote IDE\b/gi, "深度编辑")
+    .replace(/\bClaude Code\b/gi, "编辑视图")
+    .replace(/Claude 工作空间/g, "工作区")
+    .replace(/\bbase\s*url\b/gi, "服务地址")
+    .replace(/\bRemote IDE\b/gi, "编辑视图")
     .replace(/\bE2B\b/gi, "文件空间")
-    .replace(/\bcode-server\b/gi, "深度编辑")
+    .replace(/\bcode-server\b/gi, "编辑视图")
     .replace(/\bCCR\b/gi, "模型连接")
     .replace(/\bAgent SDK\b/gi, "助理运行环境")
     .replace(/\bGNU\b/gi, "桌面工作间")
     .replace(/\bsandbox\b/gi, "工作区")
     .replace(/\bsessions?\b/gi, "工作区")
+    .replace(/\btokens?\b/gi, "凭据")
     .replace(/会话 ID/g, "打开凭据")
     .replace(/沙盒/g, "工作区");
 }
@@ -133,6 +151,7 @@ function isLowLevelWorkspaceError(message: string): boolean {
   return /\b(column|relation|table|constraint)\b.+\bdoes not exist\b/i.test(message)
     || /\bSQLSTATE\b|\bsyntax error at or near\b|\bpg_[a-z_]+\b/i.test(message)
     || /\b(token|secret|password)=/i.test(message)
+    || /\b(token|secret|password|credential|session|private[-_\s]?key|api[-_\s]?key)\b/i.test(message)
     || /\b[A-Z0-9_]{8,}\b/.test(message);
 }
 
@@ -231,7 +250,7 @@ function flattenWorkspaceFiles(node: WorkspaceTreeNode | null): WorkspaceTreeNod
 function getDeliverableKind(node: WorkspaceTreeNode): string {
   const lower = node.path.toLowerCase();
   if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "截图";
-  if (/\.(log|txt)$/.test(lower)) return "运行记录";
+  if (/\.(log|txt)$/.test(lower)) return "处理记录";
   if (/\.(html|htm)$/.test(lower) || lower.includes("preview")) return "预览";
   if (lower.includes("diff") || lower.endsWith(".patch")) return "变更说明";
   if (lower.includes("report") || lower.includes("research") || lower.includes("调研") || lower.includes("报告")) {
@@ -249,7 +268,7 @@ function getAssistantDeliverableKindLabel(kind: AssistantDeliverableCard["kind"]
     link: "链接",
     preview: "预览",
     screenshot: "截图",
-    log: "运行记录",
+    log: "处理记录",
     pr: "协作记录",
     dataset: "数据集",
   };
@@ -347,6 +366,9 @@ export function WorkspacePage() {
   const [fileLoading, setFileLoading] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<WorkspacePreviewData | null>(null);
   const [ideOpening, setIdeOpening] = useState(false);
   const [desktopOpening, setDesktopOpening] = useState(false);
   const [ideConfig, setIdeConfig] = useState<IdeConfigData | null>(null);
@@ -425,7 +447,7 @@ export function WorkspacePage() {
     } catch (err) {
       setIdeConfig(null);
       setIdeSession(null);
-      setIdeConfigError(safeWorkspaceErrorMessage(err, "深度编辑状态检查失败"));
+      setIdeConfigError(safeWorkspaceErrorMessage(err, "编辑视图状态检查失败"));
     } finally {
       setIdeConfigLoading(false);
     }
@@ -448,6 +470,7 @@ export function WorkspacePage() {
     setFileLoading(true);
     setError(null);
     setNotice(null);
+    setPreviewError(null);
     try {
       const json = await apiFetch(getWorkspaceFileUrl(filePath));
       const file = json?.data as WorkspaceFileData;
@@ -464,6 +487,20 @@ export function WorkspacePage() {
       setError(safeWorkspaceErrorMessage(err, "读取文件失败"));
     } finally {
       setFileLoading(false);
+    }
+  }, [apiFetch]);
+
+  const loadPreview = useCallback(async (filePath: string) => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const json = await apiFetch(getWorkspacePreviewUrl(filePath));
+      setPreviewData(json?.data as WorkspacePreviewData);
+    } catch (err) {
+      setPreviewData(null);
+      setPreviewError(safeWorkspaceErrorMessage(err, "预览暂不可用"));
+    } finally {
+      setPreviewLoading(false);
     }
   }, [apiFetch]);
 
@@ -501,12 +538,23 @@ export function WorkspacePage() {
   const openDeliverable = useCallback((deliverable: WorkspaceDeliverable) => {
     if (deliverable.path) {
       void loadFile(deliverable.path);
+      void loadPreview(deliverable.path);
       return;
     }
     if (deliverable.url) {
       window.open(deliverable.url, "_blank", "noopener,noreferrer");
     }
-  }, [loadFile]);
+  }, [loadFile, loadPreview]);
+
+  const previewDeliverable = useCallback((deliverable: WorkspaceDeliverable) => {
+    if (deliverable.path) {
+      void loadPreview(deliverable.path);
+      return;
+    }
+    if (deliverable.url) {
+      window.open(deliverable.url, "_blank", "noopener,noreferrer");
+    }
+  }, [loadPreview]);
 
   const openCodeEditor = useCallback(async () => {
     setIdeOpening(true);
@@ -521,13 +569,13 @@ export function WorkspacePage() {
       const config = configJson?.data as IdeConfigData | undefined;
       setIdeConfig(config ?? null);
       if (config?.enabled === false) {
-        throw new Error("深度编辑当前未启用");
+        throw new Error("编辑视图当前未启用");
       }
 
       const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
       const session = sessionJson?.data as IdeSessionData | undefined;
       if (!session?.openPath) {
-        throw new Error("深度编辑准备好了，但缺少打开地址");
+        throw new Error("编辑视图准备好了，但缺少打开地址");
       }
       setIdeSession(session);
 
@@ -538,11 +586,11 @@ export function WorkspacePage() {
         window.open(openUrl, "_blank", "noopener,noreferrer");
       }
       setWorkspaceNeedsIde(false);
-      setNotice("深度编辑已在新标签页打开");
+      setNotice("编辑视图已在新标签页打开");
       void loadTree();
     } catch (err) {
       ideWindow?.close();
-      setError(safeWorkspaceErrorMessage(err, "打开深度编辑失败"));
+      setError(safeWorkspaceErrorMessage(err, "打开编辑视图失败"));
     } finally {
       setIdeOpening(false);
     }
@@ -631,10 +679,14 @@ export function WorkspacePage() {
 
   const onTreeNodeClick = useCallback((node: WorkspaceTreeNode) => {
     setActivePath(node.path);
+    if (node.type === "file" && previewData?.path !== node.path) {
+      setPreviewData(null);
+      setPreviewError(null);
+    }
     if (node.type === "file") {
       void loadFile(node.path);
     }
-  }, [loadFile]);
+  }, [loadFile, previewData?.path]);
 
   const renderTreeNode = useCallback(({ node, style }: NodeRendererProps<WorkspaceTreeNode>) => {
     const data = node.data;
@@ -670,16 +722,17 @@ export function WorkspacePage() {
   const deliverables = assistantDeliverables.length > 0 ? assistantDeliverables : treeDeliverables;
   const ideDisabled = ideOpening || ideConfig?.enabled === false;
   const desktopDisabled = desktopOpening || ideConfig?.enabled === false || ideConfig?.desktopEnabled === false;
+  const previewDisabled = previewLoading || !activeFile;
   const isRunningE2bSession = ideSession?.status === "running" && (
     ideSession.provider === "e2b" || ideConfig?.provider === "e2b"
   );
   const ideStatusLabel = (() => {
     if (ideConfigLoading) return "文件空间准备中";
     if (ideConfigError) return "文件空间状态未知";
-    if (ideConfig?.enabled === false) return "深度编辑未启用";
+    if (ideConfig?.enabled === false) return "编辑视图未启用";
     if (isRunningE2bSession) return "文件空间已连接";
     if (ideConfig?.provider === "e2b") return "文件空间可用";
-    if (ideConfig?.enabled) return "深度编辑可打开";
+    if (ideConfig?.enabled) return "编辑视图可打开";
     return "文件空间待检测";
   })();
   const ideStatusDetail = (() => {
@@ -690,7 +743,7 @@ export function WorkspacePage() {
       return `当前文件空间${expires}`;
     }
     if (ideConfig?.provider === "e2b") {
-      return "需要细看或大改文件时，会打开深度编辑视图。";
+      return "需要细看或大改文件时，会打开编辑视图。";
     }
     return "打开后会复用或准备你的文件空间。";
   })();
@@ -701,6 +754,12 @@ export function WorkspacePage() {
     if (ideConfig?.provider === "e2b") return "需要时可打开";
     if (ideConfig?.enabled) return "可打开";
     return "待检测";
+  })();
+  const previewCapabilityLabel = (() => {
+    if (previewLoading) return "生成中";
+    if (previewData?.supported) return "已生成";
+    if (activePath) return "可预览";
+    return "选择成果";
   })();
 
   return (
@@ -715,7 +774,7 @@ export function WorkspacePage() {
                 成果空间
               </div>
               <h1 className="text-2xl font-semibold tracking-tight">成果空间</h1>
-              <p className="text-xs text-slate-500 mt-1">集中查看助理整理的文件、成果和深度编辑入口；日常入口仍然是对话。</p>
+              <p className="text-xs text-slate-500 mt-1">集中查看助理整理的资料和成果；日常入口仍然是对话。</p>
               <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-800/80 dark:bg-emerald-900/25 dark:text-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span className="font-medium">{ideStatusLabel}</span>
@@ -733,7 +792,7 @@ export function WorkspacePage() {
                 disabled={ideDisabled}
                 className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
               >
-                {ideOpening ? "打开中..." : "打开深度编辑"}
+                {ideOpening ? "打开中..." : "打开编辑视图"}
               </button>
               <button
                 type="button"
@@ -742,7 +801,7 @@ export function WorkspacePage() {
                 }}
                 className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                刷新资料
+                刷新列表
               </button>
               <button
                 type="button"
@@ -753,7 +812,7 @@ export function WorkspacePage() {
                 className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, var(--accent), #0284c7)" }}
               >
-                {saving ? "保存中..." : "保存修改"}
+                {saving ? "保存中..." : "保存"}
               </button>
             </div>
           </header>
@@ -770,9 +829,9 @@ export function WorkspacePage() {
                   <div className="text-xs text-slate-500 px-2 py-3">加载资料中...</div>
                 ) : workspaceNeedsIde ? (
                   <div className="m-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-100">
-                    <div className="font-semibold">需要先打开深度编辑</div>
+                    <div className="font-semibold">需要先打开编辑视图</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-700 dark:text-emerald-200/80">
-                      当前资料列表会复用你的文件空间。先打开深度编辑，准备好后这里会显示同一份文件。
+                      当前资料列表会复用你的文件空间。先打开编辑视图，准备好后这里会显示同一份文件。
                     </p>
                     <button
                       type="button"
@@ -813,7 +872,7 @@ export function WorkspacePage() {
                 {fileLoading ? (
                   <div className="h-full flex items-center justify-center text-sm text-slate-500">读取文件中...</div>
                 ) : !activeFile ? (
-                  <div className="h-full flex items-center justify-center text-sm text-slate-500">从左侧选择一个文件开始编辑</div>
+                  <div className="h-full flex items-center justify-center text-sm text-slate-500">选择一份资料查看或修改</div>
                 ) : activeFile.binary ? (
                   <div className="h-full flex items-center justify-center text-sm text-slate-500">二进制文件暂不支持在线编辑</div>
                 ) : (
@@ -838,18 +897,14 @@ export function WorkspacePage() {
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
                 <InspectorPanel
                   title="最近成果"
-                  subtitle="从当前文件空间中识别报告、预览、运行记录和截图。"
+                  subtitle="这里会汇总助理产出的报告、页面、截图和处理结果。"
                 >
                   {deliverables.length > 0 ? (
                     <div className="space-y-2">
                       {deliverables.map((deliverable) => (
-                        <button
+                        <article
                           key={deliverable.id}
-                          type="button"
-                          aria-label={`打开 ${deliverable.title}`}
-                          onClick={() => openDeliverable(deliverable)}
-                          disabled={!deliverable.path && !deliverable.url}
-                          className="group w-full rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-left transition hover:border-sky-200 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/70 dark:hover:border-sky-700 dark:hover:bg-slate-800"
+                          className="group rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-left transition hover:border-sky-200 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/70 dark:hover:border-sky-700 dark:hover:bg-slate-800"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -869,19 +924,39 @@ export function WorkspacePage() {
                               {deliverable.size ? formatSize(deliverable.size) : "成果"} · {formatTime(deliverable.mtime)}
                             </div>
                           )}
-                        </button>
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              type="button"
+                              aria-label={`打开 ${deliverable.title}`}
+                              onClick={() => openDeliverable(deliverable)}
+                              disabled={!deliverable.path && !deliverable.url}
+                              className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-200 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-700 dark:hover:text-sky-200"
+                            >
+                              打开
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`预览 ${deliverable.title}`}
+                              onClick={() => previewDeliverable(deliverable)}
+                              disabled={!deliverable.path && !deliverable.url}
+                              className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                            >
+                              预览
+                            </button>
+                          </div>
+                        </article>
                       ))}
                     </div>
                   ) : (
                     <EmptyInspectorCopy>
-                      还没有识别到成果。助理写出的报告、截图、运行记录和预览会优先出现在这里。
+                      还没有识别到成果。助理写出的报告、截图、处理记录和预览会优先出现在这里。
                     </EmptyInspectorCopy>
                   )}
                 </InspectorPanel>
 
                 <InspectorPanel
-                  title="当前文件"
-                  subtitle="轻量查看和小改；复杂编辑交给深度编辑。"
+                  title="正在查看"
+                  subtitle="适合快速查看和少量修改；复杂处理可打开编辑视图。"
                 >
                   {activeFile ? (
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-sm dark:border-slate-700/80 dark:bg-slate-800/70">
@@ -896,6 +971,16 @@ export function WorkspacePage() {
                           有未保存修改
                         </div>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeFile?.path) void loadPreview(activeFile.path);
+                        }}
+                        disabled={previewDisabled}
+                        className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+                      >
+                        {previewLoading ? "生成预览中..." : "预览当前文件"}
+                      </button>
                     </div>
                   ) : (
                     <EmptyInspectorCopy>
@@ -905,12 +990,31 @@ export function WorkspacePage() {
                 </InspectorPanel>
 
                 <InspectorPanel
-                  title="更多工具"
+                  title="成果预览"
+                  subtitle="快速查看报告、页面和截图，不必先进入编辑视图。"
+                >
+                  {previewLoading ? (
+                    <EmptyInspectorCopy>正在生成预览...</EmptyInspectorCopy>
+                  ) : previewError ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs leading-5 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                      {previewError}
+                    </div>
+                  ) : previewData ? (
+                    <PreviewCard preview={previewData} />
+                  ) : (
+                    <EmptyInspectorCopy>
+                      从最近成果点“预览”，或选择文件后预览当前文件。
+                    </EmptyInspectorCopy>
+                  )}
+                </InspectorPanel>
+
+                <InspectorPanel
+                  title="需要时使用"
                   subtitle="这些入口按需打开，不占用助理首页。"
                 >
                   <div className="space-y-2">
                     <CapabilityRow
-                      title="深度编辑"
+                      title="编辑视图"
                       status={codeServerCapabilityLabel}
                       description="适合大改文件、查看项目结构和处理复杂修改。"
                       actionLabel={ideOpening ? "打开中..." : "打开"}
@@ -931,9 +1035,13 @@ export function WorkspacePage() {
                     />
                     <CapabilityRow
                       title="预览"
-                      status="待接入"
-                      description="后续展示页面预览和截图成果。"
-                      disabled
+                      status={previewCapabilityLabel}
+                      description="快速查看报告、页面和截图成果。"
+                      actionLabel={previewLoading ? "生成中..." : "预览当前文件"}
+                      disabled={previewDisabled}
+                      onAction={() => {
+                        if (activeFile?.path) void loadPreview(activeFile.path);
+                      }}
                     />
                   </div>
                 </InspectorPanel>
@@ -977,6 +1085,64 @@ function EmptyInspectorCopy({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
       {children}
+    </div>
+  );
+}
+
+function PreviewCard({ preview }: { preview: WorkspacePreviewData }) {
+  const previewLabel = preview.truncated ? "预览内容较长，已显示前半部分。" : null;
+
+  if (!preview.supported || preview.previewType === "unsupported") {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+        {preview.reason || "这个文件暂不适合直接预览。"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700/80 dark:bg-slate-900">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+        <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+          {preview.path}
+        </span>
+        <span className="shrink-0 text-[11px] text-slate-400">
+          {formatSize(preview.size)}
+        </span>
+      </div>
+
+      {preview.previewType === "image" && preview.dataUrl ? (
+        <div className="bg-slate-50 p-2 dark:bg-slate-950">
+          <img
+            src={preview.dataUrl}
+            alt={`${preview.path} 预览`}
+            className="max-h-80 w-full rounded-xl object-contain"
+          />
+        </div>
+      ) : preview.previewType === "html" ? (
+        <iframe
+          title={`${preview.path} 预览`}
+          sandbox=""
+          srcDoc={preview.content || ""}
+          className="h-80 w-full bg-white dark:bg-white"
+        />
+      ) : preview.previewType === "pdf" && preview.dataUrl ? (
+        <iframe
+          title={`${preview.path} 预览`}
+          src={preview.dataUrl}
+          className="h-80 w-full bg-white dark:bg-white"
+        />
+      ) : (
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+          {preview.content || "没有可显示的预览内容。"}
+        </pre>
+      )}
+
+      {previewLabel && (
+        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+          {previewLabel}
+        </div>
+      )}
     </div>
   );
 }

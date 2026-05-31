@@ -117,6 +117,10 @@ export const getWorkspaceFileUrl = (path: string) => {
   return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`;
 };
 
+export const getWorkspacePreviewUrl = (path: string) => {
+  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/preview?path=${encodeURIComponent(path)}`;
+};
+
 export const getWorkspaceSaveFileUrl = () => {
   return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file`;
 };

@@ -134,6 +134,176 @@ describe('workspace route helpers', () => {
     expect(command).toContain('/home/mycc/workspace');
   });
 
+  it('serves safe workspace previews without exposing provider details', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        path: '/reports/preview.html',
+        size: 42,
+        mtime: '2026-05-31T12:00:00.000Z',
+        mimeType: 'text/html',
+        previewType: 'html',
+        truncated: false,
+        supported: true,
+        content: '<h1>Preview</h1>',
+      }),
+      stderr: '',
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/preview?path=/reports/preview.html',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        path: '/reports/preview.html',
+        size: 42,
+        mtime: '2026-05-31T12:00:00.000Z',
+        mimeType: 'text/html',
+        previewType: 'html',
+        truncated: false,
+        supported: true,
+        content: '<h1>Preview</h1>',
+      },
+    });
+    expect(response.body).not.toMatch(/traffic-token|proxy-token|sbx_123|e2b\.app/i);
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      runningSession,
+      expect.stringContaining("node -e '"),
+      expect.objectContaining({
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 30000,
+      }),
+    );
+  });
+
+  it('rejects secret-looking workspace preview paths before running remote commands', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const runCommandInSession = vi.fn();
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/preview?path=/.env',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '该文件不适合预览',
+    });
+    expect(runCommandInSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects secret-looking workspace preview directories before running remote commands', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const runCommandInSession = vi.fn();
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/preview?path=/reports/secrets/preview.html',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '该文件不适合预览',
+    });
+    expect(runCommandInSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects traversal preview paths before running remote commands', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const runCommandInSession = vi.fn();
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/preview?path=/../../etc/passwd',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '非法路径',
+    });
+    expect(runCommandInSession).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe preview error when files exceed the 2MB preview limit', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: {
+        runCommandInSession: vi.fn().mockResolvedValue({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'preview-too-large E2B sbx_123 traffic-token proxy-token session provider',
+        }),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/preview?path=/reports/big.html',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '文件过大，暂不支持预览',
+    });
+    expect(response.body).not.toMatch(/traffic-token|proxy-token|sbx_123|E2B|session|provider/i);
+  });
+
   it('requires a running E2B IDE session before serving E2B workspace files', async () => {
     const app = await buildApp({
       env: {

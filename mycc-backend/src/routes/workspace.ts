@@ -54,6 +54,10 @@ const fileQuerySchema = z.object({
   path: z.string().min(1, '文件路径不能为空'),
 });
 
+const previewQuerySchema = z.object({
+  path: z.string().min(1, '文件路径不能为空'),
+});
+
 const saveFileSchema = z.object({
   path: z.string().min(1, '文件路径不能为空'),
   content: z.string().max(120 * 1024, '文件内容过大，最大 120KB'),
@@ -139,6 +143,43 @@ const READ_FILE_SCRIPT = [
   '  binary,',
   '  content:binary?null:buf.toString("utf8"),',
   '}));',
+].join('');
+
+const PREVIEW_FILE_SCRIPT = [
+  'const fs=require("fs");',
+  'const path=require("path");',
+  'const root=path.resolve(process.argv[1]);',
+  'const rel=(process.argv[2]||".").replace(/^\\/+/,"");',
+  'const maxBytes=2*1024*1024;',
+  'const rootReal=fs.realpathSync(root);',
+  'const abs=path.resolve(root,rel||".");',
+  'const absReal=fs.realpathSync(abs);',
+  'const inside=(base,p)=>p===base||p.startsWith(base+path.sep);',
+  'if(!inside(rootReal,absReal)) throw new Error("path-outside-workspace");',
+  'const stat=fs.statSync(absReal);',
+  'if(stat.isDirectory()) throw new Error("path-is-directory");',
+  'if(stat.size>maxBytes) throw new Error("preview-too-large");',
+  'const ext=path.extname(absReal).toLowerCase();',
+  'const mimeMap={',
+  '  ".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".gif":"image/gif",".webp":"image/webp",".svg":"image/svg+xml",',
+  '  ".html":"text/html",".htm":"text/html",".md":"text/markdown",".markdown":"text/markdown",".txt":"text/plain",".log":"text/plain",',
+  '  ".json":"application/json",".csv":"text/csv",".diff":"text/x-diff",".patch":"text/x-diff",".pdf":"application/pdf",',
+  '};',
+  'const mimeType=mimeMap[ext]||"text/plain";',
+  'const image=mimeType.startsWith("image/");',
+  'const pdf=mimeType==="application/pdf";',
+  'const html=mimeType==="text/html";',
+  'const markdown=mimeType==="text/markdown";',
+  'const buf=fs.readFileSync(absReal);',
+  'const binary=buf.includes(0);',
+  'const relPath=path.relative(rootReal,absReal).split(path.sep).join("/");',
+  'if(image||pdf){',
+  '  process.stdout.write(JSON.stringify({path:"/"+relPath,size:stat.size,mtime:new Date(stat.mtimeMs).toISOString(),mimeType,previewType:image?"image":"pdf",truncated:false,supported:true,dataUrl:`data:${mimeType};base64,${buf.toString("base64")}`}));',
+  '}else if(!binary){',
+  '  process.stdout.write(JSON.stringify({path:"/"+relPath,size:stat.size,mtime:new Date(stat.mtimeMs).toISOString(),mimeType,previewType:html?"html":markdown?"markdown":"text",truncated:false,supported:true,content:buf.toString("utf8")}));',
+  '}else{',
+  '  process.stdout.write(JSON.stringify({path:"/"+relPath,size:stat.size,mtime:new Date(stat.mtimeMs).toISOString(),mimeType:"application/octet-stream",previewType:"unsupported",truncated:false,supported:false,reason:"该文件暂不支持预览"}));',
+  '}',
 ].join('');
 
 const WRITE_FILE_SCRIPT = [
@@ -273,6 +314,9 @@ async function runNodeTask<T>(
     }
     if (stderr.includes('content-too-large')) {
       throw new WorkspaceRouteError(400, '文件内容过大，最大 120KB');
+    }
+    if (stderr.includes('preview-too-large')) {
+      throw new WorkspaceRouteError(400, '文件过大，暂不支持预览');
     }
     throw new WorkspaceRouteError(500, '工作区暂不可用，请稍后重试', 'workspace_unavailable');
   }
@@ -446,6 +490,47 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
     }
   });
 
+  fastify.get('/api/workspace/preview', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ success: false, error: '未认证' });
+    }
+
+    try {
+      const query = previewQuerySchema.parse(request.query);
+      const relPath = normalizeWorkspacePath(query.path);
+      assertPreviewablePath(relPath);
+
+      const preview = await withWorkspaceRunner(request.user, async (runner) => {
+        return runNodeTask<{
+          path: string;
+          size: number;
+          mtime: string;
+          mimeType: string;
+          previewType: 'image' | 'html' | 'markdown' | 'text' | 'pdf' | 'unsupported';
+          truncated: boolean;
+          supported: boolean;
+          content?: string;
+          dataUrl?: string;
+          reason?: string;
+        }>(
+          runner,
+          PREVIEW_FILE_SCRIPT,
+          [runner.workspaceRoot, relPath],
+          30000,
+        );
+      });
+
+      return reply.send({
+        success: true,
+        data: preview,
+      });
+    } catch (err) {
+      return sendWorkspaceError(reply, err);
+    }
+  });
+
   fastify.put('/api/workspace/file', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -517,5 +602,15 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
         return sendWorkspaceError(reply, err);
       }
     });
+  }
+}
+
+function assertPreviewablePath(relPath: string): void {
+  const parts = relPath.split('/').filter(Boolean);
+  if (parts.some((part) => part.startsWith('.'))) {
+    throw new WorkspaceRouteError(400, '该文件不适合预览');
+  }
+  if (parts.some((part) => /\b(env|secrets?|tokens?|password|credentials?|private[-_]?key|api[-_]?key)\b/i.test(part))) {
+    throw new WorkspaceRouteError(400, '该文件不适合预览');
   }
 }
