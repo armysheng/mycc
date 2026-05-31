@@ -165,11 +165,10 @@ describe("WorkspacePage", () => {
     expect(open).toHaveBeenCalledWith("about:blank", "_blank");
     expect(openedWindow.opener).toBeNull();
 
-    config.resolve(okJson({ enabled: true, provider: "e2b", desktopEnabled: true }));
-    session.resolve(okJson({ id: "ide_123", provider: "e2b", status: "running" }));
+    config.resolve(okJson({ enabled: true, desktopEnabled: true }));
+    session.resolve(okJson({ id: "ide_123", status: "running" }));
     desktop.resolve(okJson({
       id: "ide_123",
-      provider: "e2b",
       status: "running",
       desktop: {
         status: "running",
@@ -204,7 +203,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: false, provider: "disabled" }) as Response);
+        return Promise.resolve(okJson({ enabled: false, desktopEnabled: false }) as Response);
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
@@ -237,7 +236,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -274,7 +273,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -294,7 +293,7 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
-  it("shows the current running E2B IDE session without creating a new one", async () => {
+  it("shows the current running workbench session without creating a new one", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input, init) => {
       const url = String(input);
@@ -312,14 +311,12 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         expect(init?.method).toBeUndefined();
         return Promise.resolve(okJson({
           id: "ide_123",
-          provider: "e2b",
-          sandboxId: "sbx_123",
           status: "running",
           openPath: "/api/ide/sessions/ide_123/proxy/",
         }) as Response);
@@ -369,7 +366,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -475,7 +472,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -548,7 +545,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -623,7 +620,7 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -670,12 +667,11 @@ describe("WorkspacePage", () => {
         }) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson({
           id: "ide_123",
-          provider: "e2b",
           sandboxId: "sbx_secret_123",
           status: "running",
           openPath: "/api/ide/sessions/ide_123/proxy/",
@@ -711,7 +707,7 @@ describe("WorkspacePage", () => {
         ) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);
@@ -742,7 +738,7 @@ describe("WorkspacePage", () => {
         ) as Response);
       }
       if (url === "/api/ide/config") {
-        return Promise.resolve(okJson({ enabled: true, provider: "e2b" }) as Response);
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
       }
       if (url === "/api/ide/sessions/current") {
         return Promise.resolve(okJson(null) as Response);

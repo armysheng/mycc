@@ -50,15 +50,61 @@ function firstSetCookie(response: { headers: Record<string, number | string | st
   return typeof setCookie === 'string' ? setCookie : undefined;
 }
 
+const INTERNAL_PUBLIC_IDE_KEYS = new Set([
+  'provider',
+  'sandboxId',
+  'codeServerPid',
+  'host',
+  'trafficAccessToken',
+  'port',
+  'accessMode',
+  'proxyToken',
+  'template',
+  'e2bTemplate',
+  'codeServerPort',
+  'desktopPort',
+  'sessionTtlSeconds',
+  'allowPublicTraffic',
+  'workspaceDir',
+  'linuxUser',
+]);
+
+function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
+  if (!value || typeof value !== 'object') return keys;
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectKeys(item, keys));
+    return keys;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    keys.add(key);
+    collectKeys(child, keys);
+  }
+  return keys;
+}
+
+function expectPublicIdePayload(value: unknown) {
+  const keys = collectKeys(value);
+  for (const key of INTERNAL_PUBLIC_IDE_KEYS) {
+    expect(keys.has(key), `public IDE payload leaked key "${key}"`).toBe(false);
+  }
+  expect(JSON.stringify(value)).not.toMatch(
+    /e2b\.app|sbx_|secret-token|proxy-token|mycc-code-server-dev|mycc-assistant-sandbox-dev|\/home\/mycc|18080-sbx|16080-sbx/i,
+  );
+}
+
 describe('ide routes', () => {
   beforeEach(() => {
     delete process.env.MYCC_IDE_PROVIDER;
     delete process.env.MYCC_E2B_TEMPLATE;
+    delete process.env.MYCC_E2B_DESKTOP_ENABLED;
+    delete process.env.MYCC_E2B_DESKTOP_PORT;
   });
 
   afterEach(() => {
     delete process.env.MYCC_IDE_PROVIDER;
     delete process.env.MYCC_E2B_TEMPLATE;
+    delete process.env.MYCC_E2B_DESKTOP_ENABLED;
+    delete process.env.MYCC_E2B_DESKTOP_PORT;
   });
 
   it('reports IDE capability as disabled by default', async () => {
@@ -73,13 +119,11 @@ describe('ide routes', () => {
     expect(response.json()).toEqual({
       success: true,
       data: {
-        provider: 'disabled',
         enabled: false,
-        codeServerPort: 18080,
-        sessionTtlSeconds: 3600,
-        accessMode: 'mycc-proxy',
+        desktopEnabled: false,
       },
     });
+    expectPublicIdePayload(response.json());
   });
 
   it('can be imported by the tsx runtime used by npm run dev', () => {
@@ -106,11 +150,12 @@ describe('ide routes', () => {
 
     expect(response.statusCode).toBe(501);
     expect(response.json()).toEqual({
-      error: 'IDE provider is disabled',
+      error: '工作间当前未启用',
     });
+    expectPublicIdePayload(response.json());
   });
 
-  it('returns an E2B proxy-only IDE session plan when enabled', async () => {
+  it('returns a product-level workbench plan when enabled', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
     const app = await buildApp();
@@ -124,17 +169,11 @@ describe('ide routes', () => {
     expect(response.json()).toEqual({
       success: true,
       data: {
-        provider: 'e2b',
-        template: 'mycc-code-server-dev',
-        userId: 42,
-        linuxUser: 'mycc',
-        workspaceDir: '/home/mycc/workspace',
-        port: 18080,
-        sessionTtlSeconds: 3600,
-        allowPublicTraffic: false,
-        accessMode: 'mycc-proxy',
+        enabled: true,
+        desktopEnabled: false,
       },
     });
+    expectPublicIdePayload(response.json());
   });
 
   it('starts an E2B IDE session without exposing provider secrets', async () => {
@@ -164,13 +203,12 @@ describe('ide routes', () => {
       success: true,
       data: {
         id: expect.any(String),
-        provider: 'e2b',
-        accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2099-05-29T14:00:00.000Z',
         openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/proxy\/$/),
       },
     });
+    expectPublicIdePayload(body);
     expect(JSON.stringify(body)).not.toContain('secret-token');
     expect(JSON.stringify(body)).not.toContain('18080-sbx_123.e2b.app');
     expect(JSON.stringify(body)).not.toContain('sbx_123');
@@ -250,6 +288,7 @@ describe('ide routes', () => {
         },
       }),
     });
+    expectPublicIdePayload(response.json());
     expect(JSON.stringify(response.json())).not.toContain('secret-token');
     expect(JSON.stringify(response.json())).not.toContain('16080-sbx_123.e2b.app');
     expect(JSON.stringify(response.json())).not.toContain('proxy-token');
@@ -396,13 +435,12 @@ describe('ide routes', () => {
       success: true,
       data: {
         id,
-        provider: 'e2b',
-        accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2026-05-29T14:00:00.000Z',
         openPath: `/api/ide/sessions/${id}/proxy/`,
       },
     });
+    expectPublicIdePayload(response.json());
     expect(response.body).not.toContain('sbx_123');
     expect(response.body).not.toContain('token=');
   });
@@ -428,13 +466,12 @@ describe('ide routes', () => {
       success: true,
       data: {
         id: 'ide_123',
-        provider: 'e2b',
-        accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2099-05-29T14:00:00.000Z',
         openPath: '/api/ide/sessions/ide_123/proxy/',
       },
     });
+    expectPublicIdePayload(response.json());
     expect(JSON.stringify(response.json())).not.toContain('secret-token');
     expect(JSON.stringify(response.json())).not.toContain('18080-sbx_123.e2b.app');
     expect(response.body).not.toContain('sbx_123');

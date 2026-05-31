@@ -68,17 +68,11 @@ interface WorkspacePreviewData {
 
 interface IdeConfigData {
   enabled?: boolean;
-  provider?: string;
-  e2bTemplate?: string;
-  codeServerPort?: number;
-  sessionTtlSeconds?: number;
   desktopEnabled?: boolean;
-  desktopPort?: number;
 }
 
 interface IdeSessionData {
   id?: string;
-  provider?: string;
   status?: string;
   expiresAt?: string;
   openPath?: string;
@@ -723,26 +717,23 @@ export function WorkspacePage() {
   const ideDisabled = ideOpening || ideConfig?.enabled === false;
   const desktopDisabled = desktopOpening || ideConfig?.enabled === false || ideConfig?.desktopEnabled === false;
   const previewDisabled = previewLoading || !activeFile;
-  const isRunningE2bSession = ideSession?.status === "running" && (
-    ideSession.provider === "e2b" || ideConfig?.provider === "e2b"
-  );
+  const isRunningWorkspaceSession = ideSession?.status === "running";
   const ideStatusLabel = (() => {
     if (ideConfigLoading) return "文件空间准备中";
     if (ideConfigError) return "文件空间状态未知";
     if (ideConfig?.enabled === false) return "工作间未启用";
-    if (isRunningE2bSession) return "文件空间已连接";
-    if (ideConfig?.provider === "e2b") return "文件空间可用";
-    if (ideConfig?.enabled) return "工作间可打开";
+    if (isRunningWorkspaceSession) return "文件空间已连接";
+    if (ideConfig?.enabled) return "文件空间可用";
     return "文件空间待检测";
   })();
   const ideStatusDetail = (() => {
     if (ideConfigError) return ideConfigError;
     if (ideConfig?.enabled === false) return "当前暂不可用。";
-    if (isRunningE2bSession) {
+    if (isRunningWorkspaceSession) {
       const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
       return `当前文件空间${expires}`;
     }
-    if (ideConfig?.provider === "e2b") {
+    if (ideConfig?.enabled) {
       return "需要细看或大改文件时，会打开工作间。";
     }
     return "打开后会复用或准备你的文件空间。";
@@ -750,9 +741,8 @@ export function WorkspacePage() {
   const codeServerCapabilityLabel = (() => {
     if (ideConfigLoading) return "状态检查中";
     if (ideConfig?.enabled === false) return "未启用";
-    if (isRunningE2bSession) return "可使用";
-    if (ideConfig?.provider === "e2b") return "需要时可打开";
-    if (ideConfig?.enabled) return "可打开";
+    if (isRunningWorkspaceSession) return "可使用";
+    if (ideConfig?.enabled) return "需要时可打开";
     return "待检测";
   })();
   const previewCapabilityLabel = (() => {

@@ -7,8 +7,8 @@ import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { verifyToken } from '../auth/service.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import {
-  buildE2bCodeServerSessionPlan,
   resolveIdeConfig,
+  type IdeConfig,
 } from '../ide/service.js';
 import {
   PostgresIdeSessionStore,
@@ -52,18 +52,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       const config = resolveIdeConfig();
       return {
         success: true,
-        data: {
-          provider: config.provider,
-          enabled: config.provider !== 'disabled',
-          codeServerPort: config.codeServerPort,
-          sessionTtlSeconds: config.sessionTtlSeconds,
-          accessMode: 'mycc-proxy',
-          ...(config.desktopEnabled ? {
-            desktopEnabled: true,
-            desktopPort: config.desktopPort,
-          } : {}),
-          ...(config.e2bTemplate ? { e2bTemplate: config.e2bTemplate } : {}),
-        },
+        data: toPublicIdeConfig(config),
       };
     } catch (error) {
       return sendRouteError(reply, error, 400);
@@ -92,17 +81,13 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         });
       }
 
-      const linuxUser = sanitizeLinuxUsername(user.linuxUser);
-      const plan = buildE2bCodeServerSessionPlan({
-        userId: user.userId,
-        linuxUser,
-        workspaceDir: `/home/${linuxUser}/workspace`,
-      });
-
-      const { startCommand: _startCommand, ...publicPlan } = plan;
+      const config = resolveIdeConfig();
+      if (config.provider === 'disabled') {
+        throw new Error('IDE provider is disabled');
+      }
       return {
         success: true,
-        data: publicPlan,
+        data: toPublicIdeConfig(config),
       };
     } catch (error) {
       const statusCode = error instanceof Error && error.message === 'IDE provider is disabled'
@@ -483,8 +468,6 @@ async function isDesktopServiceLive(
 function toPublicSession(session: StoredIdeSession) {
   return {
     id: session.id,
-    provider: session.provider,
-    accessMode: session.accessMode,
     status: session.status,
     expiresAt: session.expiresAt,
     openPath: publicOpenPath(session),
@@ -494,6 +477,14 @@ function toPublicSession(session: StoredIdeSession) {
         openPath: publicDesktopOpenPath(session),
       },
     } : {}),
+  };
+}
+
+function toPublicIdeConfig(config: IdeConfig) {
+  const enabled = config.provider !== 'disabled';
+  return {
+    enabled,
+    desktopEnabled: Boolean(enabled && config.desktopEnabled),
   };
 }
 
@@ -637,6 +628,17 @@ function sendProxyError(response: ServerResponse, error: Error): void {
 
 function sendRouteError(reply: FastifyReply, error: unknown, statusCode: number) {
   return reply.status(statusCode).send({
-    error: error instanceof Error ? error.message : String(error),
+    error: publicIdeErrorMessage(error),
   });
+}
+
+function publicIdeErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/^IDE provider is disabled$/, '工作间当前未启用')
+    .replace(/\bIDE provider\b/gi, '工作间')
+    .replace(/\bIDE session\b/gi, '工作间')
+    .replace(/\bGNU desktop\b/gi, '桌面工作间')
+    .replace(/\bE2B\b/gi, '文件空间')
+    .replace(/\bcode-server\b/gi, '工作间');
 }
