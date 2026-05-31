@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import { existsSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -19,6 +22,7 @@ test('assistant sandbox module exposes the expected file contract', () => {
     'templates/e2b-assistant-sandbox/bin/mycc-start-ccr',
     'templates/e2b-assistant-sandbox/bin/mycc-start-desktop',
     'templates/e2b-assistant-sandbox/bin/mycc-health-desktop',
+    'templates/e2b-assistant-sandbox/bin/mycc-register-deliverable',
     'scripts/create-template.sh',
     'scripts/doctor-template.mjs',
     'scripts/smoke-local-contract.mjs',
@@ -93,6 +97,7 @@ test('template contract covers runtime, browser automation, desktop, and service
     'mycc-start-ccr',
     'mycc-start-desktop',
     'mycc-health-desktop',
+    'mycc-register-deliverable',
   ]) {
     assert.match(contract, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
@@ -105,6 +110,8 @@ test('template contract covers runtime, browser automation, desktop, and service
   assert.match(contract, /timeout 30s .*claude/);
   assert.match(contract, /timeout 30s ccr -h/);
   assert.match(contract, /timeout 30s .*chromium/);
+  assert.match(contract, /mycc-register-deliverable/);
+  assert.match(contract, /deliverables\.json/);
 });
 
 test('template contract exits after fast ready checks', () => {
@@ -120,6 +127,7 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   const startCcr = read('templates/e2b-assistant-sandbox/bin/mycc-start-ccr');
   const startCodeServer = read('templates/e2b-assistant-sandbox/bin/mycc-start-code-server');
   const startDesktop = read('templates/e2b-assistant-sandbox/bin/mycc-start-desktop');
+  const registerDeliverable = read('templates/e2b-assistant-sandbox/bin/mycc-register-deliverable');
 
   assert.match(startCcr, /MYCC_CCR_PORT/);
   assert.match(startCcr, /MYCC_CCR_CONFIG_DIR/);
@@ -136,6 +144,51 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   assert.match(startDesktop, /websockify/);
   assert.match(startDesktop, /websockify\.log/);
   assert.match(startDesktop, /x11vnc/);
+
+  assert.match(registerDeliverable, /deliverables\.json/);
+  assert.match(registerDeliverable, /allowedKinds/);
+  assert.match(registerDeliverable, /secretWords/);
+  assert.doesNotMatch(registerDeliverable, /console\.log/);
+});
+
+test('deliverable registry helper writes safe entries and rejects secret-looking input', () => {
+  const helperPath = path.join(root, 'templates/e2b-assistant-sandbox/bin/mycc-register-deliverable');
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'mycc-deliverables-'));
+
+  try {
+    const output = execFileSync(process.execPath, [
+      helperPath,
+      '--workspace',
+      workspace,
+      '--path',
+      '/reports/summary.md',
+      '--title',
+      'Summary report',
+      '--kind',
+      'report',
+      '--description',
+      'Useful project summary',
+    ], { encoding: 'utf8' });
+    const entry = JSON.parse(output);
+    assert.equal(entry.path, '/reports/summary.md');
+
+    const registry = JSON.parse(readFileSync(path.join(workspace, '.mycc/deliverables.json'), 'utf8'));
+    assert.equal(registry.deliverables[0].title, 'Summary report');
+
+    assert.throws(() => execFileSync(process.execPath, [
+      helperPath,
+      '--workspace',
+      workspace,
+      '--path',
+      '/reports/token-leak.md',
+      '--title',
+      'Token leak',
+      '--kind',
+      'report',
+    ], { encoding: 'utf8', stdio: 'pipe' }));
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
 });
 
 test('create script uses the assistant sandbox template name and full ready contract', () => {

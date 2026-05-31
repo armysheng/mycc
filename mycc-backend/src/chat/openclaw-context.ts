@@ -126,6 +126,7 @@ export function buildWorkspaceOperatingPrompt(): string {
     '# MyCC Workspace Operating Rules',
     '',
     'When this turn creates or updates a user-facing result, keep the workspace result registry up to date.',
+    'Prefer the built-in helper when available: `mycc-register-deliverable --path /reports/example.md --title "Example report" --kind report --description "What changed"`.',
     'Registry path: `.mycc/deliverables.json` under the current workspace. Create `.mycc/` if it does not exist.',
     'Use a JSON object like `{ "deliverables": [...] }`. Merge existing entries and deduplicate by `path`.',
     'Each ready result should include: `path`, `title`, `kind`, `status`, `description`, and `updatedAt`.',

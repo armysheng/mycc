@@ -51,12 +51,27 @@ npm run smoke:e2b-template
 | CCR | `mycc-start-ccr` | `13456` | sandbox 内 Claude/Agent 请求路由，读取注入 env |
 | GNU desktop | `mycc-start-desktop` | `16080` noVNC / `15900` VNC | XFCE 桌面、GUI app、浏览器可视化操作 |
 | desktop health | `mycc-health-desktop` | - | 检查 noVNC/desktop 是否可用 |
+| deliverable registry | `mycc-register-deliverable` | - | 将报告、截图、日志等用户可见成果登记到 `.mycc/deliverables.json` |
 
 这些服务共享：
 
 ```text
 /home/mycc/workspace
 ```
+
+### 成果登记
+
+Agent 产出报告、截图、运行记录、预览或数据文件后，优先调用模板内置 helper 登记成果，而不是手写 JSON：
+
+```bash
+mycc-register-deliverable \
+  --path /reports/summary.md \
+  --title "Project summary" \
+  --kind report \
+  --description "Current project status and next steps"
+```
+
+helper 会写入 `/home/mycc/workspace/.mycc/deliverables.json`，按 workspace path 去重，并拒绝隐藏路径、越界路径和疑似 secret/token 的标题、描述或文件名。MyCC 后端的 `/api/assistant/deliverables` 会读取这个 registry 并合并扫描兜底结果。
 
 ## 内置运行时能力
 
@@ -179,28 +194,26 @@ GET /api/ide/config
 
 ```http
 POST /api/ide/sessions
-GET /api/ide/sessions/:id/open
 ```
 
 行为：
 
 - 创建或复用当前用户 running E2B sandbox。
 - 启动或复用 code-server。
-- 返回 MyCC `openPath`。
-- `/open` 设置 HttpOnly proxy cookie 后 302 到 `/api/ide/sessions/:id/proxy/`。
+- 返回 tokenless MyCC `openPath`，形如 `/api/ide/sessions/:id/proxy/`。
+- `POST /api/ide/sessions` 同时设置 scoped HttpOnly proxy cookie；前端不需要、也不应该拿到 URL token。
 
 ### 打开 GNU desktop
 
 ```http
 POST /api/ide/sessions/:id/desktop
-GET /api/ide/sessions/:id/desktop/open
 ```
 
 行为：
 
 - 在同一个 sandbox 内启动或复用 GNU desktop。
-- 返回 `desktop.openPath`。
-- `/desktop/open` 设置 scoped HttpOnly proxy cookie 后 302 到 noVNC 页面。
+- 返回 tokenless `desktop.openPath`，指向 MyCC noVNC proxy 页面。
+- `POST /api/ide/sessions/:id/desktop` 同时设置 scoped HttpOnly proxy cookie。
 - noVNC WebSocket 走 `/api/ide/sessions/:id/desktop/proxy/websockify`。
 
 ### Proxy

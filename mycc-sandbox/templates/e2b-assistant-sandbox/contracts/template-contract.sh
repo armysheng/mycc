@@ -31,7 +31,7 @@ finish_contract() {
 for cmd in \
   bash sh git node npm python3 pip uv curl sed awk gawk grep find xargs tar gzip rg jq file lsof realpath stat timeout \
   gcc g++ make pkg-config code-server claude ccr Xvfb startxfce4 x11vnc websockify dbus-launch xdpyinfo chromium \
-  mycc-start-code-server mycc-start-ccr mycc-start-desktop mycc-health-desktop; do
+  mycc-start-code-server mycc-start-ccr mycc-start-desktop mycc-health-desktop mycc-register-deliverable; do
   require_command "$cmd"
 done
 
@@ -89,5 +89,18 @@ fi
 if ! timeout 30s claude --version >/dev/null 2>&1; then
   missing="$missing claude:version"
 fi
+
+registry_contract_dir="$(mktemp -d)"
+if ! MYCC_WORKSPACE_DIR="$registry_contract_dir" timeout 30s mycc-register-deliverable \
+  --path /reports/contract-report.md \
+  --title "Contract report" \
+  --kind report \
+  --description "Template contract output" \
+  >/dev/null 2>&1; then
+  missing="$missing mycc:deliverable-registry"
+elif ! jq -e '.deliverables[0].path == "/reports/contract-report.md"' "$registry_contract_dir/.mycc/deliverables.json" >/dev/null 2>&1; then
+  missing="$missing mycc:deliverable-registry-json"
+fi
+rm -rf "$registry_contract_dir"
 
 finish_contract

@@ -1,0 +1,174 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+
+const allowedKinds = new Set([
+  'report',
+  'document',
+  'preview',
+  'screenshot',
+  'log',
+  'diff',
+  'dataset',
+  'link',
+  'code_change',
+  'pr',
+]);
+const allowedStatuses = new Set(['ready', 'in_progress', 'failed']);
+const secretWords = [
+  'secret',
+  'token',
+  'credential',
+  'password',
+  'passwd',
+  'apikey',
+  'api_key',
+  'authorization',
+  'e2b_live_',
+  'sk-',
+];
+
+function usage(exitCode = 64) {
+  const output = [
+    'Usage: mycc-register-deliverable --path <workspace-path> --title <title> --kind <kind> [options]',
+    '',
+    'Options:',
+    '  --workspace <dir>      Workspace root. Default: $MYCC_WORKSPACE_DIR or current directory.',
+    '  --description <text>   User-facing description.',
+    '  --status <status>      ready, in_progress, or failed. Default: ready.',
+    '  --updated-at <iso>     ISO timestamp. Default: now.',
+    '',
+    'Example:',
+    '  mycc-register-deliverable --path /reports/summary.md --title "Project summary" --kind report',
+  ].join('\n');
+  const stream = exitCode === 0 ? process.stdout : process.stderr;
+  stream.write(`${output}\n`);
+  process.exit(exitCode);
+}
+
+function parseArgs(argv) {
+  const parsed = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--help' || arg === '-h') {
+      usage(0);
+    }
+    if (!arg.startsWith('--')) {
+      throw new Error(`Unexpected argument: ${arg}`);
+    }
+    const key = arg.slice(2);
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error(`Missing value for --${key}`);
+    }
+    parsed[key] = value;
+    index += 1;
+  }
+  return parsed;
+}
+
+function hasSecretLikeText(value) {
+  const lower = String(value || '').toLowerCase();
+  return secretWords.some((word) => lower.includes(word));
+}
+
+function normalizeWorkspacePath(rawPath) {
+  const normalized = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = normalized.split('/');
+  if (!normalized || parts.some((part) => !part || part === '.' || part === '..')) {
+    throw new Error('Deliverable path must stay inside the workspace');
+  }
+  if (parts.some((part) => part.startsWith('.'))) {
+    throw new Error('Deliverable path must not point at hidden files');
+  }
+  const lower = normalized.toLowerCase();
+  if (hasSecretLikeText(lower)) {
+    throw new Error('Deliverable path looks sensitive');
+  }
+  return `/${normalized}`;
+}
+
+function readRegistry(registryPath) {
+  try {
+    const raw = fs.readFileSync(registryPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return { deliverables: parsed };
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.deliverables)) {
+      return parsed;
+    }
+  } catch (error) {
+    if (error && error.code !== 'ENOENT') {
+      throw new Error(`Could not read existing deliverables registry: ${error.message}`);
+    }
+  }
+  return { deliverables: [] };
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const workspace = path.resolve(args.workspace || process.env.MYCC_WORKSPACE_DIR || process.cwd());
+  const registryPath = path.join(workspace, '.mycc', 'deliverables.json');
+  const deliverablePath = normalizeWorkspacePath(args.path);
+  const title = String(args.title || '').trim();
+  const kind = String(args.kind || '').trim();
+  const status = String(args.status || 'ready').trim();
+  const description = String(args.description || '').trim();
+  const updatedAt = args['updated-at'] ? new Date(args['updated-at']) : new Date();
+
+  if (!title) throw new Error('Deliverable title is required');
+  if (hasSecretLikeText(title) || hasSecretLikeText(description)) {
+    throw new Error('Deliverable title or description looks sensitive');
+  }
+  if (!allowedKinds.has(kind)) {
+    throw new Error(`Unsupported deliverable kind: ${kind}`);
+  }
+  if (!allowedStatuses.has(status)) {
+    throw new Error(`Unsupported deliverable status: ${status}`);
+  }
+  if (Number.isNaN(updatedAt.getTime())) {
+    throw new Error('updated-at must be a valid date');
+  }
+
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  const registry = readRegistry(registryPath);
+  const nextEntry = {
+    path: deliverablePath,
+    title,
+    kind,
+    status,
+    description: description || `From current workspace: ${deliverablePath}`,
+    updatedAt: updatedAt.toISOString(),
+  };
+  const existing = Array.isArray(registry.deliverables) ? registry.deliverables : [];
+  const merged = [
+    nextEntry,
+    ...existing.filter((entry) => {
+      try {
+        const entryPath = entry && typeof entry.path === 'string'
+          ? normalizeWorkspacePath(entry.path)
+          : '';
+        return entryPath && entryPath !== deliverablePath;
+      } catch {
+        return false;
+      }
+    }),
+  ].slice(0, 50);
+  const nextRegistry = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    deliverables: merged,
+  };
+  const tmpPath = `${registryPath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpPath, `${JSON.stringify(nextRegistry, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmpPath, registryPath);
+  process.stdout.write(`${JSON.stringify(nextEntry)}\n`);
+}
+
+try {
+  main();
+} catch (error) {
+  process.stderr.write(`mycc-register-deliverable: ${error.message}\n`);
+  process.exit(1);
+}

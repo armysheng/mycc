@@ -55,6 +55,7 @@ mycc-start-code-server
 mycc-start-ccr
 mycc-start-desktop
 mycc-health-desktop
+mycc-register-deliverable
 ```
 
 Default local service ports:
@@ -63,6 +64,20 @@ Default local service ports:
 - CCR: `127.0.0.1:13456`
 - VNC: `127.0.0.1:15900`
 - noVNC: `127.0.0.1:16080`
+
+## Deliverable Registry
+
+Agents should register user-facing outputs with the built-in helper instead of editing registry JSON by hand:
+
+```bash
+mycc-register-deliverable \
+  --path /reports/summary.md \
+  --title "Project summary" \
+  --kind report \
+  --description "Current project status and next steps"
+```
+
+The helper writes `.mycc/deliverables.json`, deduplicates by workspace path, and rejects hidden paths or secret-looking titles, descriptions, and filenames. MyCC reads this registry to populate the product "成果" surfaces.
 
 The browser must receive only MyCC proxy URLs. Do not return raw E2B hosts, E2B traffic tokens, provider base URLs, provider tokens, or noVNC credentials to the browser.
 

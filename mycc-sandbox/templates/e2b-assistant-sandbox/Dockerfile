@@ -94,6 +94,7 @@ COPY bin/mycc-start-code-server /usr/local/bin/mycc-start-code-server
 COPY bin/mycc-start-ccr /usr/local/bin/mycc-start-ccr
 COPY bin/mycc-start-desktop /usr/local/bin/mycc-start-desktop
 COPY bin/mycc-health-desktop /usr/local/bin/mycc-health-desktop
+COPY bin/mycc-register-deliverable /usr/local/bin/mycc-register-deliverable
 COPY skills /opt/mycc/skills
 
 RUN useradd -m -s /bin/bash mycc \
@@ -107,6 +108,7 @@ RUN useradd -m -s /bin/bash mycc \
     /usr/local/bin/mycc-start-ccr \
     /usr/local/bin/mycc-start-desktop \
     /usr/local/bin/mycc-health-desktop \
+    /usr/local/bin/mycc-register-deliverable \
   && chown -R mycc:mycc /home/mycc /opt/mycc /opt/mycc-agent-runtime
 
 USER mycc
