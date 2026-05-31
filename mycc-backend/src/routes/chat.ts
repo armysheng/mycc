@@ -254,10 +254,12 @@ async function loadSessionHistoryMessages(params: {
   const workspaceDir = `/home/${safeLinuxUser}/workspace`;
 
   if (shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
+    let sshPool: ReturnType<typeof getSSHPool> | null = null;
+    let connection: Awaited<ReturnType<ReturnType<typeof getSSHPool>['acquire']>> | null = null;
 
     try {
+      sshPool = getSSHPool();
+      connection = await sshPool.acquire();
       const projectDir = buildClaudeHistoryProjectDir(workspaceDir);
       const historyPath = `${projectDir}/${params.sessionId}.jsonl`;
       const readCmd =
@@ -266,12 +268,16 @@ async function loadSessionHistoryMessages(params: {
       const result = await sshPool.exec(connection, readCmd);
 
       if (result.exitCode !== 0) {
-        throw new Error(result.stderr || '读取会话历史失败');
+        return [];
       }
 
       return parseHistoryMessages(result.stdout);
+    } catch {
+      return [];
     } finally {
-      sshPool.release(connection);
+      if (sshPool && connection) {
+        sshPool.release(connection);
+      }
     }
   }
 
@@ -298,16 +304,19 @@ async function loadSessionHistoryMessages(params: {
     );
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr || result.error || '读取会话历史失败');
+      return [];
     }
 
     return parseHistoryMessages(result.stdout);
   } catch (error) {
     if (isLikelyStaleE2bSessionError(error)) {
-      await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
-      return [];
+      try {
+        await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
+      } catch {
+        // History loading should never block opening an old conversation.
+      }
     }
-    throw error;
+    return [];
   }
 }
 

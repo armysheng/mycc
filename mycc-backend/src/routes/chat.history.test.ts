@@ -224,4 +224,65 @@ describe('chat history route', () => {
     expect(mocks.getSSHPool).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it('returns an empty old conversation instead of 500 when E2B history reading fails', async () => {
+    const session = {
+      id: 'ide_123',
+      provider: 'e2b',
+      sandboxId: 'sbx_123',
+      codeServerPid: 1234,
+      host: '18080-sbx_123.e2b.app',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-31T00:00:00.000Z',
+      proxyToken: 'proxy-token',
+      userId: 42,
+      status: 'running',
+    };
+    const ideSessionStore = {
+      get: vi.fn(),
+      set: vi.fn(),
+      findReusableByUser: vi.fn().mockResolvedValue(session),
+      findExpiredRunning: vi.fn(),
+    };
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'history workspace is unavailable',
+    });
+    mocks.userOwnsConversation.mockResolvedValue(true);
+    mocks.findUserById.mockResolvedValue({
+      id: 42,
+      linux_user: 'tester',
+    });
+    mocks.getSSHPool.mockImplementation(() => {
+      throw new Error('SSH should not be used for E2B history loading');
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_TEMPLATE: 'mycc-assistant-sandbox-dev',
+      },
+      ideSessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/chat/sessions/session_123/messages',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        sessionId: 'session_123',
+        messages: [],
+        total: 0,
+      },
+    });
+    await app.close();
+  });
 });

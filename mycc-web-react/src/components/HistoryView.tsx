@@ -8,6 +8,9 @@ interface HistoryViewProps {
   onBack?: () => void;
 }
 
+const HISTORY_LIST_ERROR_MESSAGE =
+  "历史记录暂时没读出来，原记录不会被删除。可以先回到新对话，稍后再试一次。";
+
 export function HistoryView(_props: HistoryViewProps) {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -24,9 +27,7 @@ export function HistoryView(_props: HistoryViewProps) {
         });
 
         if (!response.ok) {
-          throw new Error(
-            `Failed to load conversations: ${response.status} ${response.statusText}`,
-          );
+          throw new Error(HISTORY_LIST_ERROR_MESSAGE);
         }
         const data = await response.json();
         const rows = data?.data?.conversations || [];
@@ -39,10 +40,8 @@ export function HistoryView(_props: HistoryViewProps) {
           customTitle: item.title || null,
         }));
         setConversations(mapped);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load conversations",
-        );
+      } catch {
+        setError(HISTORY_LIST_ERROR_MESSAGE);
       } finally {
         setLoading(false);
       }
@@ -63,7 +62,7 @@ export function HistoryView(_props: HistoryViewProps) {
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600 dark:text-slate-400">
-            Loading conversations...
+            正在读取历史记录...
           </p>
         </div>
       </div>
@@ -90,7 +89,7 @@ export function HistoryView(_props: HistoryViewProps) {
             </svg>
           </div>
           <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-            Error Loading History
+            历史记录暂时没读出来
           </h2>
           <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
             {error}
@@ -120,10 +119,10 @@ export function HistoryView(_props: HistoryViewProps) {
             </svg>
           </div>
           <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-            No Conversations Yet
+            还没有历史记录
           </h2>
           <p className="text-slate-600 dark:text-slate-400 text-sm max-w-sm">
-            Start chatting to see your conversation history here.
+            开始一次对话后，这里会显示最近记录。
           </p>
         </div>
       </div>
