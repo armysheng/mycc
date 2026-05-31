@@ -16,7 +16,7 @@ function toUserFacingBackendError(error: string): string {
     .replace(/\bE2B\b/gi, "工作区")
     .replace(/\bCCR\b/gi, "模型连接")
     .replace(/\bAgent SDK\b/gi, "助理能力")
-    .replace(/\bcode-server\b/gi, "代码编辑器")
+    .replace(/\bcode-server\b/gi, "工作间")
     .replace(/\bGNU\b/gi, "远程桌面")
     .replace(/\bsandbox\b/gi, "工作区")
     .replace(/\bsessions?\b/gi, "对话")

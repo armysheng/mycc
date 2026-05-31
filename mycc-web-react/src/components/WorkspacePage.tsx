@@ -131,12 +131,12 @@ function safeWorkspaceErrorMessage(error: unknown, fallback: string): string {
     return "工作区暂不可用，请稍后重试。";
   }
   return message
-    .replace(/\bClaude Code\b/gi, "编辑视图")
+    .replace(/\bClaude Code\b/gi, "工作间")
     .replace(/Claude 工作空间/g, "工作区")
     .replace(/\bbase\s*url\b/gi, "服务地址")
-    .replace(/\bRemote IDE\b/gi, "编辑视图")
+    .replace(/\bRemote IDE\b/gi, "工作间")
     .replace(/\bE2B\b/gi, "文件空间")
-    .replace(/\bcode-server\b/gi, "编辑视图")
+    .replace(/\bcode-server\b/gi, "工作间")
     .replace(/\bCCR\b/gi, "模型连接")
     .replace(/\bAgent SDK\b/gi, "助理运行环境")
     .replace(/\bGNU\b/gi, "桌面工作间")
@@ -447,7 +447,7 @@ export function WorkspacePage() {
     } catch (err) {
       setIdeConfig(null);
       setIdeSession(null);
-      setIdeConfigError(safeWorkspaceErrorMessage(err, "编辑视图状态检查失败"));
+      setIdeConfigError(safeWorkspaceErrorMessage(err, "工作间状态检查失败"));
     } finally {
       setIdeConfigLoading(false);
     }
@@ -569,13 +569,13 @@ export function WorkspacePage() {
       const config = configJson?.data as IdeConfigData | undefined;
       setIdeConfig(config ?? null);
       if (config?.enabled === false) {
-        throw new Error("编辑视图当前未启用");
+        throw new Error("工作间当前未启用");
       }
 
       const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
       const session = sessionJson?.data as IdeSessionData | undefined;
       if (!session?.openPath) {
-        throw new Error("编辑视图准备好了，但缺少打开地址");
+        throw new Error("工作间准备好了，但缺少打开地址");
       }
       setIdeSession(session);
 
@@ -586,11 +586,11 @@ export function WorkspacePage() {
         window.open(openUrl, "_blank", "noopener,noreferrer");
       }
       setWorkspaceNeedsIde(false);
-      setNotice("编辑视图已在新标签页打开");
+      setNotice("工作间已在新标签页打开");
       void loadTree();
     } catch (err) {
       ideWindow?.close();
-      setError(safeWorkspaceErrorMessage(err, "打开编辑视图失败"));
+      setError(safeWorkspaceErrorMessage(err, "打开工作间失败"));
     } finally {
       setIdeOpening(false);
     }
@@ -729,10 +729,10 @@ export function WorkspacePage() {
   const ideStatusLabel = (() => {
     if (ideConfigLoading) return "文件空间准备中";
     if (ideConfigError) return "文件空间状态未知";
-    if (ideConfig?.enabled === false) return "编辑视图未启用";
+    if (ideConfig?.enabled === false) return "工作间未启用";
     if (isRunningE2bSession) return "文件空间已连接";
     if (ideConfig?.provider === "e2b") return "文件空间可用";
-    if (ideConfig?.enabled) return "编辑视图可打开";
+    if (ideConfig?.enabled) return "工作间可打开";
     return "文件空间待检测";
   })();
   const ideStatusDetail = (() => {
@@ -743,7 +743,7 @@ export function WorkspacePage() {
       return `当前文件空间${expires}`;
     }
     if (ideConfig?.provider === "e2b") {
-      return "需要细看或大改文件时，会打开编辑视图。";
+      return "需要细看或大改文件时，会打开工作间。";
     }
     return "打开后会复用或准备你的文件空间。";
   })();
@@ -792,7 +792,7 @@ export function WorkspacePage() {
                 disabled={ideDisabled}
                 className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
               >
-                {ideOpening ? "打开中..." : "打开编辑视图"}
+                {ideOpening ? "打开中..." : "打开工作间"}
               </button>
               <button
                 type="button"
@@ -829,9 +829,9 @@ export function WorkspacePage() {
                   <div className="text-xs text-slate-500 px-2 py-3">加载资料中...</div>
                 ) : workspaceNeedsIde ? (
                   <div className="m-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-100">
-                    <div className="font-semibold">需要先打开编辑视图</div>
+                    <div className="font-semibold">需要先打开工作间</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-700 dark:text-emerald-200/80">
-                      当前资料列表会复用你的文件空间。先打开编辑视图，准备好后这里会显示同一份文件。
+                      当前资料列表会复用你的文件空间。先打开工作间，准备好后这里会显示同一份文件。
                     </p>
                     <button
                       type="button"
@@ -956,7 +956,7 @@ export function WorkspacePage() {
 
                 <InspectorPanel
                   title="正在查看"
-                  subtitle="适合快速查看和少量修改；复杂处理可打开编辑视图。"
+                  subtitle="适合快速查看和少量修改；复杂处理可打开工作间。"
                 >
                   {activeFile ? (
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-sm dark:border-slate-700/80 dark:bg-slate-800/70">
@@ -991,7 +991,7 @@ export function WorkspacePage() {
 
                 <InspectorPanel
                   title="成果预览"
-                  subtitle="快速查看报告、页面和截图，不必先进入编辑视图。"
+                  subtitle="快速查看报告、页面和截图，不必先进入工作间。"
                 >
                   {previewLoading ? (
                     <EmptyInspectorCopy>正在生成预览...</EmptyInspectorCopy>
@@ -1014,7 +1014,7 @@ export function WorkspacePage() {
                 >
                   <div className="space-y-2">
                     <CapabilityRow
-                      title="编辑视图"
+                      title="工作间"
                       status={codeServerCapabilityLabel}
                       description="适合大改文件、查看项目结构和处理复杂修改。"
                       actionLabel={ideOpening ? "打开中..." : "打开"}
