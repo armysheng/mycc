@@ -12,6 +12,7 @@ import {
   getIdeConfigUrl,
   getIdeDesktopSessionUrl,
   getIdeSessionsUrl,
+  getWorkspacePreviewUrl,
   getWorkspaceTreeUrl,
   resolveIdeOpenUrl,
 } from "../../config/api";
@@ -42,6 +43,19 @@ interface IdeSessionData {
     status?: string;
     openPath?: string;
   };
+}
+
+interface WorkspacePreviewData {
+  path: string;
+  size: number;
+  mtime: string;
+  mimeType: string;
+  previewType: "image" | "html" | "markdown" | "text" | "pdf" | "unsupported";
+  truncated: boolean;
+  supported: boolean;
+  content?: string;
+  dataUrl?: string;
+  reason?: string;
 }
 
 type AssistantWorkbenchDockProps = {
@@ -102,6 +116,10 @@ export function AssistantWorkbenchDock({
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] =
+    useState<WorkspacePreviewData | null>(null);
 
   const workspaceNodes = useMemo(
     () => flattenTree(treeRoot).slice(0, 80),
@@ -161,6 +179,28 @@ export function AssistantWorkbenchDock({
       setFilesLoading(false);
     }
   }, [token]);
+
+  const previewFile = useCallback(
+    async (node: WorkspaceTreeNode) => {
+      if (node.type !== "file") return;
+      setActiveTab("preview");
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const data = await readApiData<WorkspacePreviewData>(
+          getWorkspacePreviewUrl(node.path),
+          token,
+        );
+        setPreviewData(data);
+      } catch (error) {
+        setPreviewData(null);
+        setPreviewError(safeWorkbenchError(error, "预览暂时打不开"));
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     if (activeTab === "files" && !filesLoaded && !filesLoading) {
@@ -291,9 +331,17 @@ export function AssistantWorkbenchDock({
             ) : workspaceNodes.length > 0 ? (
               <div className="min-h-0 flex-1 overflow-y-auto py-2">
                 {workspaceNodes.map((node) => (
-                  <div
+                  <button
+                    type="button"
                     key={node.id || node.path}
-                    className="mx-2 flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => void previewFile(node)}
+                    disabled={node.type !== "file"}
+                    aria-label={
+                      node.type === "file"
+                        ? `预览 ${node.name}`
+                        : `文件夹 ${node.name}`
+                    }
+                    className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-slate-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-slate-800 dark:disabled:hover:bg-transparent"
                   >
                     <FolderIcon
                       className="h-4 w-4 shrink-0 text-slate-400"
@@ -310,7 +358,7 @@ export function AssistantWorkbenchDock({
                     <span className="shrink-0 text-xs text-slate-400">
                       {formatFileMeta(node)}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -322,12 +370,94 @@ export function AssistantWorkbenchDock({
         )}
 
         {activeTab === "preview" && (
-          <section className="flex h-full items-center justify-center px-8 text-center text-sm text-slate-500 dark:text-slate-400">
-            暂无预览
+          <section className="flex h-full flex-col">
+            <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                预览
+              </span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-3">
+              {previewLoading ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                  正在生成预览...
+                </div>
+              ) : previewError ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  {previewError}
+                </div>
+              ) : previewData ? (
+                <PreviewPane preview={previewData} />
+              ) : (
+                <div className="flex h-full items-center justify-center px-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                  从文件列表点选一个文件进行预览。
+                </div>
+              )}
+            </div>
           </section>
         )}
       </div>
     </aside>
+  );
+}
+
+function PreviewPane({ preview }: { preview: WorkspacePreviewData }) {
+  if (!preview.supported || preview.previewType === "unsupported") {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+        {preview.reason || "这个文件暂不适合直接预览。"}
+      </div>
+    );
+  }
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+        <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+          {preview.path}
+        </span>
+        <span className="shrink-0 text-[11px] text-slate-400">
+          {formatFileMeta({
+            ...preview,
+            id: preview.path,
+            name: preview.path,
+            type: "file",
+          })}
+        </span>
+      </header>
+
+      {preview.previewType === "image" && preview.dataUrl ? (
+        <div className="bg-slate-50 p-2 dark:bg-slate-950">
+          <img
+            src={preview.dataUrl}
+            alt={`${preview.path} 预览`}
+            className="max-h-[70vh] w-full rounded-xl object-contain"
+          />
+        </div>
+      ) : preview.previewType === "html" ? (
+        <iframe
+          title={`${preview.path} 预览`}
+          sandbox=""
+          srcDoc={preview.content || ""}
+          className="h-[70vh] w-full bg-white"
+        />
+      ) : preview.previewType === "pdf" && preview.dataUrl ? (
+        <iframe
+          title={`${preview.path} 预览`}
+          src={preview.dataUrl}
+          className="h-[70vh] w-full bg-white"
+        />
+      ) : (
+        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+          {preview.content || "没有可显示的预览内容。"}
+        </pre>
+      )}
+
+      {preview.truncated && (
+        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+          预览内容较长，已显示前半部分。
+        </div>
+      )}
+    </article>
   );
 }
 

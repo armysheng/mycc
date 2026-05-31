@@ -107,6 +107,20 @@ describe("ChatPage workbench dock", () => {
             }),
           );
         }
+        if (url === "/api/workspace/preview?path=%2Freport.md") {
+          return Promise.resolve(
+            okJson({
+              path: "/report.md",
+              size: 1200,
+              mtime: new Date(0).toISOString(),
+              mimeType: "text/markdown",
+              previewType: "markdown",
+              truncated: false,
+              supported: true,
+              content: "# 项目报告\n\n这里是助理整理的重点。",
+            }),
+          );
+        }
         return Promise.reject(new Error(`Unexpected fetch: ${url}`));
       }),
     );
@@ -169,6 +183,30 @@ describe("ChatPage workbench dock", () => {
     });
     expect(await screen.findByText("report.md")).toBeInTheDocument();
     expect(screen.getByText("/report.md")).toBeInTheDocument();
+    expect(
+      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+    ).not.toBeInTheDocument();
+  });
+
+  it("previews a selected workspace file inside the dock", async () => {
+    renderChatPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "预览 report.md" }),
+    );
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/workspace/preview?path=%2Freport.md",
+        expect.any(Object),
+      );
+    });
+    expect(await screen.findByText("/report.md")).toBeInTheDocument();
+    expect(screen.getByText(/这里是助理整理的重点/)).toBeInTheDocument();
+    expect(screen.queryByText("暂无预览")).not.toBeInTheDocument();
     expect(
       screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
     ).not.toBeInTheDocument();
