@@ -656,7 +656,8 @@ export function WorkspacePage() {
     if (!token || !initialPath || initialPathLoadedRef.current === initialPath) return;
     initialPathLoadedRef.current = initialPath;
     void loadFile(initialPath);
-  }, [loadFile, searchParams, token]);
+    void loadPreview(initialPath);
+  }, [loadFile, loadPreview, searchParams, token]);
 
   useEffect(() => {
     const updateHeight = () => setTreeHeight(Math.max(420, window.innerHeight - 260));

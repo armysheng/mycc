@@ -389,6 +389,69 @@ describe("WorkspacePage", () => {
     );
   });
 
+  it("previews an initial workspace file from the path query parameter", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/workspace/file?path=%2Freports%2Fproduct-roadmap.md") {
+        return Promise.resolve(okJson({
+          path: "/reports/product-roadmap.md",
+          size: 8192,
+          mtime: "2026-05-31T08:00:00.000Z",
+          truncated: false,
+          binary: false,
+          content: "# 产品路线报告",
+        }) as Response);
+      }
+      if (url === "/api/workspace/preview?path=%2Freports%2Fproduct-roadmap.md") {
+        return Promise.resolve(okJson({
+          path: "/reports/product-roadmap.md",
+          size: 8192,
+          mtime: "2026-05-31T08:00:00.000Z",
+          mimeType: "text/markdown",
+          previewType: "markdown",
+          truncated: false,
+          supported: true,
+          content: "# 产品路线报告\n\n下季度重点是提升成果空间体验。",
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/workspace?path=/reports/product-roadmap.md"]}>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/下季度重点是提升成果空间体验/)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/workspace/preview?path=%2Freports%2Fproduct-roadmap.md",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+      }),
+    );
+  });
+
   it("surfaces derived deliverables from workspace files and opens them in the editor", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
