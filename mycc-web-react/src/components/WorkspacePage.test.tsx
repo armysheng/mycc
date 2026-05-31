@@ -932,6 +932,73 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(/还没有识别到成果/)).not.toBeInTheDocument();
   });
 
+  it("refreshes assistant deliverables when the file list is refreshed", async () => {
+    vi.stubGlobal("open", vi.fn());
+    let deliverableRequests = 0;
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        deliverableRequests += 1;
+        if (deliverableRequests === 1) {
+          return Promise.resolve(okJson({
+            deliverables: [],
+            emptyState: {
+              title: "暂时没有同步成果",
+              description: "刷新后会显示新整理的内容。",
+            },
+          }) as Response);
+        }
+        return Promise.resolve(okJson({
+          deliverables: [
+            {
+              id: "workspace:/reports/fresh-summary.md",
+              kind: "report",
+              title: "刚整理好的总结",
+              source: "current_workspace",
+              status: "ready",
+              description: "来自当前工作区",
+              path: "/reports/fresh-summary.md",
+              updatedAt: "2026-05-31T11:00:00.000Z",
+            },
+          ],
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("暂时没有同步成果")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新列表" }));
+
+    expect(await screen.findByText("刚整理好的总结")).toBeInTheDocument();
+    expect(deliverableRequests).toBe(2);
+  });
+
   it("keeps editor capability user-facing without exposing provider or token details", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {

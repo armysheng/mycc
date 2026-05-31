@@ -813,6 +813,7 @@ export function WorkspacePage() {
                 type="button"
                 onClick={() => {
                   void loadTree();
+                  void loadAssistantDeliverables();
                 }}
                 className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
               >
