@@ -375,7 +375,7 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
     }, env);
     const session = await sessionStore.findReusableByUser(user.userId);
     if (!session) {
-      throw new WorkspaceRouteError(409, '需要先打开代码编辑器', 'needs_workspace');
+      throw new WorkspaceRouteError(409, '需要先打开工作间', 'workbench_required');
     }
 
     const run = async (command: string, timeoutMs: number = 30000): Promise<WorkspaceCommandResult> => {
@@ -389,8 +389,8 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
           await sessionStore.set({ ...session, status: 'stopped' });
           throw new WorkspaceRouteError(
             409,
-            '工作区会话已过期，请重新打开代码编辑器',
-            'workspace_stale',
+            '工作间已过期，请重新打开工作间',
+            'workbench_stale',
           );
         }
         throw new WorkspaceRouteError(

@@ -109,14 +109,13 @@ class ApiRequestError extends Error {
   }
 }
 
-function requiresRemoteIdeSession(error: unknown): boolean {
+function requiresWorkbench(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error instanceof ApiRequestError) {
-    return error.code === "needs_workspace" || error.code === "workspace_stale";
+    return error.code === "workbench_required" || error.code === "workbench_stale";
   }
-  return error.message.includes("E2B 工作区会话不存在")
-    || error.message.includes("请先打开 Remote IDE")
-    || error.message.includes("请先打开深度编辑");
+  return error.message.includes("需要先打开工作间")
+    || error.message.includes("工作间已过期");
 }
 
 function safeWorkspaceErrorMessage(error: unknown, fallback: string): string {
@@ -404,7 +403,7 @@ export function WorkspacePage() {
       }
       setWorkspaceNeedsIde(false);
     } catch (err) {
-      if (requiresRemoteIdeSession(err)) {
+      if (requiresWorkbench(err)) {
         setWorkspaceNeedsIde(true);
         setTreeRoot(null);
         setError(null);

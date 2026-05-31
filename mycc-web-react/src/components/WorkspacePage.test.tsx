@@ -695,15 +695,15 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(/token=/)).not.toBeInTheDocument();
   });
 
-  it("shows a code editor CTA when workspace files require a running session", async () => {
+  it("shows a workbench CTA when workspace files require an active workbench", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/workspace/tree")) {
         return Promise.resolve(errorJson(
           409,
-          "Workspace session missing",
-          "needs_workspace",
+          "需要先打开工作间",
+          "workbench_required",
         ) as Response);
       }
       if (url === "/api/ide/config") {
@@ -724,7 +724,7 @@ describe("WorkspacePage", () => {
     expect(await screen.findByText("需要先打开工作间")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开工作间" })).toBeEnabled();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
-    expect(screen.queryByText(/系统错误|Workspace session missing|E2B 工作区会话不存在/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/系统错误|Workspace session missing|needs_workspace|E2B 工作区会话不存在/)).not.toBeInTheDocument();
   });
 
   it("keeps low-level backend errors out of the user-facing workspace", async () => {

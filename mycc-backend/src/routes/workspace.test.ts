@@ -323,9 +323,10 @@ describe('workspace route helpers', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       success: false,
-      error: '需要先打开代码编辑器',
-      code: 'needs_workspace',
+      error: '需要先打开工作间',
+      code: 'workbench_required',
     });
+    expect(response.body).not.toMatch(/code-server|Remote IDE|代码编辑器|needs_workspace|E2B|sandbox|沙盒/i);
   });
 
   it('marks stale E2B workspace sessions stopped when sandbox command fails', async () => {
@@ -351,8 +352,8 @@ describe('workspace route helpers', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       success: false,
-      error: '工作区会话已过期，请重新打开代码编辑器',
-      code: 'workspace_stale',
+      error: '工作间已过期，请重新打开工作间',
+      code: 'workbench_stale',
     });
     expect(await sessionStore.findReusableByUser(42)).toBeNull();
     expect(await sessionStore.get(runningSession.id)).toEqual({
