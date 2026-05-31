@@ -11,6 +11,7 @@ type AssistantHomePanelProps = {
   loading?: boolean;
   error?: string | null;
   onStartPrompt?: (prompt: string) => void;
+  onContinueTask?: (task: AssistantTaskCard) => void;
   onOpenWorkspace?: () => void;
   onOpenDeliverable?: (deliverable: AssistantDeliverableCard) => void;
   inputSlot?: React.ReactNode;
@@ -24,6 +25,7 @@ export function AssistantHomePanel({
   loading = false,
   error = null,
   onStartPrompt,
+  onContinueTask,
   onOpenWorkspace,
   onOpenDeliverable,
   inputSlot,
@@ -79,7 +81,13 @@ export function AssistantHomePanel({
               <button
                 key={task.id}
                 type="button"
-                onClick={() => onStartPrompt?.(`继续：${task.title}`)}
+                onClick={() => {
+                  if (onContinueTask) {
+                    onContinueTask(task);
+                    return;
+                  }
+                  onStartPrompt?.(`继续：${task.title}`);
+                }}
                 className="max-w-[240px] truncate rounded-full border border-slate-200 bg-white/60 px-3 py-1.5 text-left hover:bg-white dark:border-slate-700 dark:bg-slate-900/50 dark:hover:bg-slate-900"
               >
                 继续：{task.title}

@@ -7,6 +7,7 @@ import type {
   PermissionMode,
   AssistantHomeData,
   AssistantDeliverableCard,
+  AssistantTaskCard,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
@@ -481,6 +482,17 @@ export function ChatPage() {
     navigate("/workspace");
   }, [navigate]);
 
+  const handleContinueTask = useCallback((task: AssistantTaskCard) => {
+    if (task.source !== "conversation" || !task.id) {
+      setInput(`继续：${task.title}`);
+      return;
+    }
+
+    const nextSearchParams = new URLSearchParams();
+    nextSearchParams.set("sessionId", task.id);
+    navigate({ search: nextSearchParams.toString() });
+  }, [navigate, setInput]);
+
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });
   }, [navigate]);
@@ -937,6 +949,7 @@ export function ChatPage() {
                   loading={assistantHomeLoading}
                   error={assistantHomeError}
                   onStartPrompt={setInput}
+                  onContinueTask={handleContinueTask}
                   onOpenWorkspace={() => navigate("/workspace")}
                   onOpenDeliverable={handleOpenDeliverable}
                   inputSlot={renderChatInput("hero")}

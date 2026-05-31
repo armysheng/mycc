@@ -168,6 +168,27 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText(/初始化流程执行失败/)).not.toBeInTheDocument();
   });
 
+  it("opens the selected recent conversation instead of turning it into a new prompt", () => {
+    const onContinueTask = vi.fn();
+    const onStartPrompt = vi.fn();
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        data={baseData}
+        onContinueTask={onContinueTask}
+        onStartPrompt={onStartPrompt}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "继续：调研 Claude Code UI" }));
+
+    expect(onContinueTask).toHaveBeenCalledWith(expect.objectContaining({
+      id: "session_abc",
+      source: "conversation",
+    }));
+    expect(onStartPrompt).not.toHaveBeenCalled();
+  });
+
   it("renders derived deliverable cards with user-facing source labels", () => {
     const onOpenDeliverable = vi.fn();
     render(
