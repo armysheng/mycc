@@ -149,9 +149,10 @@ export async function assistantRoutes(
     }
 
     const user = await findUserById(request.user.userId);
-    const conversations = (await getUserConversations(request.user.userId, 12, 0))
-      .filter(isUserVisibleConversation)
-      .slice(0, 6);
+    const conversations = selectAssistantHomeConversations(
+      await getUserConversations(request.user.userId, 12, 0),
+      6,
+    );
     const session = await sessionStore.findReusableByUser(request.user.userId);
     const memory = buildMemorySources(user, Boolean(session));
     const deliverables = await collectWorkspaceDeliverables({
@@ -244,6 +245,52 @@ function toTaskCard(conversation: ConversationSummary) {
     updatedAt: conversation.updatedAt.toISOString(),
     description: '最近会话，可继续让助理接着处理。',
   };
+}
+
+function selectAssistantHomeConversations(
+  conversations: ConversationSummary[],
+  limit: number,
+): ConversationSummary[] {
+  const seenTitles = new Set<string>();
+  const selected: ConversationSummary[] = [];
+
+  for (const conversation of conversations) {
+    if (!isUserVisibleConversation(conversation)) continue;
+    if (isLowSignalConversation(conversation)) continue;
+
+    const signalKey = normalizeConversationTitle(conversation.title);
+    if (seenTitles.has(signalKey)) continue;
+
+    seenTitles.add(signalKey);
+    selected.push(conversation);
+
+    if (selected.length >= limit) break;
+  }
+
+  return selected;
+}
+
+function isLowSignalConversation(conversation: ConversationSummary): boolean {
+  if (typeof conversation.messageCount !== 'number' || conversation.messageCount > 1) {
+    return false;
+  }
+
+  return LOW_SIGNAL_CONVERSATION_TITLES.has(normalizeConversationTitle(conversation.title));
+}
+
+const LOW_SIGNAL_CONVERSATION_TITLES = new Set([
+  '最近会话',
+  '新会话',
+  '未命名会话',
+  'untitled',
+  'newchat',
+]);
+
+function normalizeConversationTitle(title?: string | null): string {
+  return (title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.。!！?？:：,，_-]+/g, '');
 }
 
 function buildMemorySources(

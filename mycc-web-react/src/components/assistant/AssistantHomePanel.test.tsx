@@ -168,6 +168,55 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText(/初始化流程执行失败/)).not.toBeInTheDocument();
   });
 
+  it("deduplicates continuation chips and hides low-signal placeholders", () => {
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        data={{
+          ...baseData,
+          tasks: [
+            {
+              id: "session_status_latest",
+              source: "conversation",
+              status: "recent",
+              title: "整理当前项目状态",
+              messageCount: 8,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_status_old",
+              source: "conversation",
+              status: "recent",
+              title: "整理当前项目状态",
+              messageCount: 5,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_placeholder",
+              source: "conversation",
+              status: "recent",
+              title: "最近会话",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+            {
+              id: "session_real_one_shot",
+              source: "conversation",
+              status: "recent",
+              title: "总结今天产品进展",
+              messageCount: 1,
+              description: "最近会话，可继续让助理接着处理。",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: "继续：整理当前项目状态" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "继续：总结今天产品进展" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "继续：最近会话" })).not.toBeInTheDocument();
+  });
+
   it("opens the selected recent conversation instead of turning it into a new prompt", () => {
     const onContinueTask = vi.fn();
     const onStartPrompt = vi.fn();

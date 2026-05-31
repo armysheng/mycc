@@ -179,6 +179,64 @@ describe('assistant routes', () => {
     await app.close();
   });
 
+  it('deduplicates repeated recent conversations and hides low-signal placeholders', async () => {
+    const options = defaultOptions();
+    options.getUserConversations = vi.fn().mockResolvedValue([
+      {
+        sessionId: 'session_status_latest',
+        title: '整理当前项目状态',
+        messageCount: 8,
+        totalTokens: 1400,
+        createdAt: new Date('2026-05-30T12:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T12:00:00.000Z'),
+      },
+      {
+        sessionId: 'session_status_old',
+        title: '整理当前项目状态',
+        messageCount: 5,
+        totalTokens: 900,
+        createdAt: new Date('2026-05-30T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T10:00:00.000Z'),
+      },
+      {
+        sessionId: 'session_placeholder',
+        title: '最近会话',
+        messageCount: 1,
+        totalTokens: 20,
+        createdAt: new Date('2026-05-30T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T09:00:00.000Z'),
+      },
+      {
+        sessionId: 'session_real_one_shot',
+        title: '总结今天产品进展',
+        messageCount: 1,
+        totalTokens: 700,
+        createdAt: new Date('2026-05-30T08:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T08:00:00.000Z'),
+      },
+    ]);
+    const app = await buildApp(options);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/home',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.data.tasks.map((task: { id: string; title: string }) => ({
+      id: task.id,
+      title: task.title,
+    }))).toEqual([
+      { id: 'session_status_latest', title: '整理当前项目状态' },
+      { id: 'session_real_one_shot', title: '总结今天产品进展' },
+    ]);
+    expect(response.body).not.toContain('session_status_old');
+    expect(body.data.tasks.map((task: { title: string }) => task.title)).not.toContain('最近会话');
+    await app.close();
+  });
+
   it('labels memory sources separately', async () => {
     const app = await buildApp(defaultOptions());
 

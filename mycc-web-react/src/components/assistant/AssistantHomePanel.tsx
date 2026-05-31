@@ -32,7 +32,7 @@ export function AssistantHomePanel({
   workspaceName,
   modeLabel = "本地模式",
 }: AssistantHomePanelProps) {
-  const tasks = (data?.tasks ?? []).filter(isUserVisibleTask);
+  const tasks = selectVisibleTasks(data?.tasks ?? []);
   const rawDeliverables = data?.deliverables ?? [];
   const deliverables = (data?.deliverables ?? []).filter(isReadyDeliverable);
   const primaryDeliverable = deliverables[0] ?? null;
@@ -263,6 +263,47 @@ function isUserVisibleTask(task: AssistantTaskCard) {
   if (hiddenMarkers.some((marker) => lowerTitle.includes(marker.toLowerCase()))) return false;
 
   return true;
+}
+
+function selectVisibleTasks(tasks: AssistantTaskCard[]) {
+  const seenTitles = new Set<string>();
+  const selected: AssistantTaskCard[] = [];
+
+  for (const task of tasks) {
+    if (!isUserVisibleTask(task)) continue;
+    if (isLowSignalTask(task)) continue;
+
+    const signalKey = normalizeTaskTitle(task.title);
+    if (seenTitles.has(signalKey)) continue;
+
+    seenTitles.add(signalKey);
+    selected.push(task);
+  }
+
+  return selected;
+}
+
+function isLowSignalTask(task: AssistantTaskCard) {
+  if (typeof task.messageCount !== "number" || task.messageCount > 1) {
+    return false;
+  }
+
+  return LOW_SIGNAL_TASK_TITLES.has(normalizeTaskTitle(task.title));
+}
+
+const LOW_SIGNAL_TASK_TITLES = new Set([
+  "最近会话",
+  "新会话",
+  "未命名会话",
+  "untitled",
+  "newchat",
+]);
+
+function normalizeTaskTitle(title?: string | null) {
+  return (title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.。!！?？:：,，_-]+/g, "");
 }
 
 function isReadyDeliverable(deliverable: AssistantDeliverableCard) {
