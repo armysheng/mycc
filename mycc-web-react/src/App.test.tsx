@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
 import { ChatPage } from "./components/ChatPage";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { AuthProvider } from "./contexts/AuthContext";
+import App from "./App";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -26,6 +27,10 @@ describe("App Routing", () => {
       ok: true,
       json: () => Promise.resolve({ projects: [] }),
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders project selection page at root path", async () => {
@@ -86,6 +91,63 @@ describe("App Routing", () => {
     expect(screen.queryByLabelText("Return to new chat in /")).not.toBeInTheDocument();
     expect(screen.queryByText(/首次初始化|bootstrap|continue|最近会话|继续：/i)).not.toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
+  });
+
+  it("keeps project chat routes mounted after authentication", async () => {
+    window.history.pushState({}, "", "/projects/demo");
+    localStorage.setItem("token", "test-token");
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
+      key === "token" ? "test-token" : null
+    ));
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/me")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              id: 42,
+              email: "tester@example.com",
+              assistant_name: "cc",
+              linux_user: "tester",
+              plan: "free",
+              is_initialized: true,
+            },
+          }),
+        });
+      }
+      if (url.endsWith("/api/assistant/home")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              assistant: { name: "cc", initialized: true },
+              tasks: [],
+              deliverables: [],
+              memory: { sources: [] },
+              capabilities: [],
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { skills: [] } }),
+      });
+    });
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <App />
+        </AuthProvider>,
+      );
+    });
+
+    expect(await screen.findByText("我们应该在 /demo 中构建什么？")).toBeInTheDocument();
+    expect(screen.getAllByText("/demo").length).toBeGreaterThan(0);
   });
 
   it("shows a product-facing empty state when an old conversation has no readable messages", async () => {
@@ -249,7 +311,7 @@ describe("App Routing", () => {
     });
   });
 
-  it("opens assistant deliverables through safe workspace URLs from the home surface", async () => {
+  it("opens assistant deliverables in the right-side file space from the home surface", async () => {
     vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
       key === "token" ? "test-token" : null
     ));
@@ -295,6 +357,32 @@ describe("App Routing", () => {
           }),
         });
       }
+      if (url === "/api/workspace/tree?path=%2F&depth=3") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              tree: {
+                id: "/",
+                name: "/",
+                path: "/",
+                type: "directory",
+                children: [
+                  {
+                    id: "/reports/product-roadmap.md",
+                    name: "product-roadmap.md",
+                    path: "/reports/product-roadmap.md",
+                    type: "file",
+                    size: 4096,
+                    mtime: new Date(0).toISOString(),
+                  },
+                ],
+              },
+            },
+          }),
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ success: true, data: { skills: [] } }),
@@ -318,8 +406,14 @@ describe("App Routing", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "打开成果" }));
 
-    expect(await screen.findByTestId("workspace-location")).toHaveTextContent(
-      "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+    expect(await screen.findByLabelText("工作台")).toBeInTheDocument();
+    expect(await screen.findByText("product-roadmap.md")).toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-location")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/workspace/tree?path=%2F&depth=3",
+        expect.any(Object),
+      ),
     );
   });
 });

@@ -27,6 +27,14 @@ function okJson(data: unknown) {
   } as Response;
 }
 
+function errorJson(status: number, error: string) {
+  return {
+    ok: false,
+    status,
+    json: () => Promise.resolve({ success: false, error }),
+  } as Response;
+}
+
 function LocationProbe() {
   const location = useLocation();
   return (
@@ -41,9 +49,10 @@ function renderChatPage() {
   render(
     <SettingsProvider>
       <MemoryRouter initialEntries={["/projects/demo"]}>
+        <LocationProbe />
         <Routes>
           <Route path="/projects/*" element={<ChatPage />} />
-          <Route path="/workspace" element={<LocationProbe />} />
+          <Route path="/workspace" element={<div data-testid="workspace-route" />} />
         </Routes>
       </MemoryRouter>
     </SettingsProvider>,
@@ -223,7 +232,7 @@ describe("ChatPage workbench dock", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a previewed file in the full file space", async () => {
+  it("keeps a previewed file in the right-side file space", async () => {
     renderChatPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
@@ -235,8 +244,50 @@ describe("ChatPage workbench dock", () => {
     fireEvent.click(await screen.findByRole("button", { name: "在文件空间打开" }));
 
     expect(await screen.findByTestId("location")).toHaveTextContent(
-      "/workspace?path=%2Freport.md",
+      "/projects/demo",
     );
+    expect(screen.getByText("文件空间")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览 report.md" })).toBeInTheDocument();
+    expect(
+      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps low-level mirrored browser failures product-facing", async () => {
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/assistant/home") {
+        return Promise.resolve(
+          okJson({
+            assistant: { initialized: true, name: "cc" },
+            tasks: [],
+            deliverables: [],
+            memory: { sources: [] },
+            capabilities: [],
+          }),
+        );
+      }
+      if (url === "/api/skills") {
+        return Promise.resolve(okJson({ skills: [] }));
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: true }));
+      }
+      if (url === "/api/ide/sessions") {
+        return Promise.resolve(errorJson(400, "Bad Request"));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderChatPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+    );
+
+    expect(await screen.findByText("镜像浏览器暂时打不开")).toBeInTheDocument();
+    expect(screen.queryByText("Bad Request")).not.toBeInTheDocument();
     expect(
       screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
     ).not.toBeInTheDocument();

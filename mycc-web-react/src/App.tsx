@@ -44,7 +44,7 @@ function App() {
 
   useEffect(() => {
     clearOnboardingBootstrapPendingIfInitialized(user);
-  }, [user?.is_initialized]);
+  }, [user]);
 
   if (isLoading) {
     return (
@@ -76,6 +76,7 @@ function App() {
         <Routes>
           {/* 多用户模式：直接进入聊天界面 */}
           <Route path="/" element={<ChatPage />} />
+          <Route path="/projects/*" element={<ChatPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/automations" element={<AutomationsPage />} />
           <Route

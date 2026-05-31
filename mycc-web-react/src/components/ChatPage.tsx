@@ -24,7 +24,10 @@ import { SettingsModal } from "./SettingsModal";
 import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
-import { AssistantWorkbenchDock } from "./chat/AssistantWorkbenchDock";
+import {
+  AssistantWorkbenchDock,
+  type WorkbenchTab,
+} from "./chat/AssistantWorkbenchDock";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import {
@@ -57,6 +60,9 @@ export function ChatPage() {
   const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] =
     useState(sidebarDefaultOpen);
   const [isWorkbenchDockOpen, setIsWorkbenchDockOpen] = useState(false);
+  const [workbenchDockTab, setWorkbenchDockTab] =
+    useState<WorkbenchTab>("browser");
+  const [workbenchDockRequestId, setWorkbenchDockRequestId] = useState(0);
   // 移动端抽屉：始终默认关闭
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [slashSkills, setSlashSkills] = useState<
@@ -509,16 +515,26 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
+  const openWorkbenchDock = useCallback((tab: WorkbenchTab = "browser") => {
+    setWorkbenchDockTab(tab);
+    setWorkbenchDockRequestId((requestId) => requestId + 1);
+    setIsWorkbenchDockOpen(true);
+  }, []);
+
   const handleOpenDeliverable = useCallback(
     (deliverable: AssistantDeliverableCard) => {
       const target = resolveDeliverableOpenTarget(deliverable);
       if (target.kind === "navigate") {
+        if (target.to.startsWith("/workspace")) {
+          openWorkbenchDock("files");
+          return;
+        }
         navigate(target.to);
         return;
       }
       window.open(target.url, "_blank", "noopener,noreferrer");
     },
-    [navigate],
+    [navigate, openWorkbenchDock],
   );
 
   const handleContinueTask = useCallback(
@@ -919,7 +935,7 @@ export function ChatPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => setIsWorkbenchDockOpen(true)}
+                onClick={() => openWorkbenchDock("browser")}
                 className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 aria-label="打开工作台"
               >
@@ -1122,7 +1138,7 @@ export function ChatPage() {
                     error={assistantHomeError}
                     onStartPrompt={setInput}
                     onContinueTask={handleContinueTask}
-                    onOpenWorkspace={() => navigate("/workspace")}
+                    onOpenWorkspace={() => openWorkbenchDock("files")}
                     onOpenDeliverable={handleOpenDeliverable}
                     inputSlot={renderChatInput("hero")}
                     workspaceName={workingDirectory}
@@ -1151,10 +1167,10 @@ export function ChatPage() {
         {isWorkbenchDockOpen && (
           <AssistantWorkbenchDock
             token={token}
+            initialTab={workbenchDockTab}
+            tabRequestId={workbenchDockRequestId}
             onClose={() => setIsWorkbenchDockOpen(false)}
-            onOpenWorkspaceFile={(path) =>
-              navigate(`/workspace?path=${encodeURIComponent(path)}`)
-            }
+            onOpenWorkspaceFile={() => openWorkbenchDock("files")}
           />
         )}
       </div>

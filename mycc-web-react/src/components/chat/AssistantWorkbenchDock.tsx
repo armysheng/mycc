@@ -17,7 +17,7 @@ import {
   resolveIdeOpenUrl,
 } from "../../config/api";
 
-type WorkbenchTab = "browser" | "files" | "preview";
+export type WorkbenchTab = "browser" | "files" | "preview";
 type WorkspaceNodeType = "directory" | "file";
 
 interface WorkspaceTreeNode {
@@ -60,12 +60,14 @@ interface WorkspacePreviewData {
 
 type AssistantWorkbenchDockProps = {
   token: string | null;
+  initialTab?: WorkbenchTab;
+  tabRequestId?: number;
   onClose: () => void;
   onOpenWorkspaceFile?: (path: string) => void;
 };
 
 const LOW_LEVEL_ERROR_PATTERN =
-  /E2B|CCR|Agent SDK|code-server|GNU|Remote IDE|sandbox|Claude Code|base url|traffic|tokens?|provider|desktop_pid|websockify/i;
+  /E2B|CCR|Agent SDK|code-server|GNU|Remote IDE|sandbox|Claude Code|base url|traffic|tokens?|provider|desktop_pid|websockify|Bad Request|Internal Server Error|request failed/i;
 
 async function readApiData<T>(
   url: string,
@@ -107,10 +109,12 @@ function formatFileMeta(node: WorkspaceTreeNode): string {
 
 export function AssistantWorkbenchDock({
   token,
+  initialTab = "browser",
+  tabRequestId = 0,
   onClose,
   onOpenWorkspaceFile,
 }: AssistantWorkbenchDockProps) {
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>("browser");
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialTab);
   const [desktopOpening, setDesktopOpening] = useState(false);
   const [desktopUrl, setDesktopUrl] = useState<string | null>(null);
   const [desktopError, setDesktopError] = useState<string | null>(null);
@@ -209,6 +213,10 @@ export function AssistantWorkbenchDock({
       void loadFiles();
     }
   }, [activeTab, filesLoaded, filesLoading, loadFiles]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab, tabRequestId]);
 
   return (
     <aside
