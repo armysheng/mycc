@@ -55,6 +55,15 @@ if [ ! -f /opt/mycc-agent-runtime/bridge.mjs ]; then
   missing="$missing file:/opt/mycc-agent-runtime/bridge.mjs"
 fi
 
+for skill in browser-use browser pdf docx xlsx pptx data-analysis deep-research skill-installer skill-creator; do
+  if [ ! -f "/home/mycc/.claude/skills/$skill/SKILL.md" ]; then
+    missing="$missing skill:claude:$skill"
+  fi
+  if [ ! -f "/home/mycc/.mycc/skills/$skill/SKILL.md" ]; then
+    missing="$missing skill:mycc:$skill"
+  fi
+done
+
 if [ "$ready_only" -eq 1 ]; then
   finish_contract
   exit 0

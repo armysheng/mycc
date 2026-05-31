@@ -97,11 +97,23 @@ helper 会写入 `/home/mycc/workspace/.mycc/deliverables.json`，按 workspace 
 
 ## 内置 Skills
 
-这里的 skill 指会被复制到 Claude/MyCC skill 目录的 `SKILL.md` 包。当前模板内置 1 个 skill：
+这里的 skill 指会被复制到 Claude/MyCC skill 目录的 `SKILL.md` 包。当前模板内置两类：
+
+- 沙盒专属 skill：`browser-use`
+- MyCC base skills：从 `mycc-backend/src/skills/catalog` 同步到沙盒模板
 
 | Skill | 路径 | 触发场景 | 依赖能力 |
 | --- | --- | --- | --- |
 | `browser-use` | `/home/mycc/.claude/skills/browser-use/SKILL.md` 和 `/home/mycc/.mycc/skills/browser-use/SKILL.md` | Agent 需要在沙盒内操作真实浏览器、跑 Playwright 或使用 browser-use 做浏览器导航 | Python venv、Playwright、browser-use、Chromium、可选 GNU desktop display |
+| `browser` | `/home/mycc/.claude/skills/browser/SKILL.md` 和 `/home/mycc/.mycc/skills/browser/SKILL.md` | 用 Playwright 测试/调试本地 Web 应用、截图、查看浏览器日志 | Playwright、Chromium、Node/Python |
+| `pdf` | `/home/mycc/.claude/skills/pdf/SKILL.md` 和 `/home/mycc/.mycc/skills/pdf/SKILL.md` | PDF 阅读、提取、表单、转换和视觉校验 | Python、PDF helper scripts |
+| `docx` | `/home/mycc/.claude/skills/docx/SKILL.md` 和 `/home/mycc/.mycc/skills/docx/SKILL.md` | Word 文档创建、编辑、批注、修订处理 | Python、Office helper scripts |
+| `xlsx` | `/home/mycc/.claude/skills/xlsx/SKILL.md` 和 `/home/mycc/.mycc/skills/xlsx/SKILL.md` | Excel/电子表格读取、编辑、重算和分析 | Python、spreadsheet helper scripts |
+| `pptx` | `/home/mycc/.claude/skills/pptx/SKILL.md` 和 `/home/mycc/.mycc/skills/pptx/SKILL.md` | PPT 创建、编辑、清理、缩略图和结构化演示稿处理 | Python、presentation helper scripts |
+| `data-analysis` | `/home/mycc/.claude/skills/data-analysis/SKILL.md` 和 `/home/mycc/.mycc/skills/data-analysis/SKILL.md` | CSV/表格数据分析、可视化、报告 | Python、数据分析运行时 |
+| `deep-research` | `/home/mycc/.claude/skills/deep-research/SKILL.md` 和 `/home/mycc/.mycc/skills/deep-research/SKILL.md` | 深度调研、证据追踪、格式可控研究报告 | 搜索/资料收集工具、workspace |
+| `skill-installer` | `/home/mycc/.claude/skills/skill-installer/SKILL.md` 和 `/home/mycc/.mycc/skills/skill-installer/SKILL.md` | 从策展仓库安装/管理更多 skills | GitHub/network、workspace |
+| `skill-creator` | `/home/mycc/.claude/skills/skill-creator/SKILL.md` 和 `/home/mycc/.mycc/skills/skill-creator/SKILL.md` | 创建和验证自定义 skill | Python、workspace |
 
 `browser-use` skill 建议默认值：
 
@@ -118,7 +130,14 @@ Chromium executable: chromium
 - 需要 LLM 参与网页导航、表单探索或复杂交互时再用 browser-use。
 - 需要可视化排查时先启动 GNU desktop，再让浏览器跑在 desktop display 上。
 
-当前没有内置更多 Claude skill。`code-server`、CCR、desktop、Agent SDK bridge、Node/Python 工具链是沙盒能力，不是 skill 包。
+同步命令：
+
+```bash
+cd mycc-sandbox
+npm run skills:sync
+```
+
+`code-server`、CCR、desktop、Agent SDK bridge、Node/Python 工具链是沙盒能力，不是 skill 包。
 
 ## MyCC 后端配置
 

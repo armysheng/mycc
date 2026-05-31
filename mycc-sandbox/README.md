@@ -23,6 +23,7 @@ The image is based on the Playwright Python noble image so the sandbox has Pytho
 - GNU/native toolchain: git, rg, jq, gcc, g++, make, file, lsof, tree
 - GNU desktop: Xvfb, XFCE, x11vnc, noVNC, websockify
 - MyCC service scripts for code-server, CCR, desktop, and desktop health
+- Base skills copied into Claude/MyCC skill directories: browser-use, browser, pdf, docx, xlsx, pptx, data-analysis, deep-research, skill-installer, skill-creator
 
 The image also exposes `uv` through `/usr/local/bin/uv` and links `/home/mycc/.cache/ms-playwright` to `/ms-playwright`. E2B command execution does not preserve every Docker `ENV` value, so these symlinks keep Python/Playwright tooling usable for agents without extra environment injection.
 
@@ -33,6 +34,7 @@ Authenticate E2B CLI without printing credentials, then create the template:
 ```bash
 cd mycc-sandbox
 npm install
+npm run skills:sync
 npm run doctor:template
 npm run template:create
 npm run smoke:e2b-template

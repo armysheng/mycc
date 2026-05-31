@@ -7,6 +7,18 @@ import path from 'node:path';
 import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
+const baseSkillIds = [
+  'browser-use',
+  'browser',
+  'pdf',
+  'docx',
+  'xlsx',
+  'pptx',
+  'data-analysis',
+  'deep-research',
+  'skill-installer',
+  'skill-creator',
+];
 
 function read(relativePath) {
   return readFileSync(path.join(root, relativePath), 'utf8');
@@ -23,6 +35,7 @@ test('assistant sandbox module exposes the expected file contract', () => {
     'templates/e2b-assistant-sandbox/bin/mycc-start-desktop',
     'templates/e2b-assistant-sandbox/bin/mycc-health-desktop',
     'templates/e2b-assistant-sandbox/bin/mycc-register-deliverable',
+    'scripts/sync-base-skills.mjs',
     'scripts/create-template.sh',
     'scripts/doctor-template.mjs',
     'scripts/smoke-local-contract.mjs',
@@ -112,6 +125,23 @@ test('template contract covers runtime, browser automation, desktop, and service
   assert.match(contract, /timeout 30s .*chromium/);
   assert.match(contract, /mycc-register-deliverable/);
   assert.match(contract, /deliverables\.json/);
+});
+
+test('assistant sandbox includes the MyCC base skill set', () => {
+  for (const skillId of baseSkillIds) {
+    const skillPath = path.join(root, 'templates/e2b-assistant-sandbox/skills', skillId, 'SKILL.md');
+    assert.ok(existsSync(skillPath), `${skillId} should be available in the assistant sandbox`);
+  }
+});
+
+test('base skill sync script mirrors existing MyCC catalog skills', () => {
+  const syncScript = read('scripts/sync-base-skills.mjs');
+
+  for (const skillId of baseSkillIds.filter((id) => id !== 'browser-use')) {
+    assert.match(syncScript, new RegExp(`'${skillId}'`));
+  }
+  assert.match(syncScript, /mycc-backend\/src\/skills\/catalog/);
+  assert.match(syncScript, /templates\/e2b-assistant-sandbox\/skills/);
 });
 
 test('template contract exits after fast ready checks', () => {
