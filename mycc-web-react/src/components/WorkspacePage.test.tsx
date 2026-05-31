@@ -809,6 +809,52 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
+  it("uses the assistant deliverables empty state when no results are available", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({
+          deliverables: [],
+          emptyState: {
+            title: "还没有可复用成果",
+            description: "让助理完成报告、截图或数据文件后，它们会收进这里。",
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("还没有可复用成果")).toBeInTheDocument();
+    expect(screen.getByText("让助理完成报告、截图或数据文件后，它们会收进这里。")).toBeInTheDocument();
+    expect(screen.queryByText(/还没有识别到成果/)).not.toBeInTheDocument();
+  });
+
   it("keeps editor capability user-facing without exposing provider or token details", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {

@@ -93,6 +93,11 @@ type WorkspaceDeliverable = {
   mtime?: string;
 };
 
+type AssistantDeliverablesEmptyState = {
+  title?: string;
+  description?: string;
+};
+
 class ApiRequestError extends Error {
   readonly status?: number;
   readonly code?: string;
@@ -376,6 +381,8 @@ export function WorkspacePage() {
   const [ideConfigLoading, setIdeConfigLoading] = useState(false);
   const [ideConfigError, setIdeConfigError] = useState<string | null>(null);
   const [assistantDeliverables, setAssistantDeliverables] = useState<WorkspaceDeliverable[]>([]);
+  const [assistantDeliverablesEmptyState, setAssistantDeliverablesEmptyState] =
+    useState<AssistantDeliverablesEmptyState | null>(null);
 
   const [treeHeight, setTreeHeight] = useState(620);
   const initialPathLoadedRef = useRef<string | null>(null);
@@ -461,9 +468,12 @@ export function WorkspacePage() {
         .map(toWorkspaceDeliverable)
         .filter((card): card is WorkspaceDeliverable => Boolean(card))
         .slice(0, 5);
+      const emptyState = json?.data?.emptyState as AssistantDeliverablesEmptyState | undefined;
       setAssistantDeliverables(cards);
+      setAssistantDeliverablesEmptyState(emptyState?.title || emptyState?.description ? emptyState : null);
     } catch {
       setAssistantDeliverables([]);
+      setAssistantDeliverablesEmptyState(null);
     }
   }, [apiFetch]);
 
@@ -725,6 +735,9 @@ export function WorkspacePage() {
   const data = treeRoot ? [treeRoot] : [];
   const treeDeliverables = useMemo(() => collectWorkspaceDeliverables(treeRoot), [treeRoot]);
   const deliverables = assistantDeliverables.length > 0 ? assistantDeliverables : treeDeliverables;
+  const deliverablesEmptyTitle = assistantDeliverablesEmptyState?.title || "还没有识别到成果";
+  const deliverablesEmptyDescription = assistantDeliverablesEmptyState?.description
+    || "助理写出的报告、截图、处理记录和预览会优先出现在这里。";
   const ideDisabled = ideOpening || ideConfig?.enabled === false;
   const desktopDisabled = desktopOpening || ideConfig?.enabled === false || ideConfig?.desktopEnabled === false;
   const previewDisabled = previewLoading || !activeFile;
@@ -950,7 +963,12 @@ export function WorkspacePage() {
                     </div>
                   ) : (
                     <EmptyInspectorCopy>
-                      还没有识别到成果。助理写出的报告、截图、处理记录和预览会优先出现在这里。
+                      <div className="font-semibold text-slate-600 dark:text-slate-300">
+                        {deliverablesEmptyTitle}
+                      </div>
+                      <p className="mt-1">
+                        {deliverablesEmptyDescription}
+                      </p>
                     </EmptyInspectorCopy>
                   )}
                 </InspectorPanel>
