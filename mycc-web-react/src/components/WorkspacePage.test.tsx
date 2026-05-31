@@ -552,6 +552,7 @@ describe("WorkspacePage", () => {
     expect(await screen.findByText("最近成果")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 claude-ui-research.md" })).toBeInTheDocument();
     expect(screen.getByText("变更说明")).toBeInTheDocument();
+    expect(screen.getByText("4.0 KB · 来自当前文件空间")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "打开 claude-ui-research.md" }));
 

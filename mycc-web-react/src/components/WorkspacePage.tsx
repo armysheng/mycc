@@ -331,7 +331,7 @@ function collectWorkspaceDeliverables(root: WorkspaceTreeNode | null): Workspace
       kind: getDeliverableKind(node),
       size: node.size,
       mtime: node.mtime,
-      description: `${formatSize(node.size)} · ${formatTime(node.mtime)}`,
+      description: `${formatSize(node.size)} · 来自当前文件空间`,
     }));
 }
 
