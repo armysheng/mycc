@@ -940,7 +940,7 @@ export function ChatPage() {
                   onOpenWorkspace={() => navigate("/workspace")}
                   onOpenDeliverable={handleOpenDeliverable}
                   inputSlot={renderChatInput("hero")}
-                  workspaceName={workingDirectory || "mycc-main"}
+                  workspaceName={workingDirectory}
                 />
               </div>
             ) : (

@@ -65,6 +65,21 @@ const baseData: AssistantHomeData = {
 };
 
 describe("AssistantHomePanel", () => {
+  it("uses a personal-assistant headline when no project is selected", () => {
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        data={baseData}
+        inputSlot={<div data-testid="home-input-slot" />}
+      />,
+    );
+
+    expect(screen.getByText("MyCC 个人助理")).toBeInTheDocument();
+    expect(screen.getByText("今天想让 小麦 帮你做什么？")).toBeInTheDocument();
+    expect(screen.queryByText(/mycc-main/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Personal Assistant/i)).not.toBeInTheDocument();
+  });
+
   it("renders an assistant-first home shell", () => {
     render(
       <AssistantHomePanel

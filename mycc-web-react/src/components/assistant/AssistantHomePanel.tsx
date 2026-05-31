@@ -43,7 +43,7 @@ export function AssistantHomePanel({
     <section className="mx-auto flex min-h-[min(640px,70vh)] w-full max-w-5xl flex-col items-center justify-center px-2 py-10 text-center sm:px-6 sm:py-14">
       <div className="w-full max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
-          MyCC Personal Assistant
+          MyCC 个人助理
         </p>
         <h2 className="mt-5 text-3xl font-semibold tracking-[-0.035em] text-slate-950 dark:text-slate-50 sm:text-4xl md:text-5xl">
           {headline}
