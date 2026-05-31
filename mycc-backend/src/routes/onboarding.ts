@@ -50,6 +50,14 @@ type TemplateSeedFile = {
   overwrite: boolean;
 };
 
+function publicOnboardingFailureResponse() {
+  return {
+    success: false as const,
+    error: '初始化暂时没完成，请稍后重试',
+    code: 'initialization_unavailable',
+  };
+}
+
 function buildLegacyGlobalMemoryPath(linuxUser: string): string {
   const projectUserSegment = linuxUser.replace(/_/g, '-');
   return `/home/${linuxUser}/.claude/projects/-home-${projectUserSegment}-workspace/memory/MEMORY.md`;
@@ -408,10 +416,7 @@ export async function onboardingRoutes(fastify: FastifyInstance, options: Onboar
         });
       }
       console.error('❌ Onboarding 失败:', err);
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '初始化失败',
-      });
+      return reply.status(500).send(publicOnboardingFailureResponse());
     }
   });
 }

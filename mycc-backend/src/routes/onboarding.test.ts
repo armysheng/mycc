@@ -159,4 +159,70 @@ describe('onboarding bootstrap prompt', () => {
     expect(mocks.markUserInitialized).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it('keeps E2B onboarding failures product-facing without leaking infrastructure details', async () => {
+    mocks.findUserById.mockResolvedValue({
+      id: 42,
+      email: 'new@example.test',
+      password_hash: 'hash',
+      linux_user: 'mycc_u42',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date('2026-05-30T00:00:00Z'),
+      updated_at: new Date('2026-05-30T00:00:00Z'),
+    });
+    mocks.getSSHPool.mockImplementation(() => {
+      throw new Error('SSH 连接池未初始化，请先调用 initSSHPool()');
+    });
+
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_onboarding',
+      codeServerPid: 123,
+      host: '18080-sbx_onboarding.e2b.app',
+      trafficAccessToken: 'traffic-secret',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'E2B sandbox seed failed: SSH 连接池未初始化，请先调用 initSSHPool(); token=traffic-secret',
+    });
+    const app = Fastify({ logger: false });
+    await app.register(onboardingRoutes, {
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+      },
+      e2bProvider: {
+        startCodeServer,
+        runCommandInSession,
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding/initialize',
+      headers: { authorization: authHeader() },
+      payload: {
+        assistantName: '小满',
+        ownerName: '大辉',
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '初始化暂时没完成，请稍后重试',
+      code: 'initialization_unavailable',
+    });
+    expect(response.body).not.toMatch(/E2B|SSH|initSSHPool|sandbox|沙盒|token|traffic-secret|sbx_onboarding|e2b\.app|code-server/i);
+    expect(mocks.getSSHPool).not.toHaveBeenCalled();
+    expect(mocks.markUserInitialized).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
