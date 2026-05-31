@@ -32,3 +32,22 @@ export function isUserVisibleConversation(conversation: ConversationVisibilityIn
 
   return true;
 }
+
+export function hasHiddenConversationMarker(value: unknown): boolean {
+  const serialized = serializeSearchableText(value);
+  if (!serialized) return false;
+  const normalized = serialized.toLowerCase();
+  return HIDDEN_TITLE_MARKERS.some((marker) => normalized.includes(marker.toLowerCase()));
+}
+
+function serializeSearchableText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (!value || typeof value !== 'object') return '';
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
+}

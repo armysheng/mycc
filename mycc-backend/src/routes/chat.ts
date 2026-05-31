@@ -41,7 +41,10 @@ import {
   injectWorkspaceOperatingPrompt,
   type WorkspaceBootstrapFile,
 } from '../chat/openclaw-context.js';
-import { isUserVisibleConversation } from '../chat/conversation-visibility.js';
+import {
+  hasHiddenConversationMarker,
+  isUserVisibleConversation,
+} from '../chat/conversation-visibility.js';
 import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
 
 // 发送消息请求验证
@@ -121,6 +124,12 @@ function isHistoryMessage(value: unknown): value is HistoryMessage {
     ['user', 'assistant', 'system', 'result'].includes(entry.type) &&
     typeof entry.timestamp === 'string'
   );
+}
+
+function isUserVisibleHistoryMessage(message: HistoryMessage): boolean {
+  if (message.type === 'system' && message.subtype === 'init') return false;
+  if (hasHiddenConversationMarker(message)) return false;
+  return true;
 }
 
 function extractConversationTitle(message: string): string {
@@ -1077,7 +1086,8 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
               return null;
             }
           })
-          .filter(isHistoryMessage);
+          .filter(isHistoryMessage)
+          .filter(isUserVisibleHistoryMessage);
 
         return reply.send({
           success: true,
