@@ -372,6 +372,7 @@ export function WorkspacePage() {
 
   const [treeHeight, setTreeHeight] = useState(620);
   const initialPathLoadedRef = useRef<string | null>(null);
+  const linkedWorkspacePath = searchParams.get("path");
 
   const apiFetch = useCallback(async (url: string, init?: RequestInit) => {
     if (!token) {
@@ -581,13 +582,17 @@ export function WorkspacePage() {
       setWorkspaceNeedsIde(false);
       setNotice("工作间已在新标签页打开");
       void loadTree();
+      if (linkedWorkspacePath) {
+        void loadFile(linkedWorkspacePath);
+        void loadPreview(linkedWorkspacePath);
+      }
     } catch (err) {
       ideWindow?.close();
       setError(safeWorkspaceErrorMessage(err, "打开工作间失败"));
     } finally {
       setIdeOpening(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, linkedWorkspacePath, loadFile, loadPreview, loadTree]);
 
   const openDesktop = useCallback(async () => {
     setDesktopOpening(true);
@@ -652,12 +657,11 @@ export function WorkspacePage() {
   }, [loadAssistantDeliverables]);
 
   useEffect(() => {
-    const initialPath = searchParams.get("path");
-    if (!token || !initialPath || initialPathLoadedRef.current === initialPath) return;
-    initialPathLoadedRef.current = initialPath;
-    void loadFile(initialPath);
-    void loadPreview(initialPath);
-  }, [loadFile, loadPreview, searchParams, token]);
+    if (!token || !linkedWorkspacePath || initialPathLoadedRef.current === linkedWorkspacePath) return;
+    initialPathLoadedRef.current = linkedWorkspacePath;
+    void loadFile(linkedWorkspacePath);
+    void loadPreview(linkedWorkspacePath);
+  }, [linkedWorkspacePath, loadFile, loadPreview, token]);
 
   useEffect(() => {
     const updateHeight = () => setTreeHeight(Math.max(420, window.innerHeight - 260));

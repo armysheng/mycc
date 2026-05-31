@@ -790,6 +790,103 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(/系统错误|Workspace session missing|needs_workspace|E2B 工作区会话不存在/)).not.toBeInTheDocument();
   });
 
+  it("retries the linked deliverable file after the workbench becomes ready", async () => {
+    const openedWindow = {
+      close: vi.fn(),
+      location: { href: "about:blank" },
+      opener: window,
+    };
+    vi.stubGlobal("open", vi.fn().mockReturnValue(openedWindow));
+    let treeAttempts = 0;
+    let fileAttempts = 0;
+    let previewAttempts = 0;
+
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        treeAttempts += 1;
+        if (treeAttempts === 1) {
+          return Promise.resolve(errorJson(
+            409,
+            "需要先打开工作间",
+            "workbench_required",
+          ) as Response);
+        }
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/workspace/file?path=%2Freports%2Fproduct-roadmap.md") {
+        fileAttempts += 1;
+        if (fileAttempts === 1) {
+          return Promise.resolve(errorJson(
+            409,
+            "需要先打开工作间",
+            "workbench_required",
+          ) as Response);
+        }
+        return Promise.resolve(okJson({
+          path: "/reports/product-roadmap.md",
+          size: 8192,
+          mtime: "2026-05-31T08:00:00.000Z",
+          truncated: false,
+          binary: false,
+          content: "# 产品路线报告",
+        }) as Response);
+      }
+      if (url === "/api/workspace/preview?path=%2Freports%2Fproduct-roadmap.md") {
+        previewAttempts += 1;
+        if (previewAttempts === 1) {
+          return Promise.resolve(errorJson(
+            409,
+            "需要先打开工作间",
+            "workbench_required",
+          ) as Response);
+        }
+        return Promise.resolve(okJson({
+          path: "/reports/product-roadmap.md",
+          size: 8192,
+          mtime: "2026-05-31T08:00:00.000Z",
+          mimeType: "text/markdown",
+          previewType: "markdown",
+          truncated: false,
+          supported: true,
+          content: "# 产品路线报告\n\n工作间准备好后自动恢复预览。",
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      if (url === "/api/ide/sessions") {
+        return Promise.resolve(okJson({ openPath: "/api/ide/sessions/ide_123/proxy/" }) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/workspace?path=/reports/product-roadmap.md"]}>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "立即打开" }));
+
+    expect(await screen.findByText(/工作间准备好后自动恢复预览/)).toBeInTheDocument();
+    expect(fileAttempts).toBe(2);
+    expect(previewAttempts).toBe(2);
+  });
+
   it("keeps low-level backend errors out of the user-facing workspace", async () => {
     vi.stubGlobal("open", vi.fn());
     vi.mocked(fetch).mockImplementation((input) => {
