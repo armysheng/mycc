@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatRoutes } from './chat.js';
 
 const mocks = vi.hoisted(() => ({
@@ -42,13 +42,17 @@ function authHeader(): string {
   return `Bearer ${token}`;
 }
 
-async function buildApp() {
+async function buildApp(options: Parameters<typeof chatRoutes>[1] = {}) {
   const app = Fastify({ logger: false });
-  await app.register(chatRoutes);
+  await app.register(chatRoutes, options);
   return app;
 }
 
 describe('chat history route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('filters hidden bootstrap and init records from session history', async () => {
     const connection = { id: 'ssh-connection' };
     const historyLines = [
@@ -104,7 +108,6 @@ describe('chat history route', () => {
       url: '/api/chat/sessions/session_123/messages',
       headers: { authorization: authHeader() },
     });
-
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       success: true,
@@ -121,6 +124,104 @@ describe('chat history route', () => {
     });
     expect(response.body).not.toContain('首次初始化');
     expect(response.body).not.toContain('"type":"system"');
+    await app.close();
+  });
+
+  it('loads session history from the running E2B workbench without touching SSH', async () => {
+    const historyLines = [
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-05-31T00:00:01.000Z',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '帮我整理项目状态',
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-05-31T00:00:02.000Z',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '我已经整理好当前项目状态。',
+            },
+          ],
+        },
+      }),
+    ].join('\n');
+    const session = {
+      id: 'ide_123',
+      provider: 'e2b',
+      sandboxId: 'sbx_123',
+      codeServerPid: 1234,
+      host: '18080-sbx_123.e2b.app',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-31T00:00:00.000Z',
+      proxyToken: 'proxy-token',
+      userId: 42,
+      status: 'running',
+    };
+    const ideSessionStore = {
+      get: vi.fn(),
+      set: vi.fn(),
+      findReusableByUser: vi.fn().mockResolvedValue(session),
+      findExpiredRunning: vi.fn(),
+    };
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: historyLines,
+      stderr: '',
+    });
+    mocks.userOwnsConversation.mockResolvedValue(true);
+    mocks.findUserById.mockResolvedValue({
+      id: 42,
+      linux_user: 'tester',
+    });
+    mocks.getSSHPool.mockImplementation(() => {
+      throw new Error('SSH should not be used for E2B history loading');
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_TEMPLATE: 'mycc-assistant-sandbox-dev',
+      },
+      ideSessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/chat/sessions/session_123/messages',
+      headers: { authorization: authHeader() },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        sessionId: 'session_123',
+        messages: [
+          expect.objectContaining({ type: 'user' }),
+          expect.objectContaining({ type: 'assistant' }),
+        ],
+        total: 2,
+      },
+    });
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      session,
+      expect.stringContaining('/home/mycc/.claude/projects/-home-mycc-workspace/session_123.jsonl'),
+      expect.objectContaining({
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 30000,
+      }),
+    );
+    expect(mocks.getSSHPool).not.toHaveBeenCalled();
     await app.close();
   });
 });

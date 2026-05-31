@@ -215,6 +215,102 @@ function isRuntimeControlMessage(message: string): boolean {
   return normalized === 'continue' || normalized === 'accept';
 }
 
+function buildClaudeHistoryProjectDir(workspaceDir: string): string {
+  const normalizedWorkspace = path.posix.normalize(workspaceDir).replace(/\/$/, '');
+  const homeDir = path.posix.dirname(normalizedWorkspace);
+  const projectSegment = normalizedWorkspace.replace(/_/g, '-').replace(/\//g, '-');
+  return `${homeDir}/.claude/projects/${projectSegment}`;
+}
+
+function buildHistoryReadCommand(historyPath: string, limit: number): string {
+  const safeHistoryPath = escapeShellArg(historyPath);
+  return `if [ -f ${safeHistoryPath} ]; then tail -n ${Math.max(1, limit)} ${safeHistoryPath}; fi`;
+}
+
+function parseHistoryMessages(stdout: string): HistoryMessage[] {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .filter(isHistoryMessage)
+    .filter(isUserVisibleHistoryMessage);
+}
+
+async function loadSessionHistoryMessages(params: {
+  userId: number;
+  linuxUser: string;
+  sessionId: string;
+  limit: number;
+  options: Required<ChatProjectContextOptions>;
+}): Promise<HistoryMessage[]> {
+  const safeLinuxUser = sanitizeLinuxUsername(params.linuxUser);
+  const workspaceDir = `/home/${safeLinuxUser}/workspace`;
+
+  if (shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
+    const sshPool = getSSHPool();
+    const connection = await sshPool.acquire();
+
+    try {
+      const projectDir = buildClaudeHistoryProjectDir(workspaceDir);
+      const historyPath = `${projectDir}/${params.sessionId}.jsonl`;
+      const readCmd =
+        `sudo -n -u ${escapeShellArg(safeLinuxUser)} bash -lc ` +
+        `${escapeShellArg(buildHistoryReadCommand(historyPath, params.limit))}`;
+      const result = await sshPool.exec(connection, readCmd);
+
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr || '读取会话历史失败');
+      }
+
+      return parseHistoryMessages(result.stdout);
+    } finally {
+      sshPool.release(connection);
+    }
+  }
+
+  const plan = buildE2bCodeServerSessionPlan({
+    userId: params.userId,
+    linuxUser: safeLinuxUser,
+    workspaceDir,
+  }, params.options.env);
+  const session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+  if (!session) {
+    return [];
+  }
+
+  try {
+    const projectDir = buildClaudeHistoryProjectDir(plan.workspaceDir);
+    const historyPath = `${projectDir}/${params.sessionId}.jsonl`;
+    const result = await params.options.e2bProvider.runCommandInSession(
+      session,
+      `bash -lc ${escapeShellArg(buildHistoryReadCommand(historyPath, params.limit))}`,
+      {
+        cwd: plan.workspaceDir,
+        timeoutMs: 30000,
+      },
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr || result.error || '读取会话历史失败');
+    }
+
+    return parseHistoryMessages(result.stdout);
+  } catch (error) {
+    if (isLikelyStaleE2bSessionError(error)) {
+      await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function verifyOnboardingWorkspaceState(params: {
   userId: number;
   linuxUser: string;
@@ -1055,51 +1151,22 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
         });
       }
 
-      const sshPool = getSSHPool();
-      const connection = await sshPool.acquire();
+      const messages = await loadSessionHistoryMessages({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+        sessionId,
+        limit: limitNum,
+        options: projectContextOptions,
+      });
 
-      try {
-        const safeLinuxUser = sanitizeLinuxUsername(user.linux_user);
-        const projectUserSegment = safeLinuxUser.replace(/_/g, '-');
-        const projectDir = `/home/${safeLinuxUser}/.claude/projects/-home-${projectUserSegment}-workspace`;
-        const historyPath = `${projectDir}/${sessionId}.jsonl`;
-        const escapedLimit = Math.max(1, limitNum);
-        const escapedUser = escapeShellArg(safeLinuxUser);
-
-        const readCmd =
-          `sudo -n -u ${escapedUser} bash -lc ` +
-          `${escapeShellArg(`if [ -f ${historyPath} ]; then tail -n ${escapedLimit} ${historyPath}; fi`)}`;
-        const result = await sshPool.exec(connection, readCmd);
-
-        if (result.exitCode !== 0) {
-          throw new Error(result.stderr || '读取会话历史失败');
-        }
-
-        const messages: HistoryMessage[] = result.stdout
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            try {
-              return JSON.parse(line) as unknown;
-            } catch {
-              return null;
-            }
-          })
-          .filter(isHistoryMessage)
-          .filter(isUserVisibleHistoryMessage);
-
-        return reply.send({
-          success: true,
-          data: {
-            sessionId,
-            messages,
-            total: messages.length,
-          },
-        });
-      } finally {
-        sshPool.release(connection);
-      }
+      return reply.send({
+        success: true,
+        data: {
+          sessionId,
+          messages,
+          total: messages.length,
+        },
+      });
     } catch (err) {
       return reply.status(500).send({
         success: false,
