@@ -1160,13 +1160,20 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
         });
       }
 
-      const messages = await loadSessionHistoryMessages({
-        userId: request.user.userId,
-        linuxUser: user.linux_user,
-        sessionId,
-        limit: limitNum,
-        options: projectContextOptions,
-      });
+      let messages: HistoryMessage[] = [];
+      try {
+        messages = await loadSessionHistoryMessages({
+          userId: request.user.userId,
+          linuxUser: user.linux_user,
+          sessionId,
+          limit: limitNum,
+          options: projectContextOptions,
+        });
+      } catch {
+        // Opening an old conversation should never be blocked by an expired
+        // or temporarily unavailable workspace history store.
+        messages = [];
+      }
 
       return reply.send({
         success: true,

@@ -82,6 +82,40 @@ describe("App Routing", () => {
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
+  it("shows a product-facing empty state when an old conversation has no readable messages", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        success: true,
+        data: {
+          sessionId: "old-session",
+          messages: [],
+          total: 0,
+        },
+      }),
+    });
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SettingsProvider>
+            <MemoryRouter initialEntries={["/?sessionId=old-session"]}>
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+              </Routes>
+            </MemoryRouter>
+          </SettingsProvider>
+        </AuthProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("旧对话暂无可显示内容")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/原记录不会被删除/)).toBeInTheDocument();
+    expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
+  });
+
   it("sends bypassPermissions as the default chat permission mode", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,

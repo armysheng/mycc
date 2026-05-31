@@ -721,6 +721,8 @@ export function ChatPage() {
   ]);
 
   const isAssistantHomeView = !isHistoryView && messages.length === 0 && !isLoadedConversation;
+  const isLoadedConversationEmpty =
+    isLoadedConversation && !historyLoading && !historyError && messages.length === 0;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -889,6 +891,41 @@ export function ChatPage() {
                 回到新对话
               </button>
             </div>
+          </div>
+        ) : isLoadedConversationEmpty ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-lg px-6">
+                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-amber-600 dark:text-amber-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
+                    />
+                  </svg>
+                </div>
+                <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
+                  旧对话暂无可显示内容
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
+                  原记录不会被删除，只是这段旧对话的正文暂时没读出来。你可以直接继续提问，MyCC 会从这里重新接上。
+                </p>
+                <button
+                  onClick={handleBackToHistory}
+                  className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  回到历史记录
+                </button>
+              </div>
+            </div>
+            {renderChatInput()}
           </div>
         ) : (
           <>

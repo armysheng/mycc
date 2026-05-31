@@ -285,4 +285,47 @@ describe('chat history route', () => {
     });
     await app.close();
   });
+
+  it('returns an empty old conversation instead of 500 when the history workspace lookup fails', async () => {
+    const ideSessionStore = {
+      get: vi.fn(),
+      set: vi.fn(),
+      findReusableByUser: vi.fn().mockRejectedValue(new Error('history workspace lookup failed')),
+      findExpiredRunning: vi.fn(),
+    };
+    mocks.userOwnsConversation.mockResolvedValue(true);
+    mocks.findUserById.mockResolvedValue({
+      id: 42,
+      linux_user: 'tester',
+    });
+    mocks.getSSHPool.mockImplementation(() => {
+      throw new Error('SSH should not be used for E2B history loading');
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_TEMPLATE: 'mycc-assistant-sandbox-dev',
+      },
+      ideSessionStore,
+      e2bProvider: { runCommandInSession: vi.fn() },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/chat/sessions/session_123/messages',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        sessionId: 'session_123',
+        messages: [],
+        total: 0,
+      },
+    });
+    await app.close();
+  });
 });
