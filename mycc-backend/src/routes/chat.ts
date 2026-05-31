@@ -132,6 +132,13 @@ function extractConversationTitle(message: string): string {
   return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
 }
 
+function deriveConversationTitle(message: string): string | undefined {
+  if (!isUserVisibleConversation({ title: message })) {
+    return undefined;
+  }
+  return extractConversationTitle(message);
+}
+
 function normalizeInstallSkillKeyword(raw: string): string {
   return raw
     .trim()
@@ -791,7 +798,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
 
         // 确保会话元数据存在（首次消息会创建并自动提取标题，会话续聊仅刷新 updated_at）
         if (currentSessionId) {
-          const derivedTitle = body.sessionId ? undefined : extractConversationTitle(body.message);
+          const derivedTitle = body.sessionId ? undefined : deriveConversationTitle(body.message);
           const upserted = await upsertConversation({
             userId,
             sessionId: currentSessionId,

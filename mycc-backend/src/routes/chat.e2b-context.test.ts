@@ -119,6 +119,17 @@ describe('chat E2B project context injection', () => {
       ]),
       stderr: '',
     });
+    mocks.runtimeChat.mockImplementation(async function* () {
+      yield {
+        type: 'system',
+        session_id: 'session-e2b-context',
+      };
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+      };
+    });
     const app = await buildApp({
       env: {
         MYCC_AGENT_RUNTIME: 'e2b-claude-cli',
@@ -147,6 +158,11 @@ describe('chat E2B project context injection', () => {
     const runtimeMessage = mocks.runtimeChat.mock.calls[0]![0].message as string;
     expect(runtimeMessage).toContain('# Project Context');
     expect(runtimeMessage).toContain('## User Request\n请总结当前项目');
+    expect(mocks.upsertConversation).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-e2b-context',
+      title: '请总结当前项目',
+      userId: 42,
+    }));
     await app.close();
   });
 
@@ -233,6 +249,17 @@ describe('chat E2B project context injection', () => {
       stdout: JSON.stringify({ ok: true }),
       stderr: '',
     });
+    mocks.runtimeChat.mockImplementation(async function* () {
+      yield {
+        type: 'system',
+        session_id: 'session-e2b-context',
+      };
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+      };
+    });
     const app = await buildApp({
       env: {
         MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
@@ -269,6 +296,12 @@ describe('chat E2B project context injection', () => {
       userId: 42,
       assistantName: '小满',
     });
+    expect(mocks.upsertConversation).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-e2b-context',
+      title: undefined,
+      userId: 42,
+    }));
+    expect(JSON.stringify(mocks.upsertConversation.mock.calls)).not.toContain('首次初始化');
     await app.close();
   });
 });
