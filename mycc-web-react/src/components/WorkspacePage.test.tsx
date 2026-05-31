@@ -17,7 +17,19 @@ vi.mock("../contexts/AuthContext", () => ({
 }));
 
 vi.mock("@monaco-editor/react", () => ({
-  default: () => <textarea aria-label="mock editor" readOnly />,
+  default: ({
+    onChange,
+    value,
+  }: {
+    onChange?: (value?: string) => void;
+    value?: string;
+  }) => (
+    <textarea
+      aria-label="mock editor"
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  ),
 }));
 
 const FORBIDDEN_PRODUCT_TERMS =
@@ -997,6 +1009,91 @@ describe("WorkspacePage", () => {
 
     expect(await screen.findByText("刚整理好的总结")).toBeInTheDocument();
     expect(deliverableRequests).toBe(2);
+  });
+
+  it("refreshes the preview after saving the current file", async () => {
+    vi.stubGlobal("open", vi.fn());
+    let previewRequests = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [
+              {
+                id: "/notes.md",
+                mtime: "2026-05-31T09:00:00.000Z",
+                name: "notes.md",
+                path: "/notes.md",
+                size: 1024,
+                type: "file",
+              },
+            ],
+          },
+        }) as Response);
+      }
+      if (url === "/api/workspace/file?path=%2Fnotes.md") {
+        return Promise.resolve(okJson({
+          path: "/notes.md",
+          size: 1024,
+          mtime: "2026-05-31T09:00:00.000Z",
+          truncated: false,
+          binary: false,
+          content: "# 旧记录",
+        }) as Response);
+      }
+      if (url === "/api/workspace/preview?path=%2Fnotes.md") {
+        previewRequests += 1;
+        return Promise.resolve(okJson({
+          path: "/notes.md",
+          size: 1024,
+          mtime: "2026-05-31T09:00:00.000Z",
+          mimeType: "text/markdown",
+          previewType: "markdown",
+          truncated: false,
+          supported: true,
+          content: previewRequests === 1
+            ? "# 旧记录\n\n这是保存前的预览。"
+            : "# 新记录\n\n这是保存后的预览。",
+        }) as Response);
+      }
+      if (url === "/api/workspace/file" && init?.method === "PUT") {
+        return Promise.resolve(okJson({ ok: true }) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({ deliverables: [] }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByText("notes.md"));
+    expect(await screen.findByText(/这是保存前的预览/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("mock editor"), {
+      target: { value: "# 新记录" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText(/这是保存后的预览/)).toBeInTheDocument();
+    expect(previewRequests).toBe(2);
   });
 
   it("keeps editor capability user-facing without exposing provider or token details", async () => {

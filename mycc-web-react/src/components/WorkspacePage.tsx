@@ -539,12 +539,13 @@ export function WorkspacePage() {
       setNotice(`已保存 ${activeFile.path}`);
       await loadTree();
       await loadAssistantDeliverables();
+      await loadPreview(activeFile.path);
     } catch (err) {
       setError(safeWorkspaceErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
-  }, [activeFile, apiFetch, draftContent, loadAssistantDeliverables, loadTree]);
+  }, [activeFile, apiFetch, draftContent, loadAssistantDeliverables, loadPreview, loadTree]);
 
   const openDeliverable = useCallback((deliverable: WorkspaceDeliverable) => {
     if (deliverable.path) {
