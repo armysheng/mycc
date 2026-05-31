@@ -13,6 +13,8 @@ interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
+const UNTITLED_CONVERSATION_LABEL = "未命名对话";
+
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -64,7 +66,7 @@ export function Sidebar({
             startTime: item.createdAt,
             lastTime: item.updatedAt,
             messageCount: item.messageCount ?? 0,
-            lastMessagePreview: item.title || "Untitled",
+            lastMessagePreview: item.title || UNTITLED_CONVERSATION_LABEL,
             customTitle: item.title || null,
           })),
         );

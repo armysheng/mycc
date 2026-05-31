@@ -1,37 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HistoryView } from "./HistoryView";
+import { Sidebar } from "./Sidebar";
 
-vi.mock("../contexts/AuthContext", () => ({
-  useAuth: () => ({ token: "test-token" }),
+vi.mock("../../contexts/AuthContext", () => ({
+  useAuth: () => ({
+    token: "test-token",
+    user: { email: "tester@example.com", linux_user: "tester" },
+    logout: vi.fn(),
+  }),
 }));
 
-describe("HistoryView", () => {
+describe("Sidebar", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
-  });
-
-  it("keeps history-list failures product-facing without raw HTTP details", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-    });
-
-    render(
-      <MemoryRouter>
-        <HistoryView />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("历史记录暂时没读出来")).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/500|Internal Server Error|Failed to load/i)).not.toBeInTheDocument();
   });
 
   it("uses a Chinese fallback for unnamed conversations", async () => {
@@ -55,12 +40,16 @@ describe("HistoryView", () => {
 
     render(
       <MemoryRouter>
-        <HistoryView />
+        <Sidebar
+          onNewChat={vi.fn()}
+          isOpen={false}
+          onClose={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
     await waitFor(() => {
-      expect(screen.getAllByText("未命名对话").length).toBeGreaterThan(0);
+      expect(screen.getByText("未命名对话")).toBeInTheDocument();
     });
     expect(screen.queryByText(/Untitled/i)).not.toBeInTheDocument();
   });

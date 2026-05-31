@@ -10,6 +10,7 @@ interface HistoryViewProps {
 
 const HISTORY_LIST_ERROR_MESSAGE =
   "历史记录暂时没读出来，原记录不会被删除。可以先回到新对话，稍后再试一次。";
+const UNTITLED_CONVERSATION_LABEL = "未命名对话";
 
 export function HistoryView(_props: HistoryViewProps) {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export function HistoryView(_props: HistoryViewProps) {
           startTime: item.createdAt,
           lastTime: item.updatedAt,
           messageCount: item.messageCount ?? 0,
-          lastMessagePreview: item.title || "Untitled conversation",
+          lastMessagePreview: item.title || UNTITLED_CONVERSATION_LABEL,
           customTitle: item.title || null,
         }));
         setConversations(mapped);

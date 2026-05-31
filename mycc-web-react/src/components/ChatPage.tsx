@@ -855,7 +855,7 @@ export function ChatPage() {
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-slate-600 dark:text-slate-400">
-                Loading conversation history...
+                正在读取旧对话...
               </p>
             </div>
           </div>

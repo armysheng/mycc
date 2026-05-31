@@ -116,6 +116,29 @@ describe("App Routing", () => {
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
+  it("keeps old-conversation loading copy in Chinese", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SettingsProvider>
+            <MemoryRouter initialEntries={["/?sessionId=old-session"]}>
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+              </Routes>
+            </MemoryRouter>
+          </SettingsProvider>
+        </AuthProvider>,
+      );
+    });
+
+    expect(screen.getByText("正在读取旧对话...")).toBeInTheDocument();
+    expect(screen.queryByText(/Loading conversation history/i)).not.toBeInTheDocument();
+  });
+
   it("sends bypassPermissions as the default chat permission mode", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
