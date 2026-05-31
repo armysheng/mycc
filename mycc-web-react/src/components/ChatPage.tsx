@@ -1152,6 +1152,9 @@ export function ChatPage() {
           <AssistantWorkbenchDock
             token={token}
             onClose={() => setIsWorkbenchDockOpen(false)}
+            onOpenWorkspaceFile={(path) =>
+              navigate(`/workspace?path=${encodeURIComponent(path)}`)
+            }
           />
         )}
       </div>

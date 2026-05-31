@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import { SettingsProvider } from "../contexts/SettingsContext";
@@ -27,12 +27,23 @@ function okJson(data: unknown) {
   } as Response;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">
+      {location.pathname}
+      {location.search}
+    </div>
+  );
+}
+
 function renderChatPage() {
   render(
     <SettingsProvider>
       <MemoryRouter initialEntries={["/projects/demo"]}>
         <Routes>
           <Route path="/projects/*" element={<ChatPage />} />
+          <Route path="/workspace" element={<LocationProbe />} />
         </Routes>
       </MemoryRouter>
     </SettingsProvider>,
@@ -207,6 +218,25 @@ describe("ChatPage workbench dock", () => {
     expect(await screen.findByText("/report.md")).toBeInTheDocument();
     expect(screen.getByText(/这里是助理整理的重点/)).toBeInTheDocument();
     expect(screen.queryByText("暂无预览")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens a previewed file in the full file space", async () => {
+    renderChatPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "预览 report.md" }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "在文件空间打开" }));
+
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/workspace?path=%2Freport.md",
+    );
     expect(
       screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
     ).not.toBeInTheDocument();

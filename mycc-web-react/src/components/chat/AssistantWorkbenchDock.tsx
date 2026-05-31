@@ -61,6 +61,7 @@ interface WorkspacePreviewData {
 type AssistantWorkbenchDockProps = {
   token: string | null;
   onClose: () => void;
+  onOpenWorkspaceFile?: (path: string) => void;
 };
 
 const LOW_LEVEL_ERROR_PATTERN =
@@ -107,6 +108,7 @@ function formatFileMeta(node: WorkspaceTreeNode): string {
 export function AssistantWorkbenchDock({
   token,
   onClose,
+  onOpenWorkspaceFile,
 }: AssistantWorkbenchDockProps) {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>("browser");
   const [desktopOpening, setDesktopOpening] = useState(false);
@@ -386,7 +388,10 @@ export function AssistantWorkbenchDock({
                   {previewError}
                 </div>
               ) : previewData ? (
-                <PreviewPane preview={previewData} />
+                <PreviewPane
+                  preview={previewData}
+                  onOpenWorkspaceFile={onOpenWorkspaceFile}
+                />
               ) : (
                 <div className="flex h-full items-center justify-center px-8 text-center text-sm text-slate-500 dark:text-slate-400">
                   从文件列表点选一个文件进行预览。
@@ -400,7 +405,13 @@ export function AssistantWorkbenchDock({
   );
 }
 
-function PreviewPane({ preview }: { preview: WorkspacePreviewData }) {
+function PreviewPane({
+  preview,
+  onOpenWorkspaceFile,
+}: {
+  preview: WorkspacePreviewData;
+  onOpenWorkspaceFile?: (path: string) => void;
+}) {
   if (!preview.supported || preview.previewType === "unsupported") {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
@@ -415,14 +426,25 @@ function PreviewPane({ preview }: { preview: WorkspacePreviewData }) {
         <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
           {preview.path}
         </span>
-        <span className="shrink-0 text-[11px] text-slate-400">
-          {formatFileMeta({
-            ...preview,
-            id: preview.path,
-            name: preview.path,
-            type: "file",
-          })}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[11px] text-slate-400">
+            {formatFileMeta({
+              ...preview,
+              id: preview.path,
+              name: preview.path,
+              type: "file",
+            })}
+          </span>
+          {onOpenWorkspaceFile && (
+            <button
+              type="button"
+              onClick={() => onOpenWorkspaceFile(preview.path)}
+              className="rounded-lg border px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            >
+              在文件空间打开
+            </button>
+          )}
+        </div>
       </header>
 
       {preview.previewType === "image" && preview.dataUrl ? (
