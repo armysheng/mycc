@@ -381,6 +381,7 @@ export function WorkspacePage() {
   const [ideConfigLoading, setIdeConfigLoading] = useState(false);
   const [ideConfigError, setIdeConfigError] = useState<string | null>(null);
   const [assistantDeliverables, setAssistantDeliverables] = useState<WorkspaceDeliverable[]>([]);
+  const [assistantDeliverablesInProgress, setAssistantDeliverablesInProgress] = useState(false);
   const [assistantDeliverablesEmptyState, setAssistantDeliverablesEmptyState] =
     useState<AssistantDeliverablesEmptyState | null>(null);
 
@@ -464,15 +465,19 @@ export function WorkspacePage() {
   const loadAssistantDeliverables = useCallback(async () => {
     try {
       const json = await apiFetch(getAssistantDeliverablesUrl());
-      const cards = ((json?.data?.deliverables ?? []) as AssistantDeliverableCard[])
+      const rawCards = (json?.data?.deliverables ?? []) as AssistantDeliverableCard[];
+      const cards = rawCards
         .map(toWorkspaceDeliverable)
         .filter((card): card is WorkspaceDeliverable => Boolean(card))
         .slice(0, 5);
+      const hasPendingDeliverables = rawCards.some((card) => card.status !== "ready");
       const emptyState = json?.data?.emptyState as AssistantDeliverablesEmptyState | undefined;
       setAssistantDeliverables(cards);
+      setAssistantDeliverablesInProgress(cards.length === 0 && hasPendingDeliverables);
       setAssistantDeliverablesEmptyState(emptyState?.title || emptyState?.description ? emptyState : null);
     } catch {
       setAssistantDeliverables([]);
+      setAssistantDeliverablesInProgress(false);
       setAssistantDeliverablesEmptyState(null);
     }
   }, [apiFetch]);
@@ -964,6 +969,15 @@ export function WorkspacePage() {
                         </article>
                       ))}
                     </div>
+                  ) : assistantDeliverablesInProgress ? (
+                    <EmptyInspectorCopy>
+                      <div className="font-semibold text-slate-600 dark:text-slate-300">
+                        成果还在整理
+                      </div>
+                      <p className="mt-1">
+                        完成后会出现在这里；可以稍后刷新列表查看最新状态。
+                      </p>
+                    </EmptyInspectorCopy>
                   ) : (
                     <EmptyInspectorCopy>
                       <div className="font-semibold text-slate-600 dark:text-slate-300">

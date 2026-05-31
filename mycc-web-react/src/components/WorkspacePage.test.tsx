@@ -944,6 +944,71 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText(/还没有识别到成果/)).not.toBeInTheDocument();
   });
 
+  it("shows a progress state when assistant deliverables are not ready yet", async () => {
+    vi.stubGlobal("open", vi.fn());
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/workspace/tree")) {
+        return Promise.resolve(okJson({
+          tree: {
+            id: "/",
+            mtime: new Date(0).toISOString(),
+            name: "/",
+            path: "/",
+            size: 0,
+            type: "directory",
+            children: [],
+          },
+        }) as Response);
+      }
+      if (url === "/api/assistant/deliverables") {
+        return Promise.resolve(okJson({
+          deliverables: [
+            {
+              id: "workspace:/reports/pending-report.md",
+              kind: "report",
+              title: "生成中的报告",
+              source: "current_workspace",
+              status: "pending",
+              path: "/reports/pending-report.md",
+            },
+            {
+              id: "workspace:/reports/failed-report.md",
+              kind: "report",
+              title: "失败的报告",
+              source: "current_workspace",
+              status: "error",
+              path: "/reports/failed-report.md",
+            },
+          ],
+          emptyState: {
+            title: "还没有可复用成果",
+            description: "让助理完成报告、截图或数据文件后，它们会收进这里。",
+          },
+        }) as Response);
+      }
+      if (url === "/api/ide/config") {
+        return Promise.resolve(okJson({ enabled: true, desktopEnabled: false }) as Response);
+      }
+      if (url === "/api/ide/sessions/current") {
+        return Promise.resolve(okJson(null) as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspacePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("成果还在整理")).toBeInTheDocument();
+    expect(screen.getByText("完成后会出现在这里；可以稍后刷新列表查看最新状态。")).toBeInTheDocument();
+    expect(screen.queryByText("生成中的报告")).not.toBeInTheDocument();
+    expect(screen.queryByText("失败的报告")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有可复用成果")).not.toBeInTheDocument();
+  });
+
   it("refreshes assistant deliverables when the file list is refreshed", async () => {
     vi.stubGlobal("open", vi.fn());
     let deliverableRequests = 0;
