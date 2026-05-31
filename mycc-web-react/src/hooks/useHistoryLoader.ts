@@ -8,6 +8,7 @@ interface HistoryLoaderState {
   messages: AllMessage[];
   loading: boolean;
   error: string | null;
+  errorStatus: number | null;
   sessionId: string | null;
 }
 
@@ -15,6 +16,9 @@ interface HistoryLoaderResult extends HistoryLoaderState {
   loadHistory: (sessionId: string) => Promise<void>;
   clearHistory: () => void;
 }
+
+const HISTORY_LOAD_ERROR_MESSAGE =
+  "这段旧对话暂时没读出来，原记录不会被删除。可以先回到新对话，稍后再试一次。";
 
 /**
  * Hook for loading and converting conversation history from the backend
@@ -25,6 +29,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
     messages: [],
     loading: false,
     error: null,
+    errorStatus: null,
     sessionId: null,
   });
 
@@ -34,6 +39,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
         setState((prev) => ({
           ...prev,
           error: "请选择要打开的对话",
+          errorStatus: null,
         }));
         return;
       }
@@ -42,6 +48,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
         ...prev,
         loading: true,
         error: null,
+        errorStatus: null,
         sessionId,
       }));
 
@@ -51,9 +58,11 @@ export function useHistoryLoader(): HistoryLoaderResult {
         });
 
         if (!response.ok) {
-          throw new Error(
-            `Failed to load messages: ${response.status} ${response.statusText}`,
-          );
+          const error = new Error(HISTORY_LOAD_ERROR_MESSAGE) as Error & {
+            status?: number;
+          };
+          error.status = response.status;
+          throw error;
         }
 
         const data = await response.json();
@@ -67,17 +76,20 @@ export function useHistoryLoader(): HistoryLoaderResult {
           messages: converted,
           loading: false,
           error: null,
+          errorStatus: null,
         }));
       } catch (err) {
         console.error("Failed to load conversation history:", err);
+        const status =
+          typeof (err as { status?: unknown }).status === "number"
+            ? (err as { status: number }).status
+            : null;
         setState((prev) => ({
           ...prev,
           messages: [],
           loading: false,
-          error:
-            err instanceof Error
-              ? err.message
-              : "Failed to load conversation history",
+          error: HISTORY_LOAD_ERROR_MESSAGE,
+          errorStatus: status,
         }));
       }
     },
@@ -89,6 +101,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
       messages: [],
       loading: false,
       error: null,
+      errorStatus: null,
       sessionId: null,
     });
   }, []);

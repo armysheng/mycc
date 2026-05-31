@@ -94,6 +94,7 @@ export function ChatPage() {
     messages: historyMessages,
     loading: historyLoading,
     error: historyError,
+    errorStatus: historyErrorStatus,
     sessionId: loadedSessionId,
   } = useAutoHistoryLoader(sessionId || undefined);
 
@@ -647,12 +648,12 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!sessionId || !historyError) return;
-    if (!historyError.includes("403")) return;
+    if (historyErrorStatus !== 403) return;
 
     // 新用户或跨账号场景下 URL 里残留旧 sessionId 时，自动回退到新会话
     setCurrentSessionId(null);
     navigate({ search: "" }, { replace: true });
-  }, [sessionId, historyError, navigate, setCurrentSessionId]);
+  }, [sessionId, historyError, historyErrorStatus, navigate, setCurrentSessionId]);
 
   useEffect(() => {
     const state = location.state as { onboardingBootstrapPrompt?: string } | null;
@@ -875,7 +876,7 @@ export function ChatPage() {
                 </svg>
               </div>
               <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                Error Loading Conversation
+                旧对话暂时没读出来
               </h2>
               <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 {historyError}
@@ -885,7 +886,7 @@ export function ChatPage() {
                 className="px-4 py-2 text-[var(--text-inverse)] rounded-lg transition-colors"
                 style={{ background: "var(--accent)" }}
               >
-                Start New Conversation
+                回到新对话
               </button>
             </div>
           </div>
