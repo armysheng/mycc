@@ -54,4 +54,24 @@ describe("resolveDeliverableOpenTarget", () => {
       to: "/workspace",
     });
   });
+
+  it("does not deep-link deliverables that are not ready", () => {
+    expect(resolveDeliverableOpenTarget(deliverable({
+      status: "pending",
+      path: "/reports/product-roadmap.md",
+      url: "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+    }))).toEqual({
+      kind: "navigate",
+      to: "/workspace",
+    });
+
+    expect(resolveDeliverableOpenTarget(deliverable({
+      status: "error",
+      path: "/reports/product-roadmap.md",
+      url: "https://example.com/research",
+    }))).toEqual({
+      kind: "navigate",
+      to: "/workspace",
+    });
+  });
 });

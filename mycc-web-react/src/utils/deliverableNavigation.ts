@@ -13,6 +13,10 @@ const SECRET_URL_PATTERN = /\b(token|access_token|auth|key|secret|password|crede
 const SECRET_PATH_PATTERN = /\b(token|secret|password|credential|private|api[-_]?key|auth)\b|^\.env$|\/\.env/i;
 
 export function resolveDeliverableOpenTarget(deliverable: AssistantDeliverableCard): DeliverableOpenTarget {
+  if (deliverable.status !== "ready") {
+    return FALLBACK_WORKSPACE_TARGET;
+  }
+
   if (deliverable.path && isSafeWorkspacePath(deliverable.path)) {
     return {
       kind: "navigate",
