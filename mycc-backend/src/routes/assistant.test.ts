@@ -219,6 +219,47 @@ describe('assistant routes', () => {
     await app.close();
   });
 
+  it('keeps assistant home public contract product-facing without workbench internals', async () => {
+    const app = await buildApp(defaultOptions());
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/home',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.data.workspace).toEqual(expect.objectContaining({
+      status: 'inactive',
+      label: '当前没有活跃项目空间',
+      description: '需要处理文件或代码时，助理会准备项目空间。',
+    }));
+    expect(body.data.capabilities).toEqual([
+      expect.objectContaining({
+        id: 'workbench',
+        label: '工作间',
+        status: 'disabled',
+        actionLabel: '准备工作间',
+      }),
+      expect.objectContaining({
+        id: 'desktop',
+        label: '桌面工作间',
+        status: 'disabled',
+        hidden: true,
+      }),
+    ]);
+    expect(body.data.emptyStates).toEqual(expect.objectContaining({
+      tasks: '告诉助理你想完成什么，最近对话会出现在这里。',
+      deliverables: '助理产出的报告、文件、预览和协作记录会出现在这里。',
+      memory: '补充偏好和项目背景后，助理会更懂你的工作方式。',
+      workspace: '需要处理文件或代码时，助理会准备项目空间。',
+    }));
+    expect(response.body).not.toMatch(/code-server|needs_workspace|Remote IDE|sandbox|E2B|CCR|Agent SDK/i);
+    expect(response.body).not.toMatch(/Start by asking|Useful outputs|Create a workspace/i);
+    await app.close();
+  });
+
   it('derives safe markdown deliverable cards from the current E2B workspace', async () => {
     const runCommandInSession = vi.fn().mockResolvedValue({
       exitCode: 0,

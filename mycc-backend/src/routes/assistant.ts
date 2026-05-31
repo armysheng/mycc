@@ -12,7 +12,7 @@ import {
 } from '../ide/session-store.js';
 import { escapeShellArg } from '../utils/validation.js';
 
-export type AssistantTaskStatus = 'recent' | 'active' | 'waiting' | 'needs_workspace';
+export type AssistantTaskStatus = 'recent' | 'active' | 'waiting';
 
 type E2bAssistantWorkspaceProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>;
 
@@ -178,10 +178,10 @@ export async function assistantRoutes(
         workspace: toWorkspaceSummary(session),
         capabilities: buildCapabilities(session),
         emptyStates: {
-          tasks: 'Start by asking your assistant to do something. Recent conversations will appear here.',
-          deliverables: 'Useful outputs like reports, files, previews, and PRs will appear here after the assistant produces them.',
-          memory: 'Your assistant can become more useful when it knows your preferences and project context.',
-          workspace: 'Create a workspace when you want the assistant to work with files or code.',
+          tasks: '告诉助理你想完成什么，最近对话会出现在这里。',
+          deliverables: '助理产出的报告、文件、预览和协作记录会出现在这里。',
+          memory: '补充偏好和项目背景后，助理会更懂你的工作方式。',
+          workspace: '需要处理文件或代码时，助理会准备项目空间。',
         },
       },
     };
@@ -278,34 +278,35 @@ function buildMemorySources(
 }
 
 function toWorkspaceSummary(session: StoredIdeSession | null) {
-  if (!session) {
+  if (!session || session.status !== 'running') {
     return {
-      status: 'needs_workspace',
-      label: '当前没有活跃工作区',
-      description: '创建工作区后，助理可以处理文件和代码。',
+      status: 'inactive',
+      label: '当前没有活跃项目空间',
+      description: '需要处理文件或代码时，助理会准备项目空间。',
     };
   }
 
   return {
-    status: session.status,
-    label: '当前活跃工作区',
-    description: '这个工作区由当前用户的助理任务共享；切换会话不会默认创建新环境。',
+    status: 'active',
+    label: '当前活跃项目空间',
+    description: '这个项目空间由当前用户的助理任务共享；切换对话不会默认创建新环境。',
     expiresAt: session.expiresAt,
   };
 }
 
 function buildCapabilities(session: StoredIdeSession | null) {
+  const workbenchAvailable = session?.status === 'running';
   return [
     {
-      id: 'code-server',
-      label: '代码编辑器',
-      status: session?.status === 'running' ? 'running' : 'needs_workspace',
-      description: '高级接管入口。需要深度编辑代码时再打开。',
-      actionLabel: session?.status === 'running' ? '打开代码编辑器' : '创建工作区',
+      id: 'workbench',
+      label: '工作间',
+      status: workbenchAvailable ? 'available' : 'disabled',
+      description: '需要深度接管文件、预览或复杂修改时再打开。',
+      actionLabel: workbenchAvailable ? '打开工作间' : '准备工作间',
     },
     {
       id: 'desktop',
-      label: '云桌面',
+      label: '桌面工作间',
       status: 'disabled',
       description: '桌面工作间能力正在单独设计，默认隐藏。',
       actionLabel: '暂未启用',

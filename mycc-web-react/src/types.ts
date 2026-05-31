@@ -239,8 +239,7 @@ export interface ConversationHistory {
 export type AssistantTaskStatus =
   | "recent"
   | "active"
-  | "waiting"
-  | "needs_workspace";
+  | "waiting";
 
 export interface AssistantTaskCard {
   id: string;
@@ -275,9 +274,9 @@ export interface AssistantMemorySource {
 }
 
 export interface AssistantCapabilityCard {
-  id: "code-server" | "desktop" | "preview" | "terminal" | string;
+  id: "workbench" | "desktop" | "preview" | "terminal" | string;
   label: string;
-  status: "available" | "running" | "disabled" | "needs_workspace" | "error";
+  status: "available" | "disabled" | "error";
   description: string;
   actionLabel?: string;
   hidden?: boolean;

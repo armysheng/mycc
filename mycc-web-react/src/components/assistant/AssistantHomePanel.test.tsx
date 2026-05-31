@@ -55,11 +55,11 @@ const baseData: AssistantHomeData = {
   },
   capabilities: [
     {
-      id: "code-server",
-      label: "代码编辑器",
-      status: "running",
+      id: "workbench",
+      label: "工作间",
+      status: "available",
       description: "高级接管入口。需要深度编辑代码时再打开。",
-      actionLabel: "打开代码编辑器",
+      actionLabel: "打开工作间",
     },
   ],
 };
@@ -82,7 +82,7 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText("最近可以继续")).not.toBeInTheDocument();
     expect(screen.queryByText("助理记忆")).not.toBeInTheDocument();
     expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
-    expect(screen.queryByText("代码编辑器")).not.toBeInTheDocument();
+    expect(screen.queryByText("工作间")).not.toBeInTheDocument();
   });
 
   it("does not present unsupported durable task states", () => {
