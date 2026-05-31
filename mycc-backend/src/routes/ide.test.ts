@@ -92,6 +92,13 @@ function expectPublicIdePayload(value: unknown) {
   );
 }
 
+function expectPublicIdeError(value: unknown) {
+  const text = JSON.stringify(value);
+  expect(text).not.toMatch(
+    /\bIDE\b|E2B|GNU|Desktop|code-server|sandbox|provider|\btoken\b|proxy failed/i,
+  );
+}
+
 describe('ide routes', () => {
   beforeEach(() => {
     delete process.env.MYCC_IDE_PROVIDER;
@@ -762,7 +769,8 @@ describe('ide routes', () => {
     });
 
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toEqual({ error: 'IDE session is not running' });
+    expect(response.json()).toEqual({ error: '工作间当前未运行' });
+    expectPublicIdeError(response.json());
     expect(renewCodeServer).not.toHaveBeenCalled();
   });
 
@@ -783,8 +791,92 @@ describe('ide routes', () => {
     });
 
     expect(response.statusCode).toBe(404);
-    expect(response.json()).toEqual({ error: 'IDE session not found' });
+    expect(response.json()).toEqual({ error: '工作间暂不可用' });
+    expectPublicIdeError(response.json());
     expect(web).not.toHaveBeenCalled();
+  });
+
+  it('keeps direct workbench open errors product-facing', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+    });
+
+    const editorOpen = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/ide_123/open?token=wrong-token',
+    });
+    const desktopOpen = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/ide_123/desktop/open?token=wrong-token',
+    });
+
+    expect(editorOpen.statusCode).toBe(401);
+    expect(editorOpen.json()).toEqual({ error: '工作间打开凭据无效' });
+    expectPublicIdeError(editorOpen.json());
+    expect(desktopOpen.statusCode).toBe(401);
+    expect(desktopOpen.json()).toEqual({ error: '桌面工作间打开凭据无效' });
+    expectPublicIdeError(desktopOpen.json());
+  });
+
+  it('keeps disabled desktop errors product-facing', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
+    process.env.MYCC_E2B_DESKTOP_ENABLED = 'false';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions/ide_123/desktop',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(501);
+    expect(response.json()).toEqual({ error: '桌面工作间当前未启用' });
+    expectPublicIdeError(response.json());
+  });
+
+  it('keeps malformed workbench ids from leaking database errors', async () => {
+    const badIdStore = {
+      get: vi.fn().mockRejectedValue(new Error('invalid input syntax for type uuid: "missing"')),
+      set: vi.fn(),
+      findReusableByUser: vi.fn().mockResolvedValue(null),
+      findExpiredRunning: vi.fn().mockResolvedValue([]),
+    };
+    const app = await buildApp({
+      sessionStore: badIdStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+    });
+
+    const open = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/missing/open?token=bad',
+    });
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/missing/status',
+      headers: { authorization: authHeader() },
+    });
+    const proxy = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/missing/proxy/healthz',
+      headers: { authorization: authHeader() },
+    });
+
+    for (const response of [open, status, proxy]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: '工作间暂不可用' });
+      expect(response.body).not.toMatch(/invalid input syntax|uuid|database|SQLSTATE/i);
+      expectPublicIdeError(response.json());
+    }
   });
 
   it('proxies an owned running IDE session with E2B traffic token injection', async () => {

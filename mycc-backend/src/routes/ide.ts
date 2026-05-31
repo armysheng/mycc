@@ -161,12 +161,15 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   });
 
   fastify.get<{ Params: { id: string }; Querystring: { token?: string } }>('/api/ide/sessions/:id/open', async (request, reply) => {
-    const session = await sessionStore.get(request.params.id);
-    if (!session || session.proxyToken !== request.query.token) {
-      return reply.status(401).send({ error: 'IDE open token is invalid' });
+    const session = await getSessionSafely(sessionStore, request.params.id);
+    if (!session) {
+      return sendPublicIdeError(reply, 404, 'IDE session not found');
+    }
+    if (session.proxyToken !== request.query.token) {
+      return sendPublicIdeError(reply, 401, 'IDE open token is invalid');
     }
     if (session.status !== 'running') {
-      return reply.status(409).send({ error: 'IDE session is not running' });
+      return sendPublicIdeError(reply, 409, 'IDE session is not running');
     }
 
     const maxAgeSeconds = Math.max(
@@ -191,15 +194,15 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     try {
       const config = resolveIdeConfig();
       if (!config.desktopEnabled) {
-        return reply.status(501).send({ error: 'GNU desktop is not enabled for this E2B template' });
+        return sendPublicIdeError(reply, 501, 'GNU desktop is not enabled for this E2B template');
       }
 
       const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
       if (!session) {
-        return reply.status(404).send({ error: 'IDE session not found' });
+        return sendPublicIdeError(reply, 404, 'IDE session not found');
       }
       if (session.status !== 'running') {
-        return reply.status(409).send({ error: 'IDE session is not running' });
+        return sendPublicIdeError(reply, 409, 'IDE session is not running');
       }
 
       const currentDesktopRunning = session.desktopPid && session.desktopHost
@@ -236,15 +239,18 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   });
 
   fastify.get<{ Params: { id: string }; Querystring: { token?: string } }>('/api/ide/sessions/:id/desktop/open', async (request, reply) => {
-    const session = await sessionStore.get(request.params.id);
-    if (!session || session.proxyToken !== request.query.token) {
-      return reply.status(401).send({ error: 'Desktop open token is invalid' });
+    const session = await getSessionSafely(sessionStore, request.params.id);
+    if (!session) {
+      return sendPublicIdeError(reply, 404, 'IDE session not found');
+    }
+    if (session.proxyToken !== request.query.token) {
+      return sendPublicIdeError(reply, 401, 'Desktop open token is invalid');
     }
     if (session.status !== 'running') {
-      return reply.status(409).send({ error: 'IDE session is not running' });
+      return sendPublicIdeError(reply, 409, 'IDE session is not running');
     }
     if (!session.desktopHost || !session.desktopPort) {
-      return reply.status(409).send({ error: 'GNU desktop is not running' });
+      return sendPublicIdeError(reply, 409, 'GNU desktop is not running');
     }
 
     const maxAgeSeconds = Math.max(
@@ -271,9 +277,9 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       return reply.status(401).send({ error: '未提供认证 token' });
     }
 
-    const session = await sessionStore.get(request.params.id);
+    const session = await getSessionSafely(sessionStore, request.params.id);
     if (!session || session.userId !== user.userId) {
-      return reply.status(404).send({ error: 'IDE session not found' });
+      return sendPublicIdeError(reply, 404, 'IDE session not found');
     }
 
     return {
@@ -288,10 +294,10 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     try {
       const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
       if (!session) {
-        return reply.status(404).send({ error: 'IDE session not found' });
+        return sendPublicIdeError(reply, 404, 'IDE session not found');
       }
       if (session.status !== 'running') {
-        return reply.status(409).send({ error: 'IDE session is not running' });
+        return sendPublicIdeError(reply, 409, 'IDE session is not running');
       }
       if (!e2bProvider.renewCodeServer) {
         throw new Error('IDE provider does not support renew');
@@ -322,7 +328,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     try {
       const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
       if (!session) {
-        return reply.status(404).send({ error: 'IDE session not found' });
+        return sendPublicIdeError(reply, 404, 'IDE session not found');
       }
 
       if (session.status === 'running') {
@@ -350,16 +356,16 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/desktop/proxy/*', async (request, reply) => {
     const session = await getProxySession(sessionStore, request, request.params.id);
     if (!session) {
-      return reply.status(404).send({ error: 'IDE session not found' });
+      return sendPublicIdeError(reply, 404, 'IDE session not found');
     }
     if (session.status !== 'running') {
-      return reply.status(409).send({ error: 'IDE session is not running' });
+      return sendPublicIdeError(reply, 409, 'IDE session is not running');
     }
     if (!session.trafficAccessToken) {
-      return reply.status(502).send({ error: 'IDE session is missing provider access token' });
+      return sendPublicIdeError(reply, 502, 'IDE session is missing provider access token');
     }
     if (!session.desktopHost) {
-      return reply.status(409).send({ error: 'GNU desktop is not running' });
+      return sendPublicIdeError(reply, 409, 'GNU desktop is not running');
     }
 
     request.raw.url = buildUpstreamProxyPath(request.raw.url || '/', request.params['*']);
@@ -378,13 +384,13 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/proxy/*', async (request, reply) => {
     const session = await getProxySession(sessionStore, request, request.params.id);
     if (!session) {
-      return reply.status(404).send({ error: 'IDE session not found' });
+      return sendPublicIdeError(reply, 404, 'IDE session not found');
     }
     if (session.status !== 'running') {
-      return reply.status(409).send({ error: 'IDE session is not running' });
+      return sendPublicIdeError(reply, 409, 'IDE session is not running');
     }
     if (!session.trafficAccessToken) {
-      return reply.status(502).send({ error: 'IDE session is missing provider access token' });
+      return sendPublicIdeError(reply, 502, 'IDE session is missing provider access token');
     }
 
     request.raw.url = buildUpstreamProxyPath(request.raw.url || '/', request.params['*']);
@@ -435,9 +441,20 @@ async function getOwnedSession(
   sessionId: string,
 ): Promise<StoredIdeSession | null> {
   if (!userId) return null;
-  const session = await sessionStore.get(sessionId);
+  const session = await getSessionSafely(sessionStore, sessionId);
   if (!session || session.userId !== userId) return null;
   return session;
+}
+
+async function getSessionSafely(
+  sessionStore: IdeSessionStore,
+  sessionId: string,
+): Promise<StoredIdeSession | null> {
+  try {
+    return await sessionStore.get(sessionId);
+  } catch {
+    return null;
+  }
 }
 
 async function findLiveReusableSession(params: {
@@ -572,7 +589,7 @@ async function getProxySessionFromHeaders(
   headers: FastifyRequest['headers'] | IncomingMessage['headers'],
   sessionId: string,
 ): Promise<StoredIdeSession | null> {
-  const session = await sessionStore.get(sessionId);
+  const session = await getSessionSafely(sessionStore, sessionId);
   if (!session) return null;
 
   const userId = userIdFromAuthorization(headerValue(headers.authorization));
@@ -623,10 +640,14 @@ function sendProxyError(response: ServerResponse, error: Error): void {
 
   response.statusCode = 502;
   response.setHeader('content-type', 'application/json; charset=utf-8');
-  response.end(JSON.stringify({ error: 'IDE proxy failed' }));
+  response.end(JSON.stringify({ error: '工作间暂时连接失败' }));
 }
 
 function sendRouteError(reply: FastifyReply, error: unknown, statusCode: number) {
+  return sendPublicIdeError(reply, statusCode, error);
+}
+
+function sendPublicIdeError(reply: FastifyReply, statusCode: number, error: unknown) {
   return reply.status(statusCode).send({
     error: publicIdeErrorMessage(error),
   });
@@ -636,6 +657,13 @@ function publicIdeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
     .replace(/^IDE provider is disabled$/, '工作间当前未启用')
+    .replace(/^IDE open token is invalid$/, '工作间打开凭据无效')
+    .replace(/^Desktop open token is invalid$/, '桌面工作间打开凭据无效')
+    .replace(/^IDE session not found$/, '工作间暂不可用')
+    .replace(/^IDE session is not running$/, '工作间当前未运行')
+    .replace(/^IDE session is missing provider access token$/, '工作间暂时连接失败')
+    .replace(/^GNU desktop is not enabled for this E2B template$/, '桌面工作间当前未启用')
+    .replace(/^GNU desktop is not running$/, '桌面工作间当前未运行')
     .replace(/\bIDE provider\b/gi, '工作间')
     .replace(/\bIDE session\b/gi, '工作间')
     .replace(/\bGNU desktop\b/gi, '桌面工作间')
