@@ -4,14 +4,17 @@ import path from 'path';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 import { concurrencyLimiter } from '../concurrency-limiter.js';
 import {
+  appendConversationMessages,
   checkQuota,
   findUserById,
+  getConversationMessageSnapshots,
   logUsage,
   markUserInitialized,
   renameConversation,
   upsertConversation,
   updateConversationStats,
   userOwnsConversation,
+  type ConversationMessageSnapshot,
 } from '../db/client.js';
 import { createAgentRuntime } from '../agent-runtime/index.js';
 import { describeAgentRuntimeConfig } from '../agent-runtime/factory.js';
@@ -63,6 +66,11 @@ type HistoryMessage = {
   type: HistoryMessageType;
   timestamp: string;
   [key: string]: unknown;
+};
+type PersistedConversationMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: Date;
 };
 
 const REQUIRED_BOOTSTRAP_FILE_NAMES = [
@@ -243,6 +251,47 @@ function parseHistoryMessages(stdout: string): HistoryMessage[] {
     .filter(isUserVisibleHistoryMessage);
 }
 
+function conversationSnapshotToHistoryMessage(snapshot: ConversationMessageSnapshot): HistoryMessage {
+  return {
+    type: snapshot.role,
+    timestamp: snapshot.createdAt.toISOString(),
+    message: {
+      role: snapshot.role,
+      content: [
+        {
+          type: 'text',
+          text: snapshot.content,
+        },
+      ],
+    },
+  };
+}
+
+function extractAssistantText(event: Record<string, unknown>): string {
+  if (event.type !== 'assistant') return '';
+  const message = event.message;
+  if (!message || typeof message !== 'object') return '';
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      const contentItem = item as { type?: unknown; text?: unknown };
+      if (contentItem.type !== 'text' || typeof contentItem.text !== 'string') {
+        return '';
+      }
+      return contentItem.text;
+    })
+    .join('');
+}
+
+function shouldPersistUserMessage(message: string): boolean {
+  if (isRuntimeControlMessage(message)) return false;
+  if (hasHiddenConversationMarker(message)) return false;
+  return message.trim().length > 0;
+}
+
 async function loadSessionHistoryMessages(params: {
   userId: number;
   linuxUser: string;
@@ -318,6 +367,19 @@ async function loadSessionHistoryMessages(params: {
     }
     return [];
   }
+}
+
+async function loadProductSideHistoryMessages(params: {
+  userId: number;
+  sessionId: string;
+  limit: number;
+}): Promise<HistoryMessage[]> {
+  const snapshots = await getConversationMessageSnapshots(
+    params.userId,
+    params.sessionId,
+    params.limit,
+  );
+  return snapshots.map(conversationSnapshotToHistoryMessage);
 }
 
 async function verifyOnboardingWorkspaceState(params: {
@@ -860,6 +922,8 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
       let streamHasError = false;
       let streamResultHasError = false;
       let lastStreamError: string | null = null;
+      const turnStartedAt = new Date();
+      const assistantTextParts: string[] = [];
 
       try {
         console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
@@ -906,6 +970,11 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
             }
           }
 
+          const assistantText = extractAssistantText(event);
+          if (assistantText) {
+            assistantTextParts.push(assistantText);
+          }
+
           // 发送事件
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
@@ -923,6 +992,36 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
           }
           if (didInjectProjectContext) {
             markProjectContextInjectedForSession(userId, currentSessionId);
+          }
+
+          if (!streamHasError && !streamResultHasError) {
+            const persistedMessages: PersistedConversationMessage[] = [];
+            if (shouldPersistUserMessage(body.message)) {
+              persistedMessages.push({
+                role: 'user',
+                content: body.message,
+                createdAt: turnStartedAt,
+              });
+            }
+            const assistantContent = assistantTextParts.join('').trim();
+            if (assistantContent) {
+              persistedMessages.push({
+                role: 'assistant',
+                content: assistantContent,
+                createdAt: new Date(),
+              });
+            }
+            if (persistedMessages.length > 0) {
+              try {
+                await appendConversationMessages({
+                  userId,
+                  sessionId: currentSessionId,
+                  messages: persistedMessages,
+                });
+              } catch (snapshotErr) {
+                console.warn(`[Chat] conversation message snapshot skipped userId=${userId}:`, snapshotErr);
+              }
+            }
           }
         }
 
@@ -1173,6 +1272,18 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
         // Opening an old conversation should never be blocked by an expired
         // or temporarily unavailable workspace history store.
         messages = [];
+      }
+
+      if (messages.length === 0) {
+        try {
+          messages = await loadProductSideHistoryMessages({
+            userId: request.user.userId,
+            sessionId,
+            limit: limitNum,
+          });
+        } catch {
+          messages = [];
+        }
       }
 
       return reply.send({

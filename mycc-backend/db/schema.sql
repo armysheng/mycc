@@ -54,6 +54,16 @@ CREATE TABLE conversations (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- 会话正文快照（产品侧兜底，不依赖运行时历史文件）
+CREATE TABLE conversation_messages (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  session_id VARCHAR(100) REFERENCES conversations(session_id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Remote IDE 会话表
 CREATE TABLE ide_sessions (
   id UUID PRIMARY KEY,
@@ -101,6 +111,10 @@ CREATE TABLE skill_events (
 CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX idx_usage_logs_created_at ON usage_logs(created_at);
 CREATE INDEX idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX idx_conversation_messages_session_created_at
+  ON conversation_messages(session_id, created_at, id);
+CREATE INDEX idx_conversation_messages_user_session
+  ON conversation_messages(user_id, session_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_ide_sessions_user_id ON ide_sessions(user_id);
 CREATE INDEX idx_ide_sessions_status_expires_at ON ide_sessions(status, expires_at);

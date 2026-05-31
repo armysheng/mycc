@@ -9,9 +9,11 @@ import {
 } from '../onboarding/bootstrap-ticket-store.js';
 
 const mocks = vi.hoisted(() => ({
+  appendConversationMessages: vi.fn(),
   checkQuota: vi.fn(),
   createAgentRuntime: vi.fn(),
   findUserById: vi.fn(),
+  getConversationMessageSnapshots: vi.fn(),
   getSSHPool: vi.fn(),
   logUsage: vi.fn(),
   markUserInitialized: vi.fn(),
@@ -31,10 +33,12 @@ vi.mock('../ssh/pool.js', () => ({
 }));
 
 vi.mock('../db/client.js', () => ({
+  appendConversationMessages: mocks.appendConversationMessages,
   checkQuota: mocks.checkQuota,
   createUser: vi.fn(),
   findUserByCredential: vi.fn(),
   findUserById: mocks.findUserById,
+  getConversationMessageSnapshots: mocks.getConversationMessageSnapshots,
   getSubscription: vi.fn(),
   getUserConversations: vi.fn(),
   logUsage: mocks.logUsage,
@@ -68,9 +72,11 @@ describe('chat E2B project context injection', () => {
   beforeEach(() => {
     __resetOnboardingBootstrapTicketStoreForTests();
     vi.stubEnv('MYCC_AGENT_RUNTIME', 'e2b-claude-cli');
+    mocks.appendConversationMessages.mockResolvedValue(undefined);
     mocks.checkQuota.mockResolvedValue({ allowed: true, remaining: 1000 });
     mocks.createAgentRuntime.mockReturnValue({ chat: mocks.runtimeChat });
     mocks.findUserById.mockResolvedValue(null);
+    mocks.getConversationMessageSnapshots.mockResolvedValue([]);
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error('SSH 连接池未初始化，请先调用 initSSHPool()');
     });
@@ -302,6 +308,63 @@ describe('chat E2B project context injection', () => {
       userId: 42,
     }));
     expect(JSON.stringify(mocks.upsertConversation.mock.calls)).not.toContain('首次初始化');
+    await app.close();
+  });
+
+  it('stores a product-side message snapshot after a successful chat turn', async () => {
+    mocks.runtimeChat.mockImplementation(async function* () {
+      yield {
+        type: 'system',
+        session_id: 'session-snapshot',
+      };
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '我已经整理好当前项目状态。',
+            },
+          ],
+        },
+      };
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+      };
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { authorization: authHeader() },
+      payload: { message: '帮我整理项目状态' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mocks.appendConversationMessages).toHaveBeenCalledWith({
+      userId: 42,
+      sessionId: 'session-snapshot',
+      messages: [
+        expect.objectContaining({
+          role: 'user',
+          content: '帮我整理项目状态',
+          createdAt: expect.any(Date),
+        }),
+        expect.objectContaining({
+          role: 'assistant',
+          content: '我已经整理好当前项目状态。',
+          createdAt: expect.any(Date),
+        }),
+      ],
+    });
     await app.close();
   });
 });

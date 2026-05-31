@@ -80,6 +80,14 @@ export interface ConversationSummary {
   updatedAt: Date;
 }
 
+export type ConversationMessageRole = 'user' | 'assistant';
+
+export interface ConversationMessageSnapshot {
+  role: ConversationMessageRole;
+  content: string;
+  createdAt: Date;
+}
+
 export interface ActiveUserSummary {
   id: number;
   linux_user: string;
@@ -302,6 +310,77 @@ export async function renameConversation(
     [newTitle, userId, sessionId]
   );
   return (result.rowCount || 0) > 0;
+}
+
+export async function appendConversationMessages(params: {
+  userId: number;
+  sessionId: string;
+  messages: Array<{
+    role: ConversationMessageRole;
+    content: string;
+    createdAt?: Date;
+  }>;
+}): Promise<void> {
+  const messages = params.messages
+    .map((message) => ({
+      ...message,
+      content: message.content.trim(),
+      createdAt: message.createdAt || new Date(),
+    }))
+    .filter((message) => message.content.length > 0);
+
+  if (messages.length === 0) return;
+
+  const values: unknown[] = [];
+  const placeholders = messages.map((message, index) => {
+    const offset = index * 5;
+    values.push(
+      params.userId,
+      params.sessionId,
+      message.role,
+      message.content,
+      message.createdAt,
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`;
+  });
+
+  await pool.query(
+    `INSERT INTO conversation_messages (user_id, session_id, role, content, created_at)
+     VALUES ${placeholders.join(', ')}`,
+    values,
+  );
+}
+
+export async function getConversationMessageSnapshots(
+  userId: number,
+  sessionId: string,
+  limit: number = 200
+): Promise<ConversationMessageSnapshot[]> {
+  const safeLimit = Number.isFinite(limit)
+    ? Math.min(1000, Math.max(1, Math.trunc(limit)))
+    : 200;
+  const result = await pool.query<{
+    role: ConversationMessageRole;
+    content: string;
+    created_at: Date;
+  }>(
+    `SELECT role, content, created_at
+     FROM (
+       SELECT role, content, created_at, id
+       FROM conversation_messages
+       WHERE user_id = $1 AND session_id = $2
+       ORDER BY created_at DESC, id DESC
+       LIMIT $3
+     ) recent_messages
+     ORDER BY created_at ASC, id ASC`,
+    [userId, sessionId, safeLimit],
+  );
+
+  return result.rows.map((row) => ({
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+  }));
 }
 
 // 获取使用统计

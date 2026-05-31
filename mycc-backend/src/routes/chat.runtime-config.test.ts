@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { chatRoutes } from './chat.js';
 
 vi.mock('../db/client.js', () => ({
+  appendConversationMessages: vi.fn(),
   checkQuota: vi.fn(),
   createUser: vi.fn(),
   findUserByCredential: vi.fn(),
   findUserById: vi.fn(),
+  getConversationMessageSnapshots: vi.fn(),
   getSubscription: vi.fn(),
   getUserConversations: vi.fn(),
   logUsage: vi.fn(),

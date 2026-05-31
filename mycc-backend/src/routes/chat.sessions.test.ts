@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../db/client.js', () => ({
+  appendConversationMessages: vi.fn(),
   checkQuota: vi.fn(),
   createUser: vi.fn(),
   findUserByCredential: vi.fn(),
   findUserById: vi.fn(),
+  getConversationMessageSnapshots: vi.fn(),
   getSubscription: vi.fn(),
   getUserConversations: mocks.getUserConversations,
   logUsage: vi.fn(),
