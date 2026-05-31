@@ -33,7 +33,7 @@ export function AssistantHomePanel({
   modeLabel = "本地模式",
 }: AssistantHomePanelProps) {
   const tasks = (data?.tasks ?? []).filter(isUserVisibleTask);
-  const deliverables = data?.deliverables ?? [];
+  const deliverables = (data?.deliverables ?? []).filter(isReadyDeliverable);
   const primaryDeliverable = deliverables[0] ?? null;
   const memoryAvailable = (data?.memory.sources ?? []).some((source) => source.status !== "missing");
   const workspaceChip = workspaceName || toProductWorkspaceLabel(data?.workspace?.label) || "当前项目";
@@ -233,6 +233,10 @@ function isUserVisibleTask(task: AssistantTaskCard) {
   if (hiddenMarkers.some((marker) => lowerTitle.includes(marker.toLowerCase()))) return false;
 
   return true;
+}
+
+function isReadyDeliverable(deliverable: AssistantDeliverableCard) {
+  return deliverable.status === "ready";
 }
 
 function formatDeliverableTime(value: string) {

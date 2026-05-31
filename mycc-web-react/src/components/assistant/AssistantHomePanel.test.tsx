@@ -274,6 +274,48 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
   });
 
+  it("shows only ready deliverables on the assistant home surface", () => {
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        inputSlot={<div data-testid="home-input-slot" />}
+        data={{
+          ...baseData,
+          deliverables: [
+            {
+              id: "workspace:/reports/ready-report.md",
+              kind: "report",
+              title: "可查看报告",
+              source: "current_workspace",
+              status: "ready",
+              path: "/reports/ready-report.md",
+            },
+            {
+              id: "workspace:/reports/pending-report.md",
+              kind: "report",
+              title: "生成中的报告",
+              source: "current_workspace",
+              status: "pending",
+              path: "/reports/pending-report.md",
+            },
+            {
+              id: "workspace:/reports/failed-report.md",
+              kind: "report",
+              title: "失败的报告",
+              source: "current_workspace",
+              status: "error",
+              path: "/reports/failed-report.md",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("可查看报告")).toBeInTheDocument();
+    expect(screen.queryByText("生成中的报告")).not.toBeInTheDocument();
+    expect(screen.queryByText("失败的报告")).not.toBeInTheDocument();
+  });
+
   it("does not render raw launch URLs or secret-like provider fields", () => {
     const unsafeData = ({
       ...baseData,
