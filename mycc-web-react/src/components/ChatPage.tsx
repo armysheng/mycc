@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
@@ -443,23 +443,35 @@ export function ChatPage() {
   }, [updatePermissionMode, closePlanModeRequest]);
 
   // Create permission data for inline permission interface
-  const permissionData = permissionRequest
-    ? {
-        patterns: permissionRequest.patterns,
-        onAllow: handlePermissionAllow,
-        onAllowPermanent: handlePermissionAllowPermanent,
-        onDeny: handlePermissionDeny,
-      }
-    : undefined;
+  const permissionData = useMemo(() => {
+    if (!permissionRequest) return undefined;
+    return {
+      patterns: permissionRequest.patterns,
+      onAllow: handlePermissionAllow,
+      onAllowPermanent: handlePermissionAllowPermanent,
+      onDeny: handlePermissionDeny,
+    };
+  }, [
+    handlePermissionAllow,
+    handlePermissionAllowPermanent,
+    handlePermissionDeny,
+    permissionRequest,
+  ]);
 
   // Create plan permission data for plan mode interface
-  const planPermissionData = planModeRequest
-    ? {
-        onAcceptWithEdits: handlePlanAcceptWithEdits,
-        onAcceptDefault: handlePlanAcceptDefault,
-        onKeepPlanning: handlePlanKeepPlanning,
-      }
-    : undefined;
+  const planPermissionData = useMemo(() => {
+    if (!planModeRequest) return undefined;
+    return {
+      onAcceptWithEdits: handlePlanAcceptWithEdits,
+      onAcceptDefault: handlePlanAcceptDefault,
+      onKeepPlanning: handlePlanKeepPlanning,
+    };
+  }, [
+    handlePlanAcceptDefault,
+    handlePlanAcceptWithEdits,
+    handlePlanKeepPlanning,
+    planModeRequest,
+  ]);
 
   const handleHistoryClick = useCallback(() => {
     const searchParams = new URLSearchParams();
@@ -624,6 +636,8 @@ export function ChatPage() {
     permissionMode,
     planPermissionData,
     sendMessage,
+    setInput,
+    setPermissionMode,
     slashSkills,
     slashSkillsLoaded,
     slashSkillsLoading,
@@ -668,6 +682,14 @@ export function ChatPage() {
     setCurrentSessionId(null);
     navigate({ search: "" }, { replace: true });
   }, [sessionId, historyError, historyErrorStatus, navigate, setCurrentSessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !historyError) return;
+    if (historyErrorStatus === 403) return;
+
+    // 旧对话正文读不出来时，保留上下文入口，但后续发送从新会话接上。
+    setCurrentSessionId(null);
+  }, [sessionId, historyError, historyErrorStatus, setCurrentSessionId]);
 
   useEffect(() => {
     const state = location.state as { onboardingBootstrapPrompt?: string } | null;
@@ -737,6 +759,8 @@ export function ChatPage() {
   const isAssistantHomeView = !isHistoryView && messages.length === 0 && !isLoadedConversation;
   const isLoadedConversationEmpty =
     isLoadedConversation && !historyLoading && !historyError && messages.length === 0;
+  const isLoadedConversationRecoverableError =
+    isLoadedConversation && !historyLoading && Boolean(historyError) && historyErrorStatus !== 403;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -872,6 +896,50 @@ export function ChatPage() {
                 正在读取旧对话...
               </p>
             </div>
+          </div>
+        ) : isLoadedConversationRecoverableError ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-lg px-6">
+                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 dark:bg-amber-900/25 flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-amber-600 dark:text-amber-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7h8M8 11h5m-7 8 3-3h7a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v5a4 4 0 0 0 4 4"
+                    />
+                  </svg>
+                </div>
+                <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
+                  旧对话暂时没读出来
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
+                  {historyError}
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={handleBackToHistory}
+                    className="px-4 py-2 rounded-lg border panel-surface text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    回到历史记录
+                  </button>
+                  <button
+                    onClick={() => navigate({ search: "" })}
+                    className="px-4 py-2 text-[var(--text-inverse)] rounded-lg text-sm transition-colors"
+                    style={{ background: "var(--accent)" }}
+                  >
+                    开始新对话
+                  </button>
+                </div>
+              </div>
+            </div>
+            {renderChatInput()}
           </div>
         ) : historyError ? (
           <div className="flex-1 flex items-center justify-center">

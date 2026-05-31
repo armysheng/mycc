@@ -122,6 +122,68 @@ describe("App Routing", () => {
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
+  it("keeps a failed old conversation recoverable with a fresh input", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/chat") {
+        return Promise.resolve({
+          ok: true,
+          body: new ReadableStream({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        json: () => Promise.resolve({
+          success: false,
+          error: "Failed to load messages",
+        }),
+      });
+    });
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SettingsProvider>
+            <MemoryRouter initialEntries={["/?sessionId=old-session"]}>
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+              </Routes>
+            </MemoryRouter>
+          </SettingsProvider>
+        </AuthProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("旧对话暂时没读出来")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/原记录不会被删除/)).toBeInTheDocument();
+    const input = screen.getByPlaceholderText(/输入你的问题/);
+    expect(input).toBeInTheDocument();
+    expect(screen.queryByText(/500|Internal Server Error|Failed to load messages/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "继续刚才的事" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      const chatCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+        ([url]) => String(url) === "/api/chat",
+      );
+      expect(chatCall).toBeDefined();
+      expect(JSON.parse(String(chatCall?.[1]?.body))).toMatchObject({
+        message: "继续刚才的事",
+      });
+      expect(JSON.parse(String(chatCall?.[1]?.body))).not.toHaveProperty("sessionId");
+    });
+  });
+
   it("keeps old-conversation loading copy in Chinese", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
       () => new Promise(() => {}),
