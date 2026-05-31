@@ -88,8 +88,10 @@ export function PlanPermissionInputPanel({
   return (
     <div className="flex-shrink-0 rounded-2xl border border-sky-200/80 bg-gradient-to-b from-sky-50 to-white p-4 shadow-sm dark:border-sky-900/35 dark:from-sky-950/20 dark:to-slate-900">
       <div className="mb-4">
-        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">规划阶段确认</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400">请选择下一步动作（ESC = 继续规划）</p>
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">准备继续</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          需要我按这个计划继续吗？按 ESC 可继续完善
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -119,7 +121,7 @@ export function PlanPermissionInputPanel({
             }`,
           )}
         >
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">接受并自动应用编辑</span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">开始整理</span>
         </button>
 
         <button
@@ -148,7 +150,7 @@ export function PlanPermissionInputPanel({
             }`,
           )}
         >
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">接受并手动审批编辑</span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">先确认细节</span>
         </button>
 
         <button
@@ -177,7 +179,7 @@ export function PlanPermissionInputPanel({
             }`,
           )}
         >
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">继续规划</span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">继续完善计划</span>
         </button>
       </div>
     </div>

@@ -238,4 +238,86 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       });
     }
   });
+
+  fastify.post('/api/skills/:skillId/use', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { skillId } = request.params as { skillId: string };
+      const user = await withUser(request.user.userId);
+      const data = await skillsService.useSkill({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      }, skillId);
+      return reply.send({ success: true, data });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({ success: false, error: err.message });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '记录技能使用失败',
+      });
+    }
+  });
+
+  fastify.get('/api/skills/debug', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        error: '需要管理员权限',
+      });
+    }
+
+    try {
+      const user = await withUser(request.user.userId);
+      const list = await skillsService.listSkills({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      });
+      const installedCount = list.skills.filter((skill) => skill.installed).length;
+      const upgradableCount = list.skills.filter((skill) => skill.upgradable).length;
+
+      return reply.send({
+        success: true,
+        data: {
+          catalogAvailable: list.catalogAvailable,
+          marketCount: skillsService.getMarketSkills().length,
+          installedCount,
+          availableCount: list.total - installedCount,
+          upgradableCount,
+          skills: list.skills.map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            source: skill.source,
+            status: skill.status,
+            installed: skill.installed,
+            enabled: skill.enabled,
+            version: skill.version,
+            installedVersion: skill.installedVersion,
+            latestVersion: skill.latestVersion,
+            upgradable: skill.upgradable,
+            stats: skill.stats,
+          })),
+        },
+      });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({ success: false, error: err.message });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '获取技能调试信息失败',
+      });
+    }
+  });
 }

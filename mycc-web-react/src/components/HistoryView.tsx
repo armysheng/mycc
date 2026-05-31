@@ -143,11 +143,11 @@ export function HistoryView(_props: HistoryViewProps) {
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                    Session: {conversation.sessionId.substring(0, 8)}...
+                    {conversation.lastMessagePreview || "未命名对话"}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {new Date(conversation.startTime).toLocaleString()} •{" "}
-                    {conversation.messageCount} messages
+                    {conversation.messageCount} 条消息
                   </p>
                   <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 line-clamp-2">
                     {conversation.lastMessagePreview}

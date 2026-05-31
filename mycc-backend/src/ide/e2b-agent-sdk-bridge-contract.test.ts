@@ -80,6 +80,34 @@ describe('E2B Agent SDK bridge contract', () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('defaults standalone bridge runs to bypass permissions', () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'mycc-agent-sdk-bridge-default-'));
+    try {
+      cpSync(bridgeSource, path.join(tempDir, 'bridge.mjs'));
+      writeFakeAgentSdkPackage(tempDir);
+
+      const capturePath = path.join(tempDir, 'query-args.json');
+      execFileSync(process.execPath, ['bridge.mjs'], {
+        cwd: tempDir,
+        encoding: 'utf8',
+        env: {
+          PATH: process.env.PATH || '',
+          HOME: path.join(tempDir, 'home'),
+          MYCC_BRIDGE_CAPTURE_PATH: capturePath,
+          MYCC_AGENT_PROMPT_B64: Buffer.from('hello', 'utf8').toString('base64'),
+        },
+      });
+
+      const captured = JSON.parse(readFileSync(capturePath, 'utf8'));
+      expect(captured.options).toEqual(expect.objectContaining({
+        allowDangerouslySkipPermissions: true,
+        permissionMode: 'bypassPermissions',
+      }));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function writeFakeAgentSdkPackage(tempDir: string): void {

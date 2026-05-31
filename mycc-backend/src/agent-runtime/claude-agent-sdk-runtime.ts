@@ -55,7 +55,7 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       ...resolveClaudeProviderEnv(),
     };
 
-    const permissionMode = this.resolvePermissionMode();
+    const permissionMode = this.resolvePermissionMode(params.permissionMode);
 
     return {
       allowedTools: this.resolveAllowedTools(),
@@ -119,8 +119,8 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       .filter(Boolean);
   }
 
-  private resolvePermissionMode(): PermissionMode {
-    const raw = (process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'dontAsk').trim();
+  private resolvePermissionMode(requestedMode: AgentChatParams['permissionMode']): PermissionMode {
+    const raw = (requestedMode || process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'bypassPermissions').trim();
     if (SUPPORTED_PERMISSION_MODES.has(raw as PermissionMode)) {
       return raw as PermissionMode;
     }

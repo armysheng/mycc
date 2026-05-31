@@ -38,6 +38,7 @@ import {
   buildBootstrapContextFiles,
   buildProjectContextPrompt,
   injectProjectContextPrompt,
+  injectWorkspaceOperatingPrompt,
   type WorkspaceBootstrapFile,
 } from '../chat/openclaw-context.js';
 import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
@@ -46,6 +47,7 @@ import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket
 const chatSchema = z.object({
   message: z.string().min(1),
   sessionId: z.string().optional(),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto']).optional(),
   images: z.array(z.object({
     data: z.string(),
     mediaType: z.string(),
@@ -189,6 +191,11 @@ export function parseOnboardingBootstrapRequest(message: string): OnboardingBoot
     assistantName,
     ownerName,
   };
+}
+
+function isRuntimeControlMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized === 'continue' || normalized === 'accept';
 }
 
 async function verifyOnboardingWorkspaceState(params: {
@@ -702,6 +709,13 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
       } catch (bootstrapErr) {
         console.warn(`[Chat] workspace context injection skipped userId=${userId}:`, bootstrapErr);
       }
+      if (
+        !onboardingBootstrapRequest
+        && !didInjectProjectContext
+        && !isRuntimeControlMessage(enhancedMessage)
+      ) {
+        enhancedMessage = injectWorkspaceOperatingPrompt(enhancedMessage);
+      }
 
       // 验证路径安全性
       if (!validatePathPrefix(cwd, '/home/')) {
@@ -735,6 +749,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
           sessionId: body.sessionId,
           cwd,
           linuxUser,
+          permissionMode: body.permissionMode,
           images: body.images,
         })) {
           // 提取 session_id

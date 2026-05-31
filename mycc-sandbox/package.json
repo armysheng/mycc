@@ -1,0 +1,19 @@
+{
+  "name": "@mycc/assistant-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyCC assistant sandbox image, contracts, and E2B template tooling.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "doctor:template": "node scripts/doctor-template.mjs",
+    "smoke:local-contract": "node scripts/smoke-local-contract.mjs",
+    "smoke:e2b-template": "node scripts/smoke-e2b-template.mjs",
+    "template:create": "bash scripts/create-template.sh"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "e2b": "^2.27.0"
+  },
+  "devDependencies": {}
+}

@@ -90,23 +90,23 @@ export function LoginPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-[var(--text-secondary)]">
               <SparklesIcon className="h-4 w-4" />
-              MyCC Personal Workspace
+              MyCC Personal Assistant
             </div>
             <h1
               className="mt-6 text-4xl font-semibold tracking-tight text-[var(--text-primary)]"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              让每个用户都拥有自己的 Claude 工作空间
+              让每个用户都拥有自己的个人助理空间
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--text-secondary)]">
-              登录后可直接进入多用户会话系统，在你的专属上下文里使用技能、自动化与会话管理能力。
+              登录后直接唤起你的专属助理，在个人上下文里使用技能、自动化与长期记忆。
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mt-8">
             <div className="rounded-xl border p-3">
               <div className="text-lg font-semibold text-[var(--text-primary)]">多用户</div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">会话与工作区隔离</div>
+              <div className="mt-1 text-xs text-[var(--text-muted)]">个人空间彼此独立</div>
             </div>
             <div className="rounded-xl border p-3">
               <div className="text-lg font-semibold text-[var(--text-primary)]">技能化</div>

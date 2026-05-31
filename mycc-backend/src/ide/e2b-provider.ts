@@ -1,6 +1,6 @@
 import { Sandbox } from 'e2b';
 import { requireE2bApiKey } from './e2b-api-key.js';
-import type { E2bCodeServerSessionPlan, IdeAccessMode } from './service.js';
+import { DEFAULT_DESKTOP_NOVNC_PORT, type E2bCodeServerSessionPlan, type IdeAccessMode } from './service.js';
 
 type CommandHandleLike = {
   pid: number;
@@ -40,6 +40,12 @@ export type StartedCodeServerSession = {
   port: number;
   accessMode: IdeAccessMode;
   expiresAt: string;
+};
+
+export type StartedDesktopService = {
+  desktopPid: number;
+  desktopHost: string;
+  desktopPort: number;
 };
 
 export type E2bCommandRunOptions = {
@@ -111,6 +117,21 @@ export class E2bSandboxProvider {
     };
   }
 
+  async startDesktop(session: StartedCodeServerSession): Promise<StartedDesktopService> {
+    const sandbox = await this.connect(session.sandboxId);
+    const port = resolveDesktopPort();
+    const command = await sandbox.commands.run('mycc-start-desktop', {
+      background: true,
+      cwd: '/home/mycc/workspace',
+    });
+
+    return {
+      desktopPid: command.pid,
+      desktopHost: sandbox.getHost(port),
+      desktopPort: port,
+    };
+  }
+
   async runCommandInSession(
     session: StartedCodeServerSession,
     command: string,
@@ -135,6 +156,18 @@ export class E2bSandboxProvider {
     return result.exitCode === 0;
   }
 
+  async isDesktopListening(session: StartedCodeServerSession): Promise<boolean> {
+    const result = await this.runCommandInSession(
+      session,
+      'mycc-health-desktop >/dev/null',
+      {
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 5000,
+      },
+    );
+    return result.exitCode === 0;
+  }
+
   private async connect(sandboxId: string): Promise<E2bSandboxLike> {
     const apiKey = this.requireApiKey();
     if (!this.sandboxFactory.connect) {
@@ -146,4 +179,14 @@ export class E2bSandboxProvider {
   private requireApiKey(): string {
     return requireE2bApiKey();
   }
+}
+
+function resolveDesktopPort(): number {
+  const raw = process.env.MYCC_E2B_DESKTOP_PORT;
+  if (!raw) return DEFAULT_DESKTOP_NOVNC_PORT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1024 || parsed > 65535) {
+    throw new Error(`Invalid MYCC_E2B_DESKTOP_PORT: ${raw}`);
+  }
+  return parsed;
 }

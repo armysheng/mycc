@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import Editor from "@monaco-editor/react";
+import type { AssistantDeliverableCard } from "../types";
 import {
   ArchiveBoxIcon,
   CodeBracketIcon,
@@ -18,8 +20,10 @@ import { Sidebar } from "./layout/Sidebar";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getAuthHeaders,
+  getAssistantDeliverablesUrl,
   getIdeConfigUrl,
   getIdeCurrentSessionUrl,
+  getIdeDesktopSessionUrl,
   getIdeSessionsUrl,
   getWorkspaceFileUrl,
   getWorkspaceSaveFileUrl,
@@ -54,35 +58,80 @@ interface IdeConfigData {
   e2bTemplate?: string;
   codeServerPort?: number;
   sessionTtlSeconds?: number;
+  desktopEnabled?: boolean;
+  desktopPort?: number;
 }
 
 interface IdeSessionData {
   id?: string;
   provider?: string;
-  sandboxId?: string;
   status?: string;
   expiresAt?: string;
   openPath?: string;
+  desktop?: {
+    status?: string;
+    openPath?: string;
+  };
 }
+
+type WorkspaceDeliverable = {
+  id: string;
+  title: string;
+  path?: string;
+  url?: string;
+  kind: string;
+  description?: string;
+  size?: number;
+  mtime?: string;
+};
 
 class ApiRequestError extends Error {
   readonly status?: number;
+  readonly code?: string;
 
   constructor(
     message: string,
     status?: number,
+    code?: string,
   ) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.code = code;
   }
 }
 
 function requiresRemoteIdeSession(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
+  if (error instanceof ApiRequestError) {
+    return error.code === "needs_workspace" || error.code === "workspace_stale";
+  }
   return error.message.includes("E2B 工作区会话不存在")
     || error.message.includes("请先打开 Remote IDE")
-    || error.message.includes("请先打开代码编辑器");
+    || error.message.includes("请先打开深度编辑");
+}
+
+function safeWorkspaceErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : fallback;
+  if (isLowLevelWorkspaceError(message)) {
+    return "工作区暂不可用，请稍后重试。";
+  }
+  return message
+    .replace(/\bRemote IDE\b/gi, "深度编辑")
+    .replace(/\bE2B\b/gi, "文件空间")
+    .replace(/\bcode-server\b/gi, "深度编辑")
+    .replace(/\bCCR\b/gi, "模型连接")
+    .replace(/\bAgent SDK\b/gi, "助理运行环境")
+    .replace(/\bGNU\b/gi, "桌面工作间")
+    .replace(/\bsandbox\b/gi, "工作区")
+    .replace(/沙盒/g, "工作区");
+}
+
+function isLowLevelWorkspaceError(message: string): boolean {
+  return /\b(column|relation|table|constraint)\b.+\bdoes not exist\b/i.test(message)
+    || /\bSQLSTATE\b|\bsyntax error at or near\b|\bpg_[a-z_]+\b/i.test(message)
+    || /\b(token|secret|password)=/i.test(message)
+    || /\b[A-Z0-9_]{8,}\b/.test(message);
 }
 
 function detectLanguage(filePath: string): string {
@@ -171,8 +220,118 @@ function getTreeIconMeta(name: string, isDirectory: boolean, isOpen: boolean): T
   return { Icon: DocumentIcon, colorClass: "text-slate-500 dark:text-slate-400" };
 }
 
+function flattenWorkspaceFiles(node: WorkspaceTreeNode | null): WorkspaceTreeNode[] {
+  if (!node) return [];
+  if (node.type === "file") return [node];
+  return (node.children ?? []).flatMap((child) => flattenWorkspaceFiles(child));
+}
+
+function getDeliverableKind(node: WorkspaceTreeNode): string {
+  const lower = node.path.toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "截图";
+  if (/\.(log|txt)$/.test(lower)) return "运行记录";
+  if (/\.(html|htm)$/.test(lower) || lower.includes("preview")) return "预览";
+  if (lower.includes("diff") || lower.endsWith(".patch")) return "变更说明";
+  if (lower.includes("report") || lower.includes("research") || lower.includes("调研") || lower.includes("报告")) {
+    return "报告";
+  }
+  return "文档";
+}
+
+function getAssistantDeliverableKindLabel(kind: AssistantDeliverableCard["kind"] | string): string {
+  const labels: Record<AssistantDeliverableCard["kind"], string> = {
+    document: "文档",
+    code_change: "修改记录",
+    diff: "变更说明",
+    report: "报告",
+    link: "链接",
+    preview: "预览",
+    screenshot: "截图",
+    log: "运行记录",
+    pr: "协作记录",
+    dataset: "数据集",
+  };
+  return labels[kind as AssistantDeliverableCard["kind"]] ?? "成果";
+}
+
+function getAssistantDeliverableSourceLabel(source: AssistantDeliverableCard["source"]): string {
+  if (source === "current_workspace") return "来自当前文件空间";
+  return "来自当前对话";
+}
+
+function getAssistantDeliverableDescription(card: AssistantDeliverableCard): string {
+  return (card.description || getAssistantDeliverableSourceLabel(card.source))
+    .replace(/当前工作区/g, "当前文件空间");
+}
+
+function isLikelyDeliverable(node: WorkspaceTreeNode): boolean {
+  if (node.type !== "file") return false;
+  const lower = node.path.toLowerCase();
+  const deliverablePath = lower.includes("/docs/")
+    || lower.includes("/reports/")
+    || lower.includes("/output/")
+    || lower.includes("/artifacts/")
+    || lower.includes("/screenshots/");
+  const deliverableName = [
+    "report",
+    "research",
+    "summary",
+    "spec",
+    "plan",
+    "proposal",
+    "design",
+    "artifact",
+    "deliverable",
+    "preview",
+    "screenshot",
+    "log",
+    "报告",
+    "总结",
+    "方案",
+    "计划",
+    "调研",
+    "设计",
+    "制品",
+  ].some((word) => lower.includes(word));
+  const deliverableExtension = /\.(md|pdf|html?|png|jpe?g|webp|svg|log|txt|patch)$/i.test(node.name);
+
+  return deliverableExtension && (deliverablePath || deliverableName);
+}
+
+function collectWorkspaceDeliverables(root: WorkspaceTreeNode | null): WorkspaceDeliverable[] {
+  return flattenWorkspaceFiles(root)
+    .filter(isLikelyDeliverable)
+    .sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime())
+    .slice(0, 5)
+    .map((node) => ({
+      id: `tree:${node.path}`,
+      path: node.path,
+      title: node.name,
+      kind: getDeliverableKind(node),
+      size: node.size,
+      mtime: node.mtime,
+      description: `${formatSize(node.size)} · ${formatTime(node.mtime)}`,
+    }));
+}
+
+function toWorkspaceDeliverable(card: AssistantDeliverableCard): WorkspaceDeliverable | null {
+  if (card.status !== "ready") return null;
+  if (!card.path && !card.url) return null;
+
+  return {
+    id: card.id,
+    title: card.title || card.path || card.url || "未命名成果",
+    path: card.path,
+    url: card.url,
+    kind: getAssistantDeliverableKindLabel(card.kind),
+    description: getAssistantDeliverableDescription(card),
+    mtime: card.updatedAt,
+  };
+}
+
 export function WorkspacePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { token } = useAuth();
 
   const [treeRoot, setTreeRoot] = useState<WorkspaceTreeNode | null>(null);
@@ -187,12 +346,15 @@ export function WorkspacePage() {
   const [draftContent, setDraftContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [ideOpening, setIdeOpening] = useState(false);
+  const [desktopOpening, setDesktopOpening] = useState(false);
   const [ideConfig, setIdeConfig] = useState<IdeConfigData | null>(null);
   const [ideSession, setIdeSession] = useState<IdeSessionData | null>(null);
   const [ideConfigLoading, setIdeConfigLoading] = useState(false);
   const [ideConfigError, setIdeConfigError] = useState<string | null>(null);
+  const [assistantDeliverables, setAssistantDeliverables] = useState<WorkspaceDeliverable[]>([]);
 
   const [treeHeight, setTreeHeight] = useState(620);
+  const initialPathLoadedRef = useRef<string | null>(null);
 
   const apiFetch = useCallback(async (url: string, init?: RequestInit) => {
     if (!token) {
@@ -204,7 +366,7 @@ export function WorkspacePage() {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.success) {
-      throw new ApiRequestError(json?.error || "请求失败", res.status);
+      throw new ApiRequestError(json?.error || "请求失败", res.status, json?.code);
     }
     return json;
   }, [token]);
@@ -230,7 +392,7 @@ export function WorkspacePage() {
         setError(null);
       } else {
         setWorkspaceNeedsIde(false);
-        setError(err instanceof Error ? err.message : "加载目录失败");
+        setError(safeWorkspaceErrorMessage(err, "加载目录失败"));
       }
     } finally {
       setTreeLoading(false);
@@ -261,11 +423,24 @@ export function WorkspacePage() {
     } catch (err) {
       setIdeConfig(null);
       setIdeSession(null);
-      setIdeConfigError(err instanceof Error ? err.message : "代码编辑器状态检查失败");
+      setIdeConfigError(safeWorkspaceErrorMessage(err, "深度编辑状态检查失败"));
     } finally {
       setIdeConfigLoading(false);
     }
   }, [apiFetch, loadCurrentIdeSession]);
+
+  const loadAssistantDeliverables = useCallback(async () => {
+    try {
+      const json = await apiFetch(getAssistantDeliverablesUrl());
+      const cards = ((json?.data?.deliverables ?? []) as AssistantDeliverableCard[])
+        .map(toWorkspaceDeliverable)
+        .filter((card): card is WorkspaceDeliverable => Boolean(card))
+        .slice(0, 5);
+      setAssistantDeliverables(cards);
+    } catch {
+      setAssistantDeliverables([]);
+    }
+  }, [apiFetch]);
 
   const loadFile = useCallback(async (filePath: string) => {
     setFileLoading(true);
@@ -284,7 +459,7 @@ export function WorkspacePage() {
         setNotice("该文件是二进制格式，当前版本暂不支持在线编辑。");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "读取文件失败");
+      setError(safeWorkspaceErrorMessage(err, "读取文件失败"));
     } finally {
       setFileLoading(false);
     }
@@ -313,12 +488,23 @@ export function WorkspacePage() {
       });
       setNotice(`已保存 ${activeFile.path}`);
       await loadTree();
+      await loadAssistantDeliverables();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(safeWorkspaceErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
-  }, [activeFile, apiFetch, draftContent, loadTree]);
+  }, [activeFile, apiFetch, draftContent, loadAssistantDeliverables, loadTree]);
+
+  const openDeliverable = useCallback((deliverable: WorkspaceDeliverable) => {
+    if (deliverable.path) {
+      void loadFile(deliverable.path);
+      return;
+    }
+    if (deliverable.url) {
+      window.open(deliverable.url, "_blank", "noopener,noreferrer");
+    }
+  }, [loadFile]);
 
   const openCodeEditor = useCallback(async () => {
     setIdeOpening(true);
@@ -333,13 +519,13 @@ export function WorkspacePage() {
       const config = configJson?.data as IdeConfigData | undefined;
       setIdeConfig(config ?? null);
       if (config?.enabled === false) {
-        throw new Error("代码编辑器当前未启用");
+        throw new Error("深度编辑当前未启用");
       }
 
       const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
       const session = sessionJson?.data as IdeSessionData | undefined;
       if (!session?.openPath) {
-        throw new Error("代码编辑器会话创建成功，但缺少打开地址");
+        throw new Error("深度编辑准备好了，但缺少打开地址");
       }
       setIdeSession(session);
 
@@ -350,15 +536,65 @@ export function WorkspacePage() {
         window.open(openUrl, "_blank", "noopener,noreferrer");
       }
       setWorkspaceNeedsIde(false);
-      setNotice("代码编辑器已在新标签页打开");
+      setNotice("深度编辑已在新标签页打开");
       void loadTree();
     } catch (err) {
       ideWindow?.close();
-      setError(err instanceof Error ? err.message : "打开代码编辑器失败");
+      setError(safeWorkspaceErrorMessage(err, "打开深度编辑失败"));
     } finally {
       setIdeOpening(false);
     }
   }, [apiFetch]);
+
+  const openDesktop = useCallback(async () => {
+    setDesktopOpening(true);
+    setError(null);
+    setNotice(null);
+    const desktopWindow = window.open("about:blank", "_blank");
+    if (desktopWindow) {
+      desktopWindow.opener = null;
+    }
+    try {
+      const configJson = await apiFetch(getIdeConfigUrl());
+      const config = configJson?.data as IdeConfigData | undefined;
+      setIdeConfig(config ?? null);
+      if (config?.enabled === false) {
+        throw new Error("工作区当前未启用");
+      }
+      if (!config?.desktopEnabled) {
+        throw new Error("桌面工作间当前未启用");
+      }
+
+      const sessionJson = await apiFetch(getIdeSessionsUrl(), { method: "POST" });
+      const session = sessionJson?.data as IdeSessionData | undefined;
+      if (!session?.id) {
+        throw new Error("工作区会话创建成功，但缺少会话 ID");
+      }
+
+      const desktopJson = await apiFetch(getIdeDesktopSessionUrl(session.id), { method: "POST" });
+      const desktopSession = desktopJson?.data as IdeSessionData | undefined;
+      const openPath = desktopSession?.desktop?.openPath;
+      if (!openPath) {
+        throw new Error("桌面工作间启动成功，但缺少打开地址");
+      }
+      setIdeSession(desktopSession ?? session);
+
+      const openUrl = resolveIdeOpenUrl(openPath);
+      if (desktopWindow) {
+        desktopWindow.location.href = openUrl;
+      } else {
+        window.open(openUrl, "_blank", "noopener,noreferrer");
+      }
+      setWorkspaceNeedsIde(false);
+      setNotice("桌面工作间已在新标签页打开");
+      void loadTree();
+    } catch (err) {
+      desktopWindow?.close();
+      setError(safeWorkspaceErrorMessage(err, "打开桌面工作间失败"));
+    } finally {
+      setDesktopOpening(false);
+    }
+  }, [apiFetch, loadTree]);
 
   useEffect(() => {
     void loadTree();
@@ -367,6 +603,17 @@ export function WorkspacePage() {
   useEffect(() => {
     void loadIdeConfig();
   }, [loadIdeConfig]);
+
+  useEffect(() => {
+    void loadAssistantDeliverables();
+  }, [loadAssistantDeliverables]);
+
+  useEffect(() => {
+    const initialPath = searchParams.get("path");
+    if (!token || !initialPath || initialPathLoadedRef.current === initialPath) return;
+    initialPathLoadedRef.current = initialPath;
+    void loadFile(initialPath);
+  }, [loadFile, searchParams, token]);
 
   useEffect(() => {
     const updateHeight = () => setTreeHeight(Math.max(420, window.innerHeight - 260));
@@ -417,30 +664,41 @@ export function WorkspacePage() {
   }, [activePath, onTreeNodeClick]);
 
   const data = treeRoot ? [treeRoot] : [];
+  const treeDeliverables = useMemo(() => collectWorkspaceDeliverables(treeRoot), [treeRoot]);
+  const deliverables = assistantDeliverables.length > 0 ? assistantDeliverables : treeDeliverables;
   const ideDisabled = ideOpening || ideConfig?.enabled === false;
+  const desktopDisabled = desktopOpening || ideConfig?.enabled === false || ideConfig?.desktopEnabled === false;
   const isRunningE2bSession = ideSession?.status === "running" && (
     ideSession.provider === "e2b" || ideConfig?.provider === "e2b"
   );
   const ideStatusLabel = (() => {
-    if (ideConfigLoading) return "代码编辑器状态检查中";
-    if (ideConfigError) return "代码编辑器状态未知";
-    if (ideConfig?.enabled === false) return "代码编辑器未启用";
-    if (isRunningE2bSession) return "当前活跃 E2B 工作区已连接";
-    if (ideConfig?.provider === "e2b") return "E2B 工作区可创建";
-    if (ideConfig?.enabled) return "代码编辑器可打开";
-    return "代码编辑器状态待检测";
+    if (ideConfigLoading) return "文件空间准备中";
+    if (ideConfigError) return "文件空间状态未知";
+    if (ideConfig?.enabled === false) return "深度编辑未启用";
+    if (isRunningE2bSession) return "文件空间已连接";
+    if (ideConfig?.provider === "e2b") return "文件空间可用";
+    if (ideConfig?.enabled) return "深度编辑可打开";
+    return "文件空间待检测";
   })();
   const ideStatusDetail = (() => {
     if (ideConfigError) return ideConfigError;
-	    if (ideConfig?.enabled === false) return "后端 MYCC_IDE_PROVIDER 仍为 disabled，不会创建 E2B 工作区。";
-	    if (isRunningE2bSession) {
-	      const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
-	      return `当前用户工作区${expires}`;
-	    }
-	    if (ideConfig?.provider === "e2b") {
-	      return "需要深度编辑代码时会在新标签页打开编辑器。";
-	    }
-    return "打开后会复用或创建当前用户的代码编辑器会话。";
+    if (ideConfig?.enabled === false) return "当前暂不可用。";
+    if (isRunningE2bSession) {
+      const expires = ideSession?.expiresAt ? ` · 到期 ${formatTime(ideSession.expiresAt)}` : "";
+      return `当前文件空间${expires}`;
+    }
+    if (ideConfig?.provider === "e2b") {
+      return "需要细看或大改文件时，会打开深度编辑视图。";
+    }
+    return "打开后会复用或准备你的文件空间。";
+  })();
+  const codeServerCapabilityLabel = (() => {
+    if (ideConfigLoading) return "状态检查中";
+    if (ideConfig?.enabled === false) return "未启用";
+    if (isRunningE2bSession) return "可使用";
+    if (ideConfig?.provider === "e2b") return "需要时可打开";
+    if (ideConfig?.enabled) return "可打开";
+    return "待检测";
   })();
 
   return (
@@ -449,13 +707,13 @@ export function WorkspacePage() {
 
       <main className="flex-1 overflow-hidden bg-[radial-gradient(1200px_420px_at_80%_-10%,rgba(14,165,233,0.14),transparent),radial-gradient(1000px_420px_at_10%_110%,rgba(16,185,129,0.10),transparent)]">
         <div className="h-full p-5 md:p-6 flex flex-col gap-4">
-          <header className="rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
+          <header className="rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur px-5 py-4 flex flex-col items-start justify-between gap-4 shadow-sm sm:flex-row sm:items-center">
             <div>
               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] border border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200 dark:border-sky-700 mb-2">
-                Assistant Workbench
+                成果空间
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight">助理工作间</h1>
-              <p className="text-xs text-slate-500 mt-1">给助理接管代码、文件和制品的高级工作台；日常入口仍然是对话。</p>
+              <h1 className="text-2xl font-semibold tracking-tight">成果空间</h1>
+              <p className="text-xs text-slate-500 mt-1">集中查看助理整理的文件、成果和深度编辑入口；日常入口仍然是对话。</p>
               <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-800/80 dark:bg-emerald-900/25 dark:text-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span className="font-medium">{ideStatusLabel}</span>
@@ -464,25 +722,25 @@ export function WorkspacePage() {
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
               <button
                 type="button"
                 onClick={() => {
                   void openCodeEditor();
                 }}
                 disabled={ideDisabled}
-                className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
               >
-                {ideOpening ? "打开中..." : "打开代码编辑器"}
+                {ideOpening ? "打开中..." : "打开深度编辑"}
               </button>
               <button
                 type="button"
                 onClick={() => {
                   void loadTree();
                 }}
-                className="px-3.5 py-2 rounded-xl border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl border panel-surface text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                刷新目录
+                刷新资料
               </button>
               <button
                 type="button"
@@ -490,29 +748,29 @@ export function WorkspacePage() {
                   void saveCurrentFile();
                 }}
                 disabled={!dirty || saving || !activeFile || activeFile.binary}
-                className="px-3.5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, var(--accent), #0284c7)" }}
               >
-                {saving ? "保存中..." : "保存文件"}
+                {saving ? "保存中..." : "保存修改"}
               </button>
             </div>
           </header>
 
-          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px] gap-4">
             <aside className="min-h-0 rounded-2xl border border-slate-200/70 dark:border-slate-700/80 bg-white/75 dark:bg-slate-900/80 backdrop-blur shadow-sm overflow-hidden flex flex-col">
               <div className="px-4 py-3 border-b border-slate-200/70 dark:border-slate-700/80">
-                <div className="text-xs font-medium text-slate-500">文件树</div>
+                <div className="text-xs font-medium text-slate-500">资料列表</div>
                 <div className="text-[11px] text-slate-400 mt-1 truncate">{activePath || "/"}</div>
               </div>
 
               <div className="flex-1 overflow-auto p-2">
                 {treeLoading ? (
-                  <div className="text-xs text-slate-500 px-2 py-3">加载目录中...</div>
+                  <div className="text-xs text-slate-500 px-2 py-3">加载资料中...</div>
                 ) : workspaceNeedsIde ? (
                   <div className="m-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-100">
-                    <div className="font-semibold">E2B 工作区需要代码编辑器</div>
+                    <div className="font-semibold">需要先打开深度编辑</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-700 dark:text-emerald-200/80">
-                      当前文件树会复用用户的 E2B 工作区。先创建代码编辑器会话，再回到这里查看同一份 `/home/mycc/workspace`。
+                      当前资料列表会复用你的文件空间。先打开深度编辑，准备好后这里会显示同一份文件。
                     </p>
                     <button
                       type="button"
@@ -522,7 +780,7 @@ export function WorkspacePage() {
                       disabled={ideDisabled}
                       className="mt-3 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100"
                     >
-                      创建 E2B 工作区
+                      立即打开
                     </button>
                   </div>
                 ) : (
@@ -573,16 +831,192 @@ export function WorkspacePage() {
                 )}
               </div>
             </section>
+
+            <aside className="min-h-0 rounded-2xl border border-slate-200/70 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/80 lg:col-span-2 xl:col-span-1 xl:overflow-auto">
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
+                <InspectorPanel
+                  title="最近成果"
+                  subtitle="从当前文件空间中识别报告、预览、运行记录和截图。"
+                >
+                  {deliverables.length > 0 ? (
+                    <div className="space-y-2">
+                      {deliverables.map((deliverable) => (
+                        <button
+                          key={deliverable.id}
+                          type="button"
+                          aria-label={`打开 ${deliverable.title}`}
+                          onClick={() => openDeliverable(deliverable)}
+                          disabled={!deliverable.path && !deliverable.url}
+                          className="group w-full rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-left transition hover:border-sky-200 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/70 dark:hover:border-sky-700 dark:hover:bg-slate-800"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                {deliverable.title}
+                              </div>
+                              <div className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                                {deliverable.description || "来自当前文件空间"}
+                              </div>
+                            </div>
+                            <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                              {deliverable.kind}
+                            </span>
+                          </div>
+                          {(deliverable.size || deliverable.mtime) && (
+                            <div className="mt-2 text-[11px] text-slate-400">
+                              {deliverable.size ? formatSize(deliverable.size) : "成果"} · {formatTime(deliverable.mtime)}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyInspectorCopy>
+                      还没有识别到成果。助理写出的报告、截图、运行记录和预览会优先出现在这里。
+                    </EmptyInspectorCopy>
+                  )}
+                </InspectorPanel>
+
+                <InspectorPanel
+                  title="当前文件"
+                  subtitle="轻量查看和小改；复杂编辑交给深度编辑。"
+                >
+                  {activeFile ? (
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-sm dark:border-slate-700/80 dark:bg-slate-800/70">
+                      <div className="font-semibold text-slate-900 dark:text-slate-50">{activeFile.path}</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span>{formatSize(activeFile.size)}</span>
+                        <span>{detectLanguage(activeFile.path)}</span>
+                        <span className="col-span-2">{formatTime(activeFile.mtime)}</span>
+                      </div>
+                      {dirty && (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                          有未保存修改
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <EmptyInspectorCopy>
+                      选择文件或从成果列表打开报告后，这里会显示文件摘要。
+                    </EmptyInspectorCopy>
+                  )}
+                </InspectorPanel>
+
+                <InspectorPanel
+                  title="更多工具"
+                  subtitle="这些入口按需打开，不占用助理首页。"
+                >
+                  <div className="space-y-2">
+                    <CapabilityRow
+                      title="深度编辑"
+                      status={codeServerCapabilityLabel}
+                      description="适合大改文件、查看项目结构和处理复杂修改。"
+                      actionLabel={ideOpening ? "打开中..." : "打开"}
+                      disabled={ideDisabled}
+                      onAction={() => {
+                        void openCodeEditor();
+                      }}
+                    />
+                    <CapabilityRow
+                      title="桌面工作间"
+                      status={desktopOpening ? "打开中" : ideConfig?.desktopEnabled ? "可打开" : "未启用"}
+                      description="用于需要图形界面的浏览器和桌面任务。"
+                      actionLabel={desktopOpening ? "打开中..." : "打开桌面工作间"}
+                      disabled={desktopDisabled}
+                      onAction={() => {
+                        void openDesktop();
+                      }}
+                    />
+                    <CapabilityRow
+                      title="预览"
+                      status="待接入"
+                      description="后续展示页面预览和截图成果。"
+                      disabled
+                    />
+                  </div>
+                </InspectorPanel>
+              </div>
+            </aside>
           </div>
 
           {(error || notice) && (
             <div className="rounded-xl border border-slate-200/70 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/85 px-4 py-3 text-sm shadow-sm">
-              {error && <div className="text-red-600">系统错误：{error}</div>}
+              {error && <div className="text-red-600">{error}</div>}
               {notice && <div className="text-emerald-600">{notice}</div>}
             </div>
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function InspectorPanel({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200/70 bg-white/80 p-3 dark:border-slate-700/80 dark:bg-slate-950/50">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-slate-950 dark:text-slate-50">{title}</h2>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{subtitle}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function EmptyInspectorCopy({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+      {children}
+    </div>
+  );
+}
+
+function CapabilityRow({
+  title,
+  status,
+  description,
+  actionLabel,
+  disabled = false,
+  onAction,
+}: {
+  title: string;
+  status: string;
+  description: string;
+  actionLabel?: string;
+  disabled?: boolean;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-700/80 dark:bg-slate-800/70">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{title}</span>
+            <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              {status}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{description}</p>
+        </div>
+        {actionLabel && (
+          <button
+            type="button"
+            onClick={onAction}
+            disabled={disabled}
+            className="shrink-0 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-200 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-700 dark:hover:text-sky-200"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

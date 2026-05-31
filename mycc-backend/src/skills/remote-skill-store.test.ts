@@ -22,6 +22,10 @@ function skillMd(version: string): string {
   return `---\nversion: ${version}\n---\n`;
 }
 
+function skillMdWithoutVersion(): string {
+  return `---\nname: deep-research\n---\n`;
+}
+
 function hasDirCheck(command: string, path: string): boolean {
   return command.includes(path) && command.includes('echo ok || true');
 }
@@ -39,11 +43,11 @@ describe('remote-skill-store regression', () => {
     (RemoteSkillStore as any).catalogCache.clear();
   });
 
-  it('installSkill: 首个 catalog 无目标 skill，后续候选存在时可安装', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('installSkill: 只从本地 catalog 安装并返回 Claude skills 目标路径', async () => {
     const store = new RemoteSkillStore();
+    const installSkill = vi.fn().mockRejectedValue(new Error('should not call clawhub'));
     (store as any).clawhubAdapter = {
-      installSkill: vi.fn().mockRejectedValue(new Error('skip clawhub')),
+      installSkill,
       upgradeSkill: vi.fn(),
       listAvailableSkills: vi.fn().mockResolvedValue([]),
       searchSkills: vi.fn().mockResolvedValue([]),
@@ -78,22 +82,27 @@ describe('remote-skill-store regression', () => {
       return ok('');
     });
 
-    const version = await store.installSkill('qa', 'tell-me');
+    const result = await store.installSkill('qa', 'tell-me');
 
-    expect(version).toBe('1.2.3');
+    expect(result).toEqual({
+      version: '1.2.3',
+      source: 'catalog',
+      targetPath: '/home/qa/workspace/.claude/skills/tell-me',
+    });
+    expect(installSkill).not.toHaveBeenCalled();
     expect(
       sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
         command.includes('cp -a') && command.includes('/opt/mycc/mycc/.claude/skills/tell-me')
       )
     ).toBe(true);
-    warnSpy.mockRestore();
   });
 
-  it('upgradeSkill: 首个 catalog 无目标 skill，后续候选存在时可升级', async () => {
+  it('upgradeSkill: 从本地 catalog 更新，保留禁用状态并返回目标路径', async () => {
     const store = new RemoteSkillStore();
+    const upgradeSkill = vi.fn().mockRejectedValue(new Error('should not call clawhub'));
     (store as any).clawhubAdapter = {
       installSkill: vi.fn(),
-      upgradeSkill: vi.fn(),
+      upgradeSkill,
       listAvailableSkills: vi.fn().mockResolvedValue([]),
       searchSkills: vi.fn().mockResolvedValue([]),
     };
@@ -103,7 +112,7 @@ describe('remote-skill-store regression', () => {
         return ok('ok\n');
       }
       if (hasCat(command, '/home/qa/workspace/.claude/skills/.mycc-manifest.json')) {
-        return ok('{"skills":{"scheduler":{"source":"catalog","disabled":false}}}');
+        return ok('{"skills":{"scheduler":{"source":"clawhub","disabled":true}}}');
       }
       if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills'")) {
         return ok('/opt/mycc/.claude/skills\n');
@@ -130,12 +139,22 @@ describe('remote-skill-store regression', () => {
       return ok('');
     });
 
-    const version = await store.upgradeSkill('qa', 'scheduler');
+    const result = await store.upgradeSkill('qa', 'scheduler');
 
-    expect(version).toBe('2.0.0');
+    expect(result).toEqual({
+      version: '2.0.0',
+      source: 'catalog',
+      targetPath: '/home/qa/workspace/.claude/skills/scheduler',
+    });
+    expect(upgradeSkill).not.toHaveBeenCalled();
     expect(
       sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
         command.includes('rm -rf') && command.includes('/opt/mycc/mycc/.claude/skills/scheduler')
+      )
+    ).toBe(true);
+    expect(
+      sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
+        command.includes('DISABLED=') && command.includes('true')
       )
     ).toBe(true);
   });
@@ -330,8 +349,8 @@ describe('RemoteSkillStore.listSkillInfos clawhub toggle', () => {
   });
 });
 
-describe('RemoteSkillStore.searchSkills fallback', () => {
-  it('registry 未命中时回退 ClawHub', async () => {
+describe('RemoteSkillStore.searchSkills catalog scope', () => {
+  it('registry 未命中时返回空结果且不回退 ClawHub', async () => {
     const store = new RemoteSkillStore();
     const searchSkills = vi.fn().mockResolvedValue([
       {
@@ -360,8 +379,8 @@ describe('RemoteSkillStore.searchSkills fallback', () => {
 
     const results = await store.searchSkills('qa', 'tushare');
 
-    expect(searchSkills).toHaveBeenCalledTimes(1);
-    expect(results[0]?.id).toBe('tushare-tools');
+    expect(searchSkills).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
   });
 
   it('registry 命中时不调用 ClawHub', async () => {
@@ -418,6 +437,24 @@ describe('RemoteSkillStore.listSkillInfos perf guard', () => {
         command.includes("cat '/catalog/deep-research/SKILL.md'")
       )
     ).toBe(false);
+  });
+
+  it('registry 已知技能缺少 SKILL.md version 时使用 registry 默认版本', async () => {
+    const store = new RemoteSkillStore();
+
+    const result = await (store as any).readSkillInfo(
+      async () => ok(skillMdWithoutVersion()),
+      '/catalog/deep-research/SKILL.md',
+      'catalog',
+      'available'
+    );
+
+    expect(result).toMatchObject({
+      id: 'deep-research',
+      version: '1.0.0',
+      latestVersion: '1.0.0',
+      legacy: false,
+    });
   });
 });
 

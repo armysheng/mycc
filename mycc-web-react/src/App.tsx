@@ -81,7 +81,7 @@ function App() {
           <Route
             path="/workspace"
             element={
-              <Suspense fallback={<div>Loading workspace...</div>}>
+              <Suspense fallback={<div>工作区加载中...</div>}>
                 <WorkspacePage />
               </Suspense>
             }

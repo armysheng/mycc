@@ -153,7 +153,8 @@ describe('workspace route helpers', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       success: false,
-      error: 'E2B 工作区会话不存在，请先打开 Remote IDE',
+      error: '需要先打开代码编辑器',
+      code: 'needs_workspace',
     });
   });
 
@@ -180,7 +181,8 @@ describe('workspace route helpers', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       success: false,
-      error: 'E2B 工作区会话已失效，请重新打开 Remote IDE：sandbox not found',
+      error: '工作区会话已过期，请重新打开代码编辑器',
+      code: 'workspace_stale',
     });
     expect(await sessionStore.findReusableByUser(42)).toBeNull();
     expect(await sessionStore.get(runningSession.id)).toEqual({
@@ -212,8 +214,42 @@ describe('workspace route helpers', () => {
     expect(response.statusCode).toBe(500);
     expect(response.json()).toEqual({
       success: false,
-      error: 'E2B 工作区操作失败：command timed out',
+      error: '工作区暂不可用，请稍后重试',
+      code: 'workspace_unavailable',
     });
     expect(await sessionStore.findReusableByUser(42)).toEqual(runningSession);
+  });
+
+  it('does not expose low-level command stderr in workspace API errors', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: {
+        runCommandInSession: vi.fn().mockResolvedValue({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'column "desktop_pid" does not exist',
+        }),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/tree',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '工作区暂不可用，请稍后重试',
+      code: 'workspace_unavailable',
+    });
+    expect(response.body).not.toMatch(/desktop_pid|column|does not exist|E2B|Remote IDE/);
   });
 });

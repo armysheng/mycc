@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { getSSHPool } from '../ssh/pool.js';
 import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
-import type { SkillInfo } from './types.js';
+import type { SkillInfo, SkillInstallMetadata } from './types.js';
 import { ClawHubAdapter } from './clawhub-adapter.js';
-import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuiltinSkills } from './skill-registry.js';
+import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuiltinSkills, getVersionForSkill } from './skill-registry.js';
 
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
@@ -27,6 +27,18 @@ function normalizeVersion(input: unknown): { version: string; legacy: boolean } 
   return { version: '0.0.0-legacy', legacy: true };
 }
 
+function normalizeSkillVersion(skillId: string, input: unknown): { version: string; legacy: boolean } {
+  const versionMeta = normalizeVersion(input);
+  if (!versionMeta.legacy) {
+    return versionMeta;
+  }
+  const registrySkill = getSkillById(skillId);
+  if (registrySkill) {
+    return { version: getVersionForSkill(skillId), legacy: false };
+  }
+  return versionMeta;
+}
+
 function toSkillInfo(
   skillId: string,
   content: string,
@@ -35,7 +47,7 @@ function toSkillInfo(
   installedVersion?: string | null
 ): SkillInfo {
   const parsed = matter(content);
-  const versionMeta = normalizeVersion(parsed.data.version);
+  const versionMeta = normalizeSkillVersion(skillId, parsed.data.version);
   const latestVersion = versionMeta.version;
   const currentVersion = status === 'installed' ? (installedVersion || latestVersion) : latestVersion;
   const registryEntry = getSkillById(skillId);
@@ -205,7 +217,7 @@ export class RemoteSkillStore {
           continue;
         }
 
-        const fromRegistry = toRegistrySkillInfo(skillId, 'available', '1.0.0', 'catalog', false, false);
+        const fromRegistry = toRegistrySkillInfo(skillId, 'available', getVersionForSkill(skillId), 'catalog', false, false);
         if (fromRegistry) {
           map.set(skillId, fromRegistry);
         }
@@ -249,7 +261,7 @@ export class RemoteSkillStore {
         const fromRegistry = toRegistrySkillInfo(
           skillId,
           status,
-          installedVersion || '0.0.0-legacy',
+          installedVersion || getVersionForSkill(skillId),
           manifestEntry?.source || 'user',
           true,
           !disabled
@@ -299,9 +311,9 @@ export class RemoteSkillStore {
             icon: def.icon,
             status: 'available',
             installed: false,
-            version: '1.0.0',
+            version: getVersionForSkill(def.id),
             installedVersion: null,
-            latestVersion: '1.0.0',
+            latestVersion: getVersionForSkill(def.id),
             source: 'catalog',
             legacy: false,
             enabled: false,
@@ -348,29 +360,19 @@ export class RemoteSkillStore {
         icon: def.icon,
         status: 'available' as const,
         installed: false,
-        version: '1.0.0',
+        version: getVersionForSkill(def.id),
         installedVersion: null,
-        latestVersion: '1.0.0',
+        latestVersion: getVersionForSkill(def.id),
         source: 'catalog',
         legacy: false,
         enabled: false,
         upgradable: false,
       }));
 
-    if (registryResults.length > 0) {
-      return registryResults;
-    }
-
-    // fallback: 搜 ClawHub
-    try {
-      return await this.clawhubAdapter.searchSkills(linuxUser, query);
-    } catch (error) {
-      console.error('[RemoteSkillStore] 搜索失败:', error);
-      throw new SkillsError(500, '搜索技能失败');
-    }
+    return registryResults;
   }
 
-  async installSkill(linuxUser: string, skillId: string): Promise<string> {
+  async installSkill(linuxUser: string, skillId: string): Promise<SkillInstallMetadata> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
@@ -383,32 +385,7 @@ export class RemoteSkillStore {
       const runAsUser: ExecFn = (command) =>
         sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
 
-      // 先检查是否是 ClawHub 技能
       const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
-      const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
-
-      if (!targetCheck.stdout.trim()) {
-        // 技能未安装，尝试从 ClawHub 安装
-        try {
-          const version = await this.clawhubAdapter.installSkill(linuxUser, skillId);
-
-          // 更新 manifest 和 lock
-          await this.updateManifestAndLock(runAsUser, linuxUser, {
-            skillId,
-            version,
-            source: 'clawhub',
-            installedPath: targetDir,
-            disabled: false,
-          });
-
-          return version;
-        } catch (clawhubError) {
-          console.warn(`[RemoteSkillStore] ClawHub 安装失败，尝试本地 catalog:`, clawhubError);
-          // 回退到本地 catalog 安装
-        }
-      }
-
-      // 本地 catalog 安装逻辑（原有逻辑）
       const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
       if (!sourceDir) {
         throw new SkillsError(404, '技能不存在于目录中');
@@ -425,7 +402,7 @@ export class RemoteSkillStore {
       const skillFile = `${targetDir}/SKILL.md`;
       const catSkill = await runAsUser(`cat ${escapeShellArg(skillFile)} 2>/dev/null || true`);
       const parsed = matter(catSkill.stdout || '');
-      const version = normalizeVersion(parsed.data.version).version;
+      const version = normalizeSkillVersion(skillId, parsed.data.version).version;
 
       await this.updateManifestAndLock(runAsUser, linuxUser, {
         skillId,
@@ -435,13 +412,13 @@ export class RemoteSkillStore {
         disabled: false,
       });
 
-      return version;
+      return { version, source: 'catalog', targetPath: targetDir };
     } finally {
       sshPool.release(connection);
     }
   }
 
-  async upgradeSkill(linuxUser: string, skillId: string): Promise<string> {
+  async upgradeSkill(linuxUser: string, skillId: string): Promise<SkillInstallMetadata> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
@@ -460,32 +437,8 @@ export class RemoteSkillStore {
         throw new SkillsError(404, '技能未安装，无法升级');
       }
 
-      // 读取当前技能的 source
       const manifest = await this.readManifest(runAsUser, linuxUser);
-      const currentSource = manifest?.skills?.[skillId]?.source;
 
-      // 如果是 ClawHub 技能，使用 ClawHub 升级
-      if (currentSource === 'clawhub') {
-        try {
-          const version = await this.clawhubAdapter.upgradeSkill(linuxUser, skillId);
-          const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
-
-          await this.updateManifestAndLock(runAsUser, linuxUser, {
-            skillId,
-            version,
-            source: 'clawhub',
-            installedPath: targetDir,
-            disabled,
-          });
-
-          return version;
-        } catch (clawhubError) {
-          console.warn(`[RemoteSkillStore] ClawHub 升级失败:`, clawhubError);
-          throw new SkillsError(500, `升级失败: ${clawhubError instanceof Error ? clawhubError.message : String(clawhubError)}`);
-        }
-      }
-
-      // 本地 catalog 升级逻辑（原有逻辑）
       const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
       if (!sourceDir) {
         throw new SkillsError(404, '技能不存在于目录中');
@@ -494,7 +447,11 @@ export class RemoteSkillStore {
       if (sourceDir === targetDir) {
         const currentSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
         const parsedCurrent = matter(currentSkill.stdout || '');
-        return normalizeVersion(parsedCurrent.data.version).version;
+        return {
+          version: normalizeSkillVersion(skillId, parsedCurrent.data.version).version,
+          source: 'catalog',
+          targetPath: targetDir,
+        };
       }
 
       const upgrade = await runAsUser(
@@ -506,7 +463,7 @@ export class RemoteSkillStore {
 
       const catSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
       const parsed = matter(catSkill.stdout || '');
-      const version = normalizeVersion(parsed.data.version).version;
+      const version = normalizeSkillVersion(skillId, parsed.data.version).version;
       const disabled = Boolean(manifest?.skills?.[skillId]?.disabled);
 
       await this.updateManifestAndLock(runAsUser, linuxUser, {
@@ -517,7 +474,7 @@ export class RemoteSkillStore {
         disabled,
       });
 
-      return version;
+      return { version, source: 'catalog', targetPath: targetDir };
     } finally {
       sshPool.release(connection);
     }
@@ -623,7 +580,7 @@ export class RemoteSkillStore {
       const skillFile = `${targetDir}/SKILL.md`;
       const skillResult = await runAsUser(`cat ${escapeShellArg(skillFile)} 2>/dev/null || true`);
       const parsed = matter(skillResult.stdout || '');
-      const version = normalizeVersion(parsed.data.version).version;
+      const version = normalizeSkillVersion(skill.id, parsed.data.version).version;
 
       await this.updateManifestAndLock(runAsUser, linuxUser, {
         skillId: skill.id,

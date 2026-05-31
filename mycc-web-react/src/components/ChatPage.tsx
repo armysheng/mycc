@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   PermissionMode,
   AssistantHomeData,
+  AssistantDeliverableCard,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
@@ -19,7 +20,6 @@ import { SettingsModal } from "./SettingsModal";
 import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
-import { ChatRuntimeStatusBadge } from "./chat/ChatRuntimeStatusBadge";
 import { HistoryView } from "./HistoryView";
 import { Sidebar } from "./layout/Sidebar";
 import { getAssistantHomeUrl, getChatUrl, getAuthHeaders, getSkillsUrl } from "../config/api";
@@ -68,7 +68,7 @@ export function ChatPage() {
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
     const rawPath = location.pathname.replace("/projects", "");
-    if (!rawPath) return undefined;
+    if (!rawPath || rawPath === "/") return undefined;
 
     // URL decode the path
     const decodedPath = decodeURIComponent(rawPath);
@@ -152,14 +152,14 @@ export function ChatPage() {
     [showPermissionRequest, showPlanModeRequest],
   );
 
-	  useEffect(() => {
-	    setAssistantHome(null);
-	    setAssistantHomeError(null);
-	    if (!token) {
-	      setAssistantHomeLoading(false);
-	      return;
-	    }
-	    let cancelled = false;
+  useEffect(() => {
+    setAssistantHome(null);
+    setAssistantHomeError(null);
+    if (!token) {
+      setAssistantHomeLoading(false);
+      return;
+    }
+    let cancelled = false;
 
     const loadAssistantHome = async () => {
       setAssistantHomeLoading(true);
@@ -472,6 +472,14 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
+  const handleOpenDeliverable = useCallback((deliverable: AssistantDeliverableCard) => {
+    if (deliverable.path) {
+      navigate(`/workspace?path=${encodeURIComponent(deliverable.path)}`);
+      return;
+    }
+    navigate("/workspace");
+  }, [navigate]);
+
   const handleBackToChat = useCallback(() => {
     navigate({ search: "" });
   }, [navigate]);
@@ -569,6 +577,42 @@ export function ChatPage() {
       slashSkillsFetchInFlightRef.current = false;
     }
   }, [token]);
+
+  const renderChatInput = useCallback((variant: "default" | "hero" = "default") => (
+    <ChatInput
+      input={input}
+      isLoading={isLoading}
+      currentRequestId={currentRequestId}
+      onInputChange={setInput}
+      onSubmit={() => sendMessage()}
+      onAbort={handleAbort}
+      permissionMode={permissionMode}
+      onPermissionModeChange={setPermissionMode}
+      showPermissions={isPermissionMode}
+      permissionData={permissionData}
+      planPermissionData={planPermissionData}
+      slashSkills={slashSkills}
+      slashSkillsLoaded={slashSkillsLoaded}
+      slashSkillsLoading={slashSkillsLoading}
+      onSlashRequestRefresh={loadSlashSkills}
+      variant={variant}
+      placeholder={variant === "hero" ? "描述你想完成的事，MyCC 会帮你拆解并执行…" : undefined}
+    />
+  ), [
+    currentRequestId,
+    handleAbort,
+    input,
+    isLoading,
+    isPermissionMode,
+    loadSlashSkills,
+    permissionData,
+    permissionMode,
+    planPermissionData,
+    sendMessage,
+    slashSkills,
+    slashSkillsLoaded,
+    slashSkillsLoading,
+  ]);
 
   useEffect(() => {
     if (!token) {
@@ -675,6 +719,8 @@ export function ChatPage() {
     refreshUser,
   ]);
 
+  const isAssistantHomeView = !isHistoryView && messages.length === 0 && !isLoadedConversation;
+
   return (
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
@@ -750,12 +796,11 @@ export function ChatPage() {
                   </button>
                   {sessionId && (
                     <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                      Session: {sessionId.substring(0, 8)}...
+                      继续之前的对话
                     </span>
                   )}
                 </div>
               )}
-              {!isHistoryView && <ChatRuntimeStatusBadge token={token} />}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -846,8 +891,8 @@ export function ChatPage() {
           </div>
         ) : (
           <>
-            {messages.length === 0 && !isLoadedConversation ? (
-              <div className="flex-1 overflow-y-auto border p-3 sm:p-5 mb-3 sm:mb-5 rounded-[16px] shadow-[var(--shadow-sm)]">
+            {isAssistantHomeView ? (
+              <div className="flex-1 overflow-y-auto">
                 <AssistantHomePanel
                   assistantName={assistantDisplayName}
                   data={assistantHome}
@@ -855,33 +900,22 @@ export function ChatPage() {
                   error={assistantHomeError}
                   onStartPrompt={setInput}
                   onOpenWorkspace={() => navigate("/workspace")}
+                  onOpenDeliverable={handleOpenDeliverable}
+                  inputSlot={renderChatInput("hero")}
+                  workspaceName={workingDirectory || "mycc-main"}
                 />
               </div>
             ) : (
-              <ChatMessages
-                messages={messages}
-                isLoading={isLoading}
-                assistantDisplayName={assistantDisplayName}
-                assistantAvatarText={assistantAvatarText}
-              />
+              <>
+                <ChatMessages
+                  messages={messages}
+                  isLoading={isLoading}
+                  assistantDisplayName={assistantDisplayName}
+                  assistantAvatarText={assistantAvatarText}
+                />
+                {renderChatInput()}
+              </>
             )}
-            <ChatInput
-              input={input}
-              isLoading={isLoading}
-              currentRequestId={currentRequestId}
-              onInputChange={setInput}
-              onSubmit={() => sendMessage()}
-              onAbort={handleAbort}
-              permissionMode={permissionMode}
-              onPermissionModeChange={setPermissionMode}
-              showPermissions={isPermissionMode}
-              permissionData={permissionData}
-              planPermissionData={planPermissionData}
-              slashSkills={slashSkills}
-              slashSkillsLoaded={slashSkillsLoaded}
-              slashSkillsLoading={slashSkillsLoading}
-              onSlashRequestRefresh={loadSlashSkills}
-            />
           </>
         )}
 

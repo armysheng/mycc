@@ -21,10 +21,10 @@ export const MOCK_SKILLS: SkillItem[] = [
   },
   {
     id: "pr-comment-bot",
-    name: "PR 评论处理",
-    icon: "PR",
+    name: "协作评论处理",
+    icon: "评审",
     trigger: "@comments",
-    description: "批量解析并处理 PR review 评论。",
+    description: "批量解析并处理协作评审评论。",
     installed: false,
     status: "disabled",
   },

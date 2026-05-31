@@ -150,6 +150,60 @@ describe('chat E2B project context injection', () => {
     await app.close();
   });
 
+  it('passes the requested permission mode through to the agent runtime', async () => {
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { authorization: authHeader() },
+      payload: {
+        message: '先规划一下',
+        permissionMode: 'plan',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mocks.runtimeChat).toHaveBeenCalledWith(expect.objectContaining({
+      permissionMode: 'plan',
+    }));
+    const runtimeMessage = mocks.runtimeChat.mock.calls[0]![0].message as string;
+    expect(runtimeMessage).toContain('.mycc/deliverables.json');
+    expect(runtimeMessage).toContain('## User Request\n先规划一下');
+    await app.close();
+  });
+
+  it('does not wrap runtime control messages while resuming a session', async () => {
+    const app = await buildApp({
+      env: {
+        MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { authorization: authHeader() },
+      payload: {
+        message: 'continue',
+        sessionId: 'session-existing',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mocks.runtimeChat).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'continue',
+      sessionId: 'session-existing',
+    }));
+    await app.close();
+  });
+
   it('verifies onboarding bootstrap in the E2B sandbox without using SSH', async () => {
     const ticket = issueOnboardingBootstrapTicket({
       userId: 42,

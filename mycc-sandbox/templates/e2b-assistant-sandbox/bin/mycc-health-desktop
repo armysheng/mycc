@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MYCC_DESKTOP_DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}"
+MYCC_DESKTOP_NOVNC_PORT="${MYCC_DESKTOP_NOVNC_PORT:-16080}"
+
+DISPLAY="$MYCC_DESKTOP_DISPLAY" xdpyinfo >/dev/null
+curl -fsS "http://127.0.0.1:${MYCC_DESKTOP_NOVNC_PORT}/vnc.html" >/dev/null
+echo "mycc-desktop-ok"

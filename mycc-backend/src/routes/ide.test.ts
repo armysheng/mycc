@@ -42,6 +42,14 @@ async function buildApp(options: IdeRoutesOptions = {}) {
   return app;
 }
 
+function firstSetCookie(response: { headers: Record<string, number | string | string[] | undefined> }) {
+  const setCookie = response.headers['set-cookie'];
+  if (Array.isArray(setCookie)) {
+    return setCookie[0];
+  }
+  return typeof setCookie === 'string' ? setCookie : undefined;
+}
+
 describe('ide routes', () => {
   beforeEach(() => {
     delete process.env.MYCC_IDE_PROVIDER;
@@ -157,17 +165,18 @@ describe('ide routes', () => {
       data: {
         id: expect.any(String),
         provider: 'e2b',
-        sandboxId: 'sbx_123',
-        codeServerPid: 1234,
-        port: 18080,
         accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2099-05-29T14:00:00.000Z',
-        openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/open\?token=.+/),
+        openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/proxy\/$/),
       },
     });
     expect(JSON.stringify(body)).not.toContain('secret-token');
     expect(JSON.stringify(body)).not.toContain('18080-sbx_123.e2b.app');
+    expect(JSON.stringify(body)).not.toContain('sbx_123');
+    expect(JSON.stringify(body)).not.toContain('token=');
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('HttpOnly'));
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('/proxy'));
     expect(startCodeServer).toHaveBeenCalledOnce();
   });
 
@@ -203,6 +212,57 @@ describe('ide routes', () => {
     expect(startCodeServer).toHaveBeenCalledOnce();
   });
 
+  it('starts GNU desktop in the existing E2B sandbox and keeps provider secrets private', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_TEMPLATE = 'mycc-assistant-sandbox-dev';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const startCodeServer = vi.fn();
+    const startDesktop = vi.fn().mockResolvedValue({
+      desktopPid: 4321,
+      desktopHost: '16080-sbx_123.e2b.app',
+      desktopPort: 16080,
+    });
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: {
+        startCodeServer,
+        startDesktop,
+      } as any,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions/ide_123/desktop',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(startDesktop).toHaveBeenCalledWith(runningSession);
+    expect(startCodeServer).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      success: true,
+      data: expect.objectContaining({
+        id: 'ide_123',
+        desktop: {
+          status: 'running',
+          openPath: '/api/ide/sessions/ide_123/desktop/proxy/vnc.html?autoconnect=true&resize=scale&path=api%2Fide%2Fsessions%2Fide_123%2Fdesktop%2Fproxy%2Fwebsockify',
+        },
+      }),
+    });
+    expect(JSON.stringify(response.json())).not.toContain('secret-token');
+    expect(JSON.stringify(response.json())).not.toContain('16080-sbx_123.e2b.app');
+    expect(JSON.stringify(response.json())).not.toContain('proxy-token');
+    expect(JSON.stringify(response.json())).not.toContain('sbx_123');
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('HttpOnly'));
+    expect(firstSetCookie(response)).toEqual(expect.stringContaining('Path=/api/ide/sessions/ide_123/desktop/proxy'));
+    await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
+      desktopPid: 4321,
+      desktopHost: '16080-sbx_123.e2b.app',
+      desktopPort: 16080,
+    }));
+  });
+
   it('replaces a reusable session when the E2B sandbox is alive but code-server is not listening', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const sessionStore = new InMemoryIdeSessionStore();
@@ -234,10 +294,10 @@ describe('ide routes', () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.json().data).toEqual(expect.objectContaining({
-      sandboxId: 'sbx_replacement',
-      codeServerPid: 5678,
       status: 'running',
+      openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/proxy\/$/),
     }));
+    expect(JSON.stringify(response.json())).not.toContain('sbx_replacement');
     expect(isCodeServerListening).toHaveBeenCalledWith(runningSession);
     expect(startCodeServer).toHaveBeenCalledOnce();
     await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
@@ -280,15 +340,14 @@ describe('ide routes', () => {
       data: {
         id,
         provider: 'e2b',
-        sandboxId: 'sbx_123',
-        codeServerPid: 1234,
-        port: 18080,
         accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2026-05-29T14:00:00.000Z',
-        openPath: expect.stringMatching(new RegExp(`^/api/ide/sessions/${id}/open\\?token=.+`)),
+        openPath: `/api/ide/sessions/${id}/proxy/`,
       },
     });
+    expect(response.body).not.toContain('sbx_123');
+    expect(response.body).not.toContain('token=');
   });
 
   it('returns the current reusable IDE session without creating a sandbox', async () => {
@@ -313,17 +372,16 @@ describe('ide routes', () => {
       data: {
         id: 'ide_123',
         provider: 'e2b',
-        sandboxId: 'sbx_123',
-        codeServerPid: 1234,
-        port: 18080,
         accessMode: 'mycc-proxy',
         status: 'running',
         expiresAt: '2099-05-29T14:00:00.000Z',
-        openPath: '/api/ide/sessions/ide_123/open?token=proxy-token',
+        openPath: '/api/ide/sessions/ide_123/proxy/',
       },
     });
     expect(JSON.stringify(response.json())).not.toContain('secret-token');
     expect(JSON.stringify(response.json())).not.toContain('18080-sbx_123.e2b.app');
+    expect(response.body).not.toContain('sbx_123');
+    expect(response.body).not.toContain('proxy-token');
     expect(startCodeServer).not.toHaveBeenCalled();
   });
 
@@ -370,7 +428,7 @@ describe('ide routes', () => {
     expect(startCodeServer).not.toHaveBeenCalled();
   });
 
-  it('exchanges an IDE open token for an httpOnly proxy cookie', async () => {
+  it('returns a tokenless IDE open path and a scoped httpOnly proxy cookie', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const app = await buildApp({
       e2bProvider: {
@@ -391,19 +449,45 @@ describe('ide routes', () => {
       url: '/api/ide/sessions',
       headers: { authorization: authHeader() },
     });
-    const openPath = created.json().data.openPath;
+    const id = created.json().data.id;
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data.openPath).toBe(`/api/ide/sessions/${id}/proxy/`);
+    expect(created.body).not.toContain('token=');
+    expect(created.body).not.toContain('sbx_123');
+    expect(firstSetCookie(created)).toEqual(expect.stringContaining('HttpOnly'));
+    expect(firstSetCookie(created)).toEqual(expect.stringContaining(`Path=/api/ide/sessions/${id}/proxy`));
+    expect(JSON.stringify(created.headers)).not.toContain('secret-token');
+    expect(JSON.stringify(created.headers)).not.toContain('18080-sbx_123.e2b.app');
+  });
+
+  it('exchanges a GNU desktop open token for a scoped httpOnly proxy cookie', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set({
+      ...runningSession,
+      desktopPid: 4321,
+      desktopHost: '16080-sbx_123.e2b.app',
+      desktopPort: 16080,
+    });
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+    });
 
     const response = await app.inject({
       method: 'GET',
-      url: openPath,
+      url: '/api/ide/sessions/ide_123/desktop/open?token=proxy-token',
     });
 
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe(openPath.replace(/\/open\?token=.+$/, '/proxy/'));
+    expect(response.headers.location).toContain('/api/ide/sessions/ide_123/desktop/proxy/vnc.html');
+    expect(response.headers.location).toContain('autoconnect=true');
+    expect(response.headers.location).toContain('path=api%2Fide%2Fsessions%2Fide_123%2Fdesktop%2Fproxy%2Fwebsockify');
     expect(response.headers['set-cookie']).toEqual(expect.stringContaining('HttpOnly'));
-    expect(response.headers['set-cookie']).toEqual(expect.stringContaining('Path=/api/ide/sessions/'));
+    expect(response.headers['set-cookie']).toEqual(expect.stringContaining('Path=/api/ide/sessions/ide_123/desktop/proxy'));
     expect(JSON.stringify(response.headers)).not.toContain('secret-token');
-    expect(JSON.stringify(response.headers)).not.toContain('18080-sbx_123.e2b.app');
+    expect(JSON.stringify(response.headers)).not.toContain('16080-sbx_123.e2b.app');
   });
 
   it('renews a running IDE session', async () => {
@@ -659,6 +743,47 @@ describe('ide routes', () => {
     );
   });
 
+  it('proxies owned GNU desktop requests with E2B traffic token injection', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set({
+      ...runningSession,
+      desktopPid: 4321,
+      desktopHost: '16080-sbx_123.e2b.app',
+      desktopPort: 16080,
+    });
+    const web = vi.fn((req, res) => {
+      expect(req.url).toBe('/vnc.html?autoconnect=true');
+      res.statusCode = 204;
+      res.end();
+    });
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: { startCodeServer: vi.fn() },
+      proxyServer: { web },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ide/sessions/ide_123/desktop/proxy/vnc.html?autoconnect=true',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(web).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        target: 'https://16080-sbx_123.e2b.app',
+        changeOrigin: true,
+        headers: {
+          'e2b-traffic-access-token': 'secret-token',
+        },
+      }),
+      expect.any(Function),
+    );
+  });
+
   it('proxies browser requests authorized by the IDE proxy cookie', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const web = vi.fn((_req, res) => {
@@ -686,13 +811,7 @@ describe('ide routes', () => {
       headers: { authorization: authHeader() },
     });
     const id = created.json().data.id;
-    const open = await app.inject({
-      method: 'GET',
-      url: created.json().data.openPath,
-    });
-    const cookie = Array.isArray(open.headers['set-cookie'])
-      ? open.headers['set-cookie'][0]
-      : open.headers['set-cookie'];
+    const cookie = firstSetCookie(created);
 
     const response = await app.inject({
       method: 'GET',
@@ -729,13 +848,7 @@ describe('ide routes', () => {
       headers: { authorization: authHeader() },
     });
     const id = created.json().data.id;
-    const open = await app.inject({
-      method: 'GET',
-      url: created.json().data.openPath,
-    });
-    const cookie = Array.isArray(open.headers['set-cookie'])
-      ? open.headers['set-cookie'][0]
-      : open.headers['set-cookie'];
+    const cookie = firstSetCookie(created);
     const socket = { destroy: vi.fn() };
 
     app.server.emit('upgrade', {

@@ -2,61 +2,37 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import type { JSX } from "react";
 import { useState, useEffect, useCallback } from "react";
 
-function extractCommandName(pattern: string): string {
-  if (!pattern) return "Unknown";
-  const match = pattern.match(/Bash\(([^:]+):/);
-  return match ? match[1] : pattern;
-}
-
 function renderPermissionContent(patterns: string[]): JSX.Element {
   if (patterns.length === 0) {
     return (
       <p className="mb-3 text-slate-600 dark:text-slate-300">
-        Claude 请求执行 Bash 命令，但未识别到具体命令。
+        助理需要在本机执行一个操作来继续，但没有拿到更具体的说明。
       </p>
     );
   }
 
-  const commandNames = patterns.map(extractCommandName);
-
-  if (commandNames.length > 1) {
+  if (patterns.length > 1) {
     return (
       <>
-        <p className="mb-2 text-slate-700 dark:text-slate-200">即将执行以下命令：</p>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {commandNames.map((cmd, index) => (
-            <span
-              key={index}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-            >
-              {cmd}
-            </span>
-          ))}
-        </div>
+        <p className="mb-2 text-slate-700 dark:text-slate-200">
+          助理需要在本机执行几项相关操作来继续。
+        </p>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          如果不确定，可以先选择不允许，我会继续帮你调整方案。
+        </p>
       </>
     );
   }
 
   return (
     <p className="mb-3 text-slate-700 dark:text-slate-200">
-      即将执行命令：
-      <span className="ml-1 rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
-        {commandNames[0]}
-      </span>
+      助理需要在本机执行一个操作来继续。
     </p>
   );
 }
 
-function renderPermanentButtonText(patterns: string[]): string {
-  if (patterns.length === 0) {
-    return "允许并记住（所有 Bash 命令）";
-  }
-
-  const commandNames = patterns.map(extractCommandName);
-  if (commandNames.length > 1) {
-    return `允许并记住（${commandNames.join(" / ")}）`;
-  }
-  return `允许并记住（${commandNames[0]}）`;
+function renderPermanentButtonText(_patterns: string[]): string {
+  return "始终允许这类操作";
 }
 
 interface PermissionInputPanelProps {
@@ -147,8 +123,10 @@ export function PermissionInputPanel({
           <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 dark:text-amber-400" />
         </div>
         <div>
-          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">执行权限确认</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">按 ESC 可快速拒绝</p>
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            需要确认一个本地操作
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">按 ESC 可快速不允许</p>
         </div>
       </div>
 
@@ -241,7 +219,7 @@ export function PermissionInputPanel({
             }`,
           )}
         >
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">拒绝</span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">不允许</span>
         </button>
       </div>
     </div>

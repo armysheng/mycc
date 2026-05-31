@@ -19,7 +19,7 @@ import { sanitizeLinuxUsername } from '../utils/validation.js';
 
 export type IdeRoutesOptions = {
   e2bProvider?: Pick<E2bSandboxProvider, 'startCodeServer'>
-    & Partial<Pick<E2bSandboxProvider, 'isCodeServerListening' | 'renewCodeServer' | 'stopCodeServer'>>;
+    & Partial<Pick<E2bSandboxProvider, 'isCodeServerListening' | 'isDesktopListening' | 'renewCodeServer' | 'startDesktop' | 'stopCodeServer'>>;
   proxyServer?: IdeProxyServer;
   sessionStore?: IdeSessionStore;
 };
@@ -58,6 +58,10 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
           codeServerPort: config.codeServerPort,
           sessionTtlSeconds: config.sessionTtlSeconds,
           accessMode: 'mycc-proxy',
+          ...(config.desktopEnabled ? {
+            desktopEnabled: true,
+            desktopPort: config.desktopPort,
+          } : {}),
           ...(config.e2bTemplate ? { e2bTemplate: config.e2bTemplate } : {}),
         },
       };
@@ -81,6 +85,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         userId: user.userId,
       });
       if (reusableSession) {
+        attachProxyCookie(reply, reusableSession, 'editor');
         return reply.status(200).send({
           success: true,
           data: toPublicSession(reusableSession),
@@ -137,6 +142,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         e2bProvider,
       });
 
+      attachProxyCookie(reply, session, 'editor');
       return reply.status(201).send({
         success: true,
         data: toPublicSession(session),
@@ -189,6 +195,84 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     return reply.redirect(`/api/ide/sessions/${session.id}/proxy/`);
   });
 
+  fastify.post<{ Params: { id: string } }>('/api/ide/sessions/:id/desktop', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    try {
+      const config = resolveIdeConfig();
+      if (!config.desktopEnabled) {
+        return reply.status(501).send({ error: 'GNU desktop is not enabled for this E2B template' });
+      }
+
+      const session = await getOwnedSession(sessionStore, request.user?.userId, request.params.id);
+      if (!session) {
+        return reply.status(404).send({ error: 'IDE session not found' });
+      }
+      if (session.status !== 'running') {
+        return reply.status(409).send({ error: 'IDE session is not running' });
+      }
+
+      const currentDesktopRunning = session.desktopPid && session.desktopHost
+        ? await isDesktopServiceLive(e2bProvider, session)
+        : false;
+      if (currentDesktopRunning) {
+        attachProxyCookie(reply, session, 'desktop');
+        return {
+          success: true,
+          data: toPublicSession(session),
+        };
+      }
+
+      if (!e2bProvider.startDesktop) {
+        throw new Error('IDE provider does not support GNU desktop');
+      }
+
+      const desktop = await e2bProvider.startDesktop(session);
+      const updated: StoredIdeSession = {
+        ...session,
+        ...desktop,
+        status: 'running',
+      };
+      await sessionStore.set(updated);
+
+      attachProxyCookie(reply, updated, 'desktop');
+      return {
+        success: true,
+        data: toPublicSession(updated),
+      };
+    } catch (error) {
+      return sendRouteError(reply, error, 400);
+    }
+  });
+
+  fastify.get<{ Params: { id: string }; Querystring: { token?: string } }>('/api/ide/sessions/:id/desktop/open', async (request, reply) => {
+    const session = await sessionStore.get(request.params.id);
+    if (!session || session.proxyToken !== request.query.token) {
+      return reply.status(401).send({ error: 'Desktop open token is invalid' });
+    }
+    if (session.status !== 'running') {
+      return reply.status(409).send({ error: 'IDE session is not running' });
+    }
+    if (!session.desktopHost || !session.desktopPort) {
+      return reply.status(409).send({ error: 'GNU desktop is not running' });
+    }
+
+    const maxAgeSeconds = Math.max(
+      60,
+      Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000),
+    );
+    reply.header('set-cookie', [
+      `${proxyCookieName(session.id)}=${encodeURIComponent(session.proxyToken)}`,
+      'HttpOnly',
+      'SameSite=Lax',
+      `Path=/api/ide/sessions/${session.id}/desktop/proxy`,
+      `Max-Age=${maxAgeSeconds}`,
+      ...(process.env.NODE_ENV === 'production' ? ['Secure'] : []),
+    ].join('; '));
+
+    return reply.redirect(publicDesktopProxyLandingPath(session));
+  });
+
   fastify.get<{ Params: { id: string } }>('/api/ide/sessions/:id/status', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -232,6 +316,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
       };
       await sessionStore.set(updated);
 
+      attachProxyCookie(reply, updated, 'editor');
       return {
         success: true,
         data: toPublicSession(updated),
@@ -270,6 +355,34 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     } catch (error) {
       return sendRouteError(reply, error, 400);
     }
+  });
+
+  fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/desktop/proxy/*', async (request, reply) => {
+    const session = await getProxySession(sessionStore, request, request.params.id);
+    if (!session) {
+      return reply.status(404).send({ error: 'IDE session not found' });
+    }
+    if (session.status !== 'running') {
+      return reply.status(409).send({ error: 'IDE session is not running' });
+    }
+    if (!session.trafficAccessToken) {
+      return reply.status(502).send({ error: 'IDE session is missing provider access token' });
+    }
+    if (!session.desktopHost) {
+      return reply.status(409).send({ error: 'GNU desktop is not running' });
+    }
+
+    request.raw.url = buildUpstreamProxyPath(request.raw.url || '/', request.params['*']);
+    reply.hijack();
+    proxyServer.web(request.raw, reply.raw, {
+      target: `https://${session.desktopHost}`,
+      changeOrigin: true,
+      headers: {
+        'e2b-traffic-access-token': session.trafficAccessToken,
+      },
+    }, (error) => {
+      sendProxyError(reply.raw, error);
+    });
   });
 
   fastify.all<{ Params: { id: string; '*': string } }>('/api/ide/sessions/:id/proxy/*', async (request, reply) => {
@@ -312,7 +425,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         return;
       }
       proxyServer.ws(request, socket, head, {
-        target: `https://${target.session.host}`,
+        target: `https://${target.host}`,
         changeOrigin: true,
         headers: {
           'e2b-traffic-access-token': trafficAccessToken,
@@ -353,22 +466,74 @@ async function findLiveReusableSession(params: {
   return null;
 }
 
+async function isDesktopServiceLive(
+  e2bProvider: IdeRoutesOptions['e2bProvider'],
+  session: StoredIdeSession,
+): Promise<boolean> {
+  if (!e2bProvider?.isDesktopListening) return true;
+  const isListening = await e2bProvider.isDesktopListening(session);
+  return isListening;
+}
+
 function toPublicSession(session: StoredIdeSession) {
   return {
     id: session.id,
     provider: session.provider,
-    sandboxId: session.sandboxId,
-    codeServerPid: session.codeServerPid,
-    port: session.port,
     accessMode: session.accessMode,
     status: session.status,
     expiresAt: session.expiresAt,
     openPath: publicOpenPath(session),
+    ...(session.desktopPid && session.desktopPort ? {
+      desktop: {
+        status: 'running',
+        openPath: publicDesktopOpenPath(session),
+      },
+    } : {}),
   };
 }
 
 function publicOpenPath(session: StoredIdeSession): string {
-  return `/api/ide/sessions/${session.id}/open?token=${encodeURIComponent(session.proxyToken)}`;
+  return `/api/ide/sessions/${session.id}/proxy/`;
+}
+
+function publicDesktopOpenPath(session: StoredIdeSession): string {
+  return publicDesktopProxyLandingPath(session);
+}
+
+function attachProxyCookie(
+  reply: FastifyReply,
+  session: StoredIdeSession,
+  target: 'editor' | 'desktop',
+): void {
+  const path = target === 'desktop'
+    ? `/api/ide/sessions/${session.id}/desktop/proxy`
+    : `/api/ide/sessions/${session.id}/proxy`;
+  reply.header('set-cookie', buildProxyCookie(session, path));
+}
+
+function buildProxyCookie(session: StoredIdeSession, path: string): string {
+  const maxAgeSeconds = Math.max(
+    60,
+    Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000),
+  );
+  return [
+    `${proxyCookieName(session.id)}=${encodeURIComponent(session.proxyToken)}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    `Path=${path}`,
+    `Max-Age=${maxAgeSeconds}`,
+    ...(process.env.NODE_ENV === 'production' ? ['Secure'] : []),
+  ].join('; ');
+}
+
+function publicDesktopProxyLandingPath(session: StoredIdeSession): string {
+  const websocketPath = `api/ide/sessions/${session.id}/desktop/proxy/websockify`;
+  const query = new URLSearchParams({
+    autoconnect: 'true',
+    resize: 'scale',
+    path: websocketPath,
+  });
+  return `/api/ide/sessions/${session.id}/desktop/proxy/vnc.html?${query.toString()}`;
 }
 
 function buildUpstreamProxyPath(rawUrl: string, wildcardPath: string | undefined): string {
@@ -380,18 +545,22 @@ function buildUpstreamProxyPath(rawUrl: string, wildcardPath: string | undefined
 async function resolveProxyTargetFromUpgrade(
   sessionStore: IdeSessionStore,
   request: IncomingMessage,
-): Promise<{ session: StoredIdeSession; upstreamPath: string } | null> {
+): Promise<{ session: StoredIdeSession; upstreamPath: string; host: string } | null> {
   const parsed = new URL(request.url || '/', 'http://mycc.local');
-  const matched = parsed.pathname.match(/^\/api\/ide\/sessions\/([^/]+)\/proxy\/?(.*)$/);
+  const matched = parsed.pathname.match(/^\/api\/ide\/sessions\/([^/]+)\/(?:(desktop)\/)?proxy\/?(.*)$/);
   const sessionId = matched?.[1];
   if (!sessionId) return null;
 
   const session = await getProxySessionFromHeaders(sessionStore, request.headers, sessionId);
   if (!session || session.status !== 'running' || !session.trafficAccessToken) return null;
 
-  const wildcardPath = matched?.[2] || '';
+  const isDesktop = matched?.[2] === 'desktop';
+  const host = isDesktop ? session.desktopHost : session.host;
+  if (!host) return null;
+
+  const wildcardPath = matched?.[3] || '';
   const upstreamPath = `/${wildcardPath}${parsed.search}`;
-  return { session, upstreamPath };
+  return { session, upstreamPath, host };
 }
 
 function getProxySession(

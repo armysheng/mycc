@@ -7,6 +7,9 @@ describe("PlanPermissionInputPanel", () => {
   const mockOnAcceptDefault = vi.fn();
   const mockOnKeepPlanning = vi.fn();
   const mockOnSelectionChange = vi.fn();
+  const proceedText = "开始整理";
+  const reviewFirstText = "先确认细节";
+  const keepPlanningText = "继续完善计划";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,13 +30,9 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      expect(
-        screen.getByText("接受并自动应用编辑"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("接受并手动审批编辑"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("继续规划")).toBeInTheDocument();
+      expect(screen.getByText(proceedText)).toBeInTheDocument();
+      expect(screen.getByText(reviewFirstText)).toBeInTheDocument();
+      expect(screen.getByText(keepPlanningText)).toBeInTheDocument();
     });
 
     it("should render helper text", () => {
@@ -46,8 +45,20 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       expect(
-        screen.getByText("请选择下一步动作（ESC = 继续规划）"),
+        screen.getByText("需要我按这个计划继续吗？按 ESC 可继续完善"),
       ).toBeInTheDocument();
+    });
+
+    it("should avoid technical approval wording in visible copy", () => {
+      const { container } = render(
+        <PlanPermissionInputPanel
+          onAcceptWithEdits={mockOnAcceptWithEdits}
+          onAcceptDefault={mockOnAcceptDefault}
+          onKeepPlanning={mockOnKeepPlanning}
+        />,
+      );
+
+      expect(container).not.toHaveTextContent(/审批|自动应用编辑|手动审批编辑/);
     });
 
     it("should initially select 'acceptWithEdits' option", () => {
@@ -60,7 +71,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptWithEditsButton = screen
-        .getByText("接受并自动应用编辑")
+        .getByText(proceedText)
         .closest("button")!;
       expect(acceptWithEditsButton).toHaveClass(
         "bg-emerald-50",
@@ -79,7 +90,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("接受并自动应用编辑"));
+      fireEvent.click(screen.getByText(proceedText));
       expect(mockOnAcceptWithEdits).toHaveBeenCalledTimes(1);
     });
 
@@ -92,7 +103,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("接受并手动审批编辑"));
+      fireEvent.click(screen.getByText(reviewFirstText));
       expect(mockOnAcceptDefault).toHaveBeenCalledTimes(1);
     });
 
@@ -105,7 +116,7 @@ describe("PlanPermissionInputPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByText("继续规划"));
+      fireEvent.click(screen.getByText(keepPlanningText));
       expect(mockOnKeepPlanning).toHaveBeenCalledTimes(1);
     });
 
@@ -120,7 +131,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
       fireEvent.mouseEnter(acceptDefaultButton);
 
@@ -235,7 +246,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
       expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
@@ -259,7 +270,7 @@ describe("PlanPermissionInputPanel", () => {
 
       // Selection should remain on acceptDefault
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
       expect(acceptDefaultButton).toHaveClass("bg-sky-50", "border-sky-400");
     });
@@ -275,7 +286,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
 
       fireEvent.mouseLeave(acceptDefaultButton);
@@ -305,7 +316,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const keepPlanningButton = screen
-        .getByText("继续规划")
+        .getByText(keepPlanningText)
         .closest("button")!;
       expect(keepPlanningButton).toHaveClass("bg-slate-50", "border-slate-400");
     });
@@ -341,7 +352,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptWithEditsButton = screen
-        .getByText("接受并自动应用编辑")
+        .getByText(proceedText)
         .closest("button")!;
       expect(acceptWithEditsButton).toHaveClass("custom-acceptWithEdits");
     });
@@ -359,7 +370,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
       fireEvent.focus(acceptDefaultButton);
 
@@ -376,7 +387,7 @@ describe("PlanPermissionInputPanel", () => {
       );
 
       const acceptDefaultButton = screen
-        .getByText("接受并手动审批编辑")
+        .getByText(reviewFirstText)
         .closest("button")!;
 
       fireEvent.focus(acceptDefaultButton);

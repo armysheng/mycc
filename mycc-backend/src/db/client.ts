@@ -1,6 +1,7 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { getPlanById } from '../billing/plan-catalog.js';
+import type { SkillEventType, SkillStats } from '../skills/types.js';
 
 dotenv.config();
 
@@ -82,6 +83,11 @@ export interface ConversationSummary {
 export interface ActiveUserSummary {
   id: number;
   linux_user: string;
+}
+
+export interface SkillEventStatsRow {
+  skillId: string;
+  stats: SkillStats;
 }
 
 // 创建用户
@@ -318,6 +324,65 @@ export async function getUsageStats(
     [userId, startDate, endDate]
   );
   return result.rows;
+}
+
+export async function recordSkillEvent(params: {
+  userId: number;
+  skillId: string;
+  eventType: SkillEventType;
+  version?: string;
+  source?: string;
+  targetPath?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO skill_events (user_id, skill_id, event_type, version, source, target_path, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      params.userId,
+      params.skillId,
+      params.eventType,
+      params.version || null,
+      params.source || null,
+      params.targetPath || null,
+      JSON.stringify(params.metadata || {}),
+    ]
+  );
+}
+
+export async function getSkillEventStats(skillIds: string[]): Promise<SkillEventStatsRow[]> {
+  if (skillIds.length === 0) {
+    return [];
+  }
+
+  const result = await pool.query<{
+    skill_id: string;
+    downloads: string | number;
+    installs: string | number;
+    updates: string | number;
+    uses: string | number;
+  }>(
+    `SELECT
+       skill_id,
+       COUNT(*) FILTER (WHERE event_type = 'download') AS downloads,
+       COUNT(*) FILTER (WHERE event_type = 'install') AS installs,
+       COUNT(*) FILTER (WHERE event_type = 'update') AS updates,
+       COUNT(*) FILTER (WHERE event_type = 'use') AS uses
+     FROM skill_events
+     WHERE skill_id = ANY($1::text[])
+     GROUP BY skill_id`,
+    [skillIds]
+  );
+
+  return result.rows.map((row) => ({
+    skillId: row.skill_id,
+    stats: {
+      downloads: Number(row.downloads) || 0,
+      installs: Number(row.installs) || 0,
+      updates: Number(row.updates) || 0,
+      uses: Number(row.uses) || 0,
+    },
+  }));
 }
 
 // 升级套餐

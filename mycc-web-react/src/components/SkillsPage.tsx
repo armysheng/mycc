@@ -3,35 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { Sidebar } from "./layout/Sidebar";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  getAuthHeaders,
-  getSkillDisableUrl,
-  getSkillEnableUrl,
-  getSkillInstallUrl,
-  getSkillsUrl,
-  getSkillsSearchUrl,
-  getSkillsMarketUrl,
-  getSkillUninstallUrl,
-  getSkillUpgradeUrl,
-} from "../config/api";
-
-type SkillStatus = "installed" | "available" | "disabled";
-
-interface SkillItem {
-  id: string;
-  name: string;
-  description: string;
-  trigger: string;
-  icon: string;
-  status: SkillStatus;
-  installed: boolean;
-  version: string;
-  installedVersion: string | null;
-  latestVersion: string;
-  source: string;
-  legacy: boolean;
-  enabled: boolean;
-  upgradable: boolean;
-}
+  disableSkill,
+  enableSkill,
+  installSkill,
+  listSkills,
+  uninstallSkill,
+  updateSkill,
+  useSkill,
+  type SkillActionResult,
+  type SkillInstallResult,
+  type SkillItem,
+} from "../api/skills";
 
 function isRetryableLoadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -42,25 +24,12 @@ function isRetryableLoadError(error: unknown): boolean {
   );
 }
 
-interface MarketSkill {
-  id: string;
-  name: string;
-  description: string;
-  trigger: string;
-  icon: string;
-  category: string;
-  readiness: string;
-  builtin: boolean;
+function sourceLabel(source: string) {
+  if (source === "catalog") return "MyCC catalog";
+  if (source === "registry") return "MyCC registry";
+  if (source === "user") return "用户安装";
+  return source || "未知来源";
 }
-
-const CATEGORY_LABELS: Record<string, string> = {
-  productivity: '效率工具',
-  content: '内容创作',
-  learning: '学习知识',
-  lifestyle: '生活服务',
-  devtools: '开发工具',
-  research: '研究分析',
-};
 
 export function SkillsPage() {
   const navigate = useNavigate();
@@ -71,46 +40,19 @@ export function SkillsPage() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"installed" | "market">("installed");
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<SkillItem[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [marketSkills, setMarketSkills] = useState<MarketSkill[]>([]);
-
-  const fetchJsonWithTimeout = useCallback(
-    async (url: string, init?: RequestInit, timeoutMs = 45000) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const res = await fetch(url, { ...init, signal: controller.signal });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json?.success) {
-          throw new Error(json?.error || `请求失败: ${res.status} ${res.statusText}`);
-        }
-        return json;
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") {
-          throw new Error("请求超时，请稍后重试");
-        }
-        throw e;
-      } finally {
-        clearTimeout(timer);
-      }
-    },
-    [],
-  );
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      let json: any = null;
+      let data = null;
       let lastError: unknown = null;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          json = await fetchJsonWithTimeout(getSkillsUrl(), {
-            headers: getAuthHeaders(token),
-          });
+          data = await listSkills(token);
           break;
         } catch (e) {
           lastError = e;
@@ -122,71 +64,20 @@ export function SkillsPage() {
         }
       }
 
-      if (!json) {
+      if (!data) {
         throw lastError instanceof Error ? lastError : new Error("加载技能失败");
       }
-      setSkills((json.data?.skills || []) as SkillItem[]);
+      setSkills(data.skills || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载技能失败");
     } finally {
       setLoading(false);
     }
-  }, [fetchJsonWithTimeout, token]);
+  }, [token]);
 
   useEffect(() => {
     loadSkills();
   }, [loadSkills]);
-
-  const loadMarketSkills = useCallback(async () => {
-    if (!token) return;
-    try {
-      const json = await fetchJsonWithTimeout(getSkillsMarketUrl(), {
-        headers: getAuthHeaders(token),
-      });
-      setMarketSkills((json.data?.skills || []) as MarketSkill[]);
-    } catch {
-      // 静默失败，不阻塞主流程
-    }
-  }, [fetchJsonWithTimeout, token]);
-
-  useEffect(() => {
-    loadMarketSkills();
-  }, [loadMarketSkills]);
-
-  const searchRemoteSkills = useCallback(
-    async (query: string) => {
-      if (!token || query.trim().length < 2) {
-        setSearchResults([]);
-        return;
-      }
-      setSearching(true);
-      setError(null);
-      try {
-        const json = await fetchJsonWithTimeout(getSkillsSearchUrl(query), {
-          headers: getAuthHeaders(token),
-        });
-        setSearchResults((json.data || []) as SkillItem[]);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "搜索失败");
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
-    },
-    [fetchJsonWithTimeout, token],
-  );
-
-  // 当在市场标签页搜索时，触发远程搜索
-  useEffect(() => {
-    if (activeTab === "market" && query.trim().length >= 2) {
-      const timer = setTimeout(() => {
-        searchRemoteSkills(query);
-      }, 500); // 防抖 500ms
-      return () => clearTimeout(timer);
-    } else {
-      setSearchResults([]);
-    }
-  }, [activeTab, query, searchRemoteSkills]);
 
   const callSkillAction = useCallback(
     async (skillId: string, action: "install" | "upgrade" | "enable" | "disable" | "uninstall") => {
@@ -194,19 +85,26 @@ export function SkillsPage() {
       if (action === "uninstall" && !window.confirm("确定要卸载该技能吗？")) return;
       setProcessingId(skillId);
       setError(null);
-      const urlMap = {
-        install: getSkillInstallUrl(skillId),
-        upgrade: getSkillUpgradeUrl(skillId),
-        enable: getSkillEnableUrl(skillId),
-        disable: getSkillDisableUrl(skillId),
-        uninstall: getSkillUninstallUrl(skillId),
-      };
+      setActionMessage(null);
       try {
-        await fetchJsonWithTimeout(urlMap[action], {
-          method: "POST",
-          headers: getAuthHeaders(token),
-          body: "{}",
-        });
+        let result: SkillActionResult | SkillInstallResult;
+        if (action === "install") {
+          result = await installSkill(token, skillId);
+        } else if (action === "upgrade") {
+          result = await updateSkill(token, skillId);
+        } else if (action === "enable") {
+          result = await enableSkill(token, skillId);
+        } else if (action === "disable") {
+          result = await disableSkill(token, skillId);
+        } else {
+          result = await uninstallSkill(token, skillId);
+        }
+
+        if ((action === "install" || action === "upgrade") && result.targetPath) {
+          setActionMessage(
+            `${action === "install" ? "已安装" : "已更新"}到 ${result.targetPath}`,
+          );
+        }
         await loadSkills();
       } catch (e) {
         setError(e instanceof Error ? e.message : `${action} 失败`);
@@ -214,18 +112,25 @@ export function SkillsPage() {
         setProcessingId(null);
       }
     },
-    [fetchJsonWithTimeout, loadSkills, token],
+    [loadSkills, token],
+  );
+
+  const handleUseSkill = useCallback(
+    async (skill: SkillItem) => {
+      if (token) {
+        try {
+          await useSkill(token, skill.id);
+        } catch {
+          // 使用埋点失败不阻断跳转，用户的主动作是进入聊天试用。
+        }
+      }
+      navigate("/", { state: { prefill: `${skill.trigger} ` } });
+    },
+    [navigate, token],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-
-    // 市场标签页：如果有搜索词且长度>=2，显示远程搜索结果
-    if (activeTab === "market" && q.length >= 2) {
-      return searchResults;
-    }
-
-    // 否则使用本地过滤
     const base =
       activeTab === "installed"
         ? skills.filter((s) => s.installed)
@@ -234,10 +139,10 @@ export function SkillsPage() {
     return base.filter((s) =>
       [s.id, s.name, s.description, s.trigger].join(" ").toLowerCase().includes(q),
     );
-  }, [activeTab, query, skills, searchResults]);
+  }, [activeTab, query, skills]);
 
   const installedCount = skills.filter((s) => s.installed).length;
-  const marketCount = marketSkills.length;
+  const marketCount = skills.filter((s) => !s.installed).length;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -311,11 +216,14 @@ export function SkillsPage() {
               系统错误：{error}
             </div>
           )}
+          {actionMessage && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 px-4 py-3 text-sm">
+              {actionMessage}
+            </div>
+          )}
 
           {loading ? (
             <div className="text-sm text-slate-500">加载中...</div>
-          ) : searching ? (
-            <div className="text-sm text-slate-500">搜索中...</div>
           ) : (
             activeTab === "installed" ? (
               <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -331,12 +239,16 @@ export function SkillsPage() {
                     <p className="text-sm text-slate-600 dark:text-slate-300 min-h-12">{skill.description || "无描述"}</p>
                     <div className="mt-2 text-xs text-slate-500">
                       <div>触发词: <code>{skill.trigger}</code></div>
+                      <div>来源: {sourceLabel(skill.source)}</div>
                       <div>版本: {skill.installedVersion || "-"} / 最新 {skill.latestVersion}</div>
+                      <div>
+                        下载 {skill.stats?.downloads ?? 0} · 使用 {skill.stats?.uses ?? 0}
+                      </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => navigate("/", { state: { prefill: `${skill.trigger} ` } })}
+                        onClick={() => handleUseSkill(skill)}
                         className="px-3 py-1.5 rounded-lg text-sm border panel-surface"
                       >
                         使用
@@ -348,7 +260,7 @@ export function SkillsPage() {
                           disabled={processingId === skill.id}
                           className="px-3 py-1.5 rounded-lg text-sm bg-amber-500 text-white disabled:opacity-60"
                         >
-                          升级
+                          {processingId === skill.id ? "更新中..." : "更新"}
                         </button>
                       )}
                       {skill.enabled ? (
@@ -386,61 +298,41 @@ export function SkillsPage() {
                 )}
               </section>
             ) : (
-              <div className="space-y-6">
-                {Object.entries(CATEGORY_LABELS).map(([cat, label]) => {
-                  const catSkills = marketSkills.filter(s => s.category === cat);
-                  if (catSkills.length === 0) return null;
-                  const q = query.trim().toLowerCase();
-                  const displaySkills = q
-                    ? catSkills.filter(s =>
-                        [s.id, s.name, s.description, s.trigger].join(" ").toLowerCase().includes(q)
-                      )
-                    : catSkills;
-                  if (displaySkills.length === 0) return null;
-
-                  return (
-                    <div key={cat}>
-                      <h2 className="text-lg font-semibold mb-3">{label}</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {displaySkills.map(skill => (
-                          <article key={skill.id} className="panel-surface border rounded-2xl p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-lg">{skill.icon}</span>
-                              <h3 className="text-xl font-semibold leading-none">{skill.name}</h3>
-                            </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-300 min-h-12">
-                              {skill.description}
-                            </p>
-                            <div className="mt-2 text-xs text-slate-500">
-                              触发词: <code>{skill.trigger}</code>
-                            </div>
-                            <div className="mt-3">
-                              {skill.readiness === 'L1' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => callSkillAction(skill.id, "install")}
-                                  disabled={processingId === skill.id}
-                                  className="px-3 py-1.5 rounded-lg text-sm text-[var(--text-inverse)] disabled:opacity-60"
-                                  style={{ background: "var(--accent)" }}
-                                >
-                                  {processingId === skill.id ? "处理中..." : "安装"}
-                                </button>
-                              ) : (
-                                <span className="px-3 py-1.5 rounded-lg text-sm bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                                  即将上线
-                                </span>
-                              )}
-                            </div>
-                          </article>
-                        ))}
+              <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filtered.map((skill) => (
+                  <article key={skill.id} className="panel-surface border rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">{skill.icon}</span>
+                      <h3 className="text-xl font-semibold leading-none">{skill.name}</h3>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 min-h-12">
+                      {skill.description || "无描述"}
+                    </p>
+                    <div className="mt-2 text-xs text-slate-500">
+                      <div>触发词: <code>{skill.trigger}</code></div>
+                      <div>来源: {sourceLabel(skill.source)}</div>
+                      <div>版本: {skill.latestVersion || skill.version}</div>
+                      <div>
+                        下载 {skill.stats?.downloads ?? 0} · 使用 {skill.stats?.uses ?? 0}
                       </div>
                     </div>
-                  );
-                })}
-                {marketSkills.length === 0 && (
-                  <div className="text-sm text-slate-500">加载市场技能中...</div>
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => callSkillAction(skill.id, "install")}
+                        disabled={processingId === skill.id}
+                        className="px-3 py-1.5 rounded-lg text-sm text-[var(--text-inverse)] disabled:opacity-60"
+                        style={{ background: "var(--accent)" }}
+                      >
+                        {processingId === skill.id ? "安装中..." : "安装"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {filtered.length === 0 && (
+                  <div className="text-sm text-slate-500">没有可安装的技能</div>
                 )}
-              </div>
+              </section>
             )
           )}
         </div>

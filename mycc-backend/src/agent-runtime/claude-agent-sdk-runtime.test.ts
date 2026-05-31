@@ -54,12 +54,35 @@ describe('ClaudeAgentSdkRuntime', () => {
         }),
         includePartialMessages: false,
         model: 'claude-sonnet-4-6',
-        permissionMode: 'dontAsk',
+        allowDangerouslySkipPermissions: true,
+        permissionMode: 'bypassPermissions',
         resume: 'session-1',
         settingSources: [],
         systemPrompt: { type: 'preset', preset: 'claude_code', excludeDynamicSections: true },
       }),
     });
+  });
+
+  it('lets an explicit request permission mode override the backend default', async () => {
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+      permissionMode: 'plan',
+    }));
+
+    expect(query).toHaveBeenCalledWith({
+      prompt: 'hello',
+      options: expect.objectContaining({
+        permissionMode: 'plan',
+      }),
+    });
+    expect(vi.mocked(query).mock.calls[0]![0]!.options).not.toHaveProperty('allowDangerouslySkipPermissions');
   });
 
   it('maps SDK failures into runtime error events', async () => {

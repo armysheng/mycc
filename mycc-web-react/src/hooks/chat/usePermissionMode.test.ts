@@ -3,11 +3,12 @@ import { renderHook, act } from "@testing-library/react";
 import { usePermissionMode } from "./usePermissionMode";
 
 describe("usePermissionMode", () => {
-  it("should initialize with default permission mode", () => {
+  it("should initialize with bypassPermissions permission mode", () => {
     const { result } = renderHook(() => usePermissionMode());
 
-    expect(result.current.permissionMode).toBe("default");
-    expect(result.current.isDefaultMode).toBe(true);
+    expect(result.current.permissionMode).toBe("bypassPermissions");
+    expect(result.current.isBypassPermissionsMode).toBe(true);
+    expect(result.current.isDefaultMode).toBe(false);
     expect(result.current.isPlanMode).toBe(false);
     expect(result.current.isAcceptEditsMode).toBe(false);
   });
@@ -22,6 +23,7 @@ describe("usePermissionMode", () => {
     expect(result.current.permissionMode).toBe("plan");
     expect(result.current.isPlanMode).toBe(true);
     expect(result.current.isDefaultMode).toBe(false);
+    expect(result.current.isBypassPermissionsMode).toBe(false);
     expect(result.current.isAcceptEditsMode).toBe(false);
   });
 
@@ -35,6 +37,7 @@ describe("usePermissionMode", () => {
     expect(result.current.permissionMode).toBe("acceptEdits");
     expect(result.current.isAcceptEditsMode).toBe(true);
     expect(result.current.isDefaultMode).toBe(false);
+    expect(result.current.isBypassPermissionsMode).toBe(false);
     expect(result.current.isPlanMode).toBe(false);
   });
 
@@ -51,7 +54,7 @@ describe("usePermissionMode", () => {
     expect(result.current.isPlanMode).toBe(true);
   });
 
-  it("should reset to default on new hook instance", () => {
+  it("should reset to bypassPermissions on new hook instance", () => {
     const { result: result1 } = renderHook(() => usePermissionMode());
 
     act(() => {
@@ -61,7 +64,8 @@ describe("usePermissionMode", () => {
     // Create a new hook instance (simulating page reload)
     const { result: result2 } = renderHook(() => usePermissionMode());
 
-    expect(result2.current.permissionMode).toBe("default");
-    expect(result2.current.isDefaultMode).toBe(true);
+    expect(result2.current.permissionMode).toBe("bypassPermissions");
+    expect(result2.current.isBypassPermissionsMode).toBe(true);
+    expect(result2.current.isDefaultMode).toBe(false);
   });
 });

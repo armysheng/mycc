@@ -1,9 +1,10 @@
 import { validateLinuxUsername } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
-import { getMarketSkills as registryMarketSkills, getReadySkills as registryReadySkills } from './skill-registry.js';
+import { getMarketSkills as registryMarketSkills, getReadySkills as registryReadySkills, getVersionForSkill } from './skill-registry.js';
+import { getSkillStatsMap, recordSkillEvent } from './skill-events.js';
 import type { ISkillsService } from './contracts.js';
-import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition } from './types.js';
+import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition, SkillEventType, SkillStats } from './types.js';
 
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
@@ -17,6 +18,13 @@ const LIST_CACHE_TTL_MS = Number.isFinite(parsedSkillsListCacheTtl) && parsedSki
 type CachedListResult = {
   data: SkillsListResult;
   expiresAt: number;
+};
+
+const ZERO_SKILL_STATS: SkillStats = {
+  downloads: 0,
+  installs: 0,
+  updates: 0,
+  uses: 0,
 };
 
 export class SkillsService implements ISkillsService {
@@ -59,8 +67,18 @@ export class SkillsService implements ISkillsService {
       '技能列表加载超时，请稍后重试'
     )
       .then((result) => {
+        const skillIds = result.skills.map((skill) => skill.id);
+        return this.getStatsForSkills(skillIds).then((statsMap) => ({
+          result,
+          statsMap,
+        }));
+      })
+      .then(({ result, statsMap }) => {
         const data = {
-          skills: result.skills,
+          skills: result.skills.map((skill) => ({
+            ...skill,
+            stats: statsMap.get(skill.id) || ZERO_SKILL_STATS,
+          })),
           total: result.skills.length,
           catalogAvailable: result.catalogAvailable,
         };
@@ -104,29 +122,80 @@ export class SkillsService implements ISkillsService {
     if (!/^[a-zA-Z0-9_-]+$/.test(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
-    const version = await this.executeSkillOperation(
-      () => this.store.installSkill(context.linuxUser, skillId),
-      ACTION_TIMEOUT_MS,
-      '安装技能超时，请稍后重试'
-    );
+    await this.recordEventBestEffort({
+      userId: context.userId,
+      skillId,
+      eventType: 'download',
+    });
+    let result;
+    try {
+      result = await this.executeSkillOperation(
+        () => this.store.installSkill(context.linuxUser, skillId),
+        ACTION_TIMEOUT_MS,
+        '安装技能超时，请稍后重试'
+      );
+    } catch (err) {
+      await this.recordEventBestEffort({
+        userId: context.userId,
+        skillId,
+        eventType: 'install_failed',
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      });
+      throw err;
+    }
+    await this.recordEventBestEffort({
+      userId: context.userId,
+      skillId,
+      eventType: 'install',
+      version: result.version,
+      source: result.source,
+      targetPath: result.targetPath,
+    });
     this.invalidateUserListCache(context.linuxUser);
     return {
       skillId,
       installed: true,
-      version,
+      version: result.version,
+      source: result.source,
+      targetPath: result.targetPath,
     };
   }
 
   async upgradeSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult> {
     this.validateContext(context);
     this.validateSkillId(skillId);
-    const version = await this.executeSkillOperation(
-      () => this.store.upgradeSkill(context.linuxUser, skillId),
-      ACTION_TIMEOUT_MS,
-      '升级技能超时，请稍后重试'
-    );
+    let result;
+    try {
+      result = await this.executeSkillOperation(
+        () => this.store.upgradeSkill(context.linuxUser, skillId),
+        ACTION_TIMEOUT_MS,
+        '升级技能超时，请稍后重试'
+      );
+    } catch (err) {
+      await this.recordEventBestEffort({
+        userId: context.userId,
+        skillId,
+        eventType: 'update_failed',
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      });
+      throw err;
+    }
+    await this.recordEventBestEffort({
+      userId: context.userId,
+      skillId,
+      eventType: 'update',
+      version: result.version,
+      source: result.source,
+      targetPath: result.targetPath,
+    });
     this.invalidateUserListCache(context.linuxUser);
-    return { skillId, success: true, version };
+    return {
+      skillId,
+      success: true,
+      version: result.version,
+      source: result.source,
+      targetPath: result.targetPath,
+    };
   }
 
   async enableSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult> {
@@ -161,8 +230,25 @@ export class SkillsService implements ISkillsService {
       ACTION_TIMEOUT_MS,
       '卸载技能超时，请稍后重试'
     );
+    await this.recordEventBestEffort({
+      userId: context.userId,
+      skillId,
+      eventType: 'uninstall',
+    });
     this.invalidateUserListCache(context.linuxUser);
     return { skillId, success: true, uninstalled: true };
+  }
+
+  async useSkill(context: SkillsContext, skillId: string): Promise<SkillActionResult> {
+    this.validateContext(context);
+    this.validateSkillId(skillId);
+    await this.recordEventBestEffort({
+      userId: context.userId,
+      skillId,
+      eventType: 'use',
+    });
+    this.invalidateUserListCache(context.linuxUser);
+    return { skillId, success: true };
   }
 
   private invalidateUserListCache(linuxUser: string): void {
@@ -194,13 +280,14 @@ export class SkillsService implements ISkillsService {
       icon: skill.icon,
       status: 'available',
       installed: false,
-      version: '1.0.0',
+      version: getVersionForSkill(skill.id),
       installedVersion: null,
-      latestVersion: '1.0.0',
+      latestVersion: getVersionForSkill(skill.id),
       source: 'registry',
       legacy: false,
       enabled: false,
       upgradable: false,
+      stats: ZERO_SKILL_STATS,
     }));
 
     return {
@@ -208,6 +295,34 @@ export class SkillsService implements ISkillsService {
       total: skills.length,
       catalogAvailable: false,
     };
+  }
+
+  private async getStatsForSkills(skillIds: string): Promise<Map<string, SkillStats>>;
+  private async getStatsForSkills(skillIds: string[]): Promise<Map<string, SkillStats>>;
+  private async getStatsForSkills(skillIds: string | string[]): Promise<Map<string, SkillStats>> {
+    const ids = Array.isArray(skillIds) ? skillIds : [skillIds];
+    try {
+      return await getSkillStatsMap(ids);
+    } catch (err) {
+      console.warn('[SkillsService] 技能统计加载失败:', err);
+      return new Map();
+    }
+  }
+
+  private async recordEventBestEffort(input: {
+    userId: number;
+    skillId: string;
+    eventType: SkillEventType;
+    version?: string;
+    source?: string;
+    targetPath?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await recordSkillEvent(input);
+    } catch (err) {
+      console.warn('[SkillsService] 技能事件记录失败:', err);
+    }
   }
 
   private async executeSkillOperation<T>(

@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from "react";
 import { StopIcon, PaperAirplaneIcon } from "@heroicons/react/24/solid";
+import { MicrophoneIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
@@ -60,9 +61,12 @@ interface ChatInputProps {
     installed?: boolean;
     enabled?: boolean;
   }>;
+  variant?: "default" | "hero";
+  placeholder?: string;
 }
 
 const permissionModeName: Record<PermissionMode, string> = {
+  bypassPermissions: "自动执行",
   default: "标准执行",
   plan: "规划优先",
   acceptEdits: "自动接受编辑",
@@ -84,6 +88,8 @@ export function ChatInput({
   slashSkillsLoaded = false,
   slashSkillsLoading = false,
   slashSkills = [],
+  variant = "default",
+  placeholder,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -91,6 +97,7 @@ export function ChatInput({
   const [dismissedSlashToken, setDismissedSlashToken] = useState<string | null>(null);
   const [slashRefreshToken, setSlashRefreshToken] = useState<string | null>(null);
   const { enterBehavior } = useEnterBehavior();
+  const isHero = variant === "hero";
 
   const slashMatch = useMemo(() => input.match(/^\/([^\s\n]*)$/), [input]);
   const slashToken = slashMatch ? slashMatch[0] : null;
@@ -182,7 +189,12 @@ export function ChatInput({
   };
 
   const getNextPermissionMode = (current: PermissionMode): PermissionMode => {
-    const modes: PermissionMode[] = ["default", "plan", "acceptEdits"];
+    const modes: PermissionMode[] = [
+      "bypassPermissions",
+      "plan",
+      "default",
+      "acceptEdits",
+    ];
     const currentIndex = modes.indexOf(current);
     return modes[(currentIndex + 1) % modes.length];
   };
@@ -282,9 +294,21 @@ export function ChatInput({
     );
   }
 
+  const resolvedPlaceholder = placeholder
+    ?? (isLoading && currentRequestId
+      ? "正在处理中..."
+      : enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送");
+
   return (
-    <div className="flex-shrink-0 space-y-2">
-      <form onSubmit={handleSubmit} className="relative rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85">
+    <div className={isHero ? "w-full" : "flex-shrink-0 space-y-2"}>
+      <form
+        onSubmit={handleSubmit}
+        className={
+          isHero
+            ? "relative rounded-[28px] border border-slate-200/80 bg-white/90 p-3 text-left shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/85 dark:shadow-[0_24px_90px_rgba(0,0,0,0.30)]"
+            : "relative rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85"
+        }
+      >
         <textarea
           ref={inputRef}
           value={input}
@@ -292,10 +316,14 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={isLoading && currentRequestId ? "正在处理中..." : enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送"}
-          rows={1}
+          placeholder={resolvedPlaceholder}
+          rows={isHero ? 4 : 1}
           style={{ maxHeight: `${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px` }}
-          className="min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
+          className={
+            isHero
+              ? "min-h-[132px] w-full resize-none overflow-hidden rounded-[22px] border border-transparent bg-transparent px-4 py-4 text-base leading-7 text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white/45 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-950/20"
+              : "min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
+          }
           disabled={isLoading}
         />
 
@@ -361,7 +389,27 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        <div className={isHero ? "mt-2 flex items-center justify-between gap-3 px-1" : "absolute bottom-3 right-3 flex items-center gap-2"}>
+          {isHero && (
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+                aria-label="添加资料"
+              >
+                <PlusIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onPermissionModeChange(getNextPermissionMode(permissionMode))}
+                className="inline-flex h-9 items-center rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/25 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
+              >
+                {permissionModeName[permissionMode]}
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
           {isLoading && currentRequestId && (
             <button
               type="button"
@@ -373,26 +421,43 @@ export function ChatInput({
             </button>
           )}
 
+          {isHero && (
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="语音输入"
+            >
+              <MicrophoneIcon className="h-4 w-4" />
+            </button>
+          )}
+
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className={
+              isHero
+                ? "inline-flex h-10 items-center gap-1.5 rounded-full bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                : "inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            }
           >
             <PaperAirplaneIcon className="h-3.5 w-3.5" />
             {permissionMode === "plan" ? "规划" : "发送"}
           </button>
+          </div>
         </div>
       </form>
 
-      <button
-        type="button"
-        onClick={() => onPermissionModeChange(getNextPermissionMode(permissionMode))}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white/75 px-3 py-1.5 text-xs text-slate-600 transition hover:border-amber-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-amber-700 dark:hover:text-slate-100"
-        title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
-      >
-        <span className="font-medium">执行模式：{permissionModeName[permissionMode]}</span>
-        <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Ctrl+Shift+M</span>
-      </button>
+      {!isHero && (
+        <button
+          type="button"
+          onClick={() => onPermissionModeChange(getNextPermissionMode(permissionMode))}
+          className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white/75 px-3 py-1.5 text-xs text-slate-600 transition hover:border-amber-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-amber-700 dark:hover:text-slate-100"
+          title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
+        >
+          <span className="font-medium">执行模式：{permissionModeName[permissionMode]}</span>
+          <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Ctrl+Shift+M</span>
+        </button>
+      )}
     </div>
   );
 }

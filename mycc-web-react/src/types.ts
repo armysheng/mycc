@@ -172,8 +172,12 @@ export function isTodoMessage(message: AllMessage): message is TodoMessage {
   return message.type === "todo";
 }
 
-// Permission mode types (UI-focused subset of SDK PermissionMode)
-export type PermissionMode = "default" | "plan" | "acceptEdits";
+// Permission mode types exposed by the UI. Keep labels productized in components.
+export type PermissionMode =
+  | "bypassPermissions"
+  | "default"
+  | "plan"
+  | "acceptEdits";
 
 // SDK type integration utilities
 export function toSDKPermissionMode(uiMode: PermissionMode): SDKPermissionMode {
@@ -183,8 +187,7 @@ export function toSDKPermissionMode(uiMode: PermissionMode): SDKPermissionMode {
 export function fromSDKPermissionMode(
   sdkMode: SDKPermissionMode,
 ): PermissionMode {
-  // Filter out bypassPermissions for UI
-  return sdkMode === "bypassPermissions" ? "default" : sdkMode;
+  return sdkMode;
 }
 
 // Chat state extensions for permission mode

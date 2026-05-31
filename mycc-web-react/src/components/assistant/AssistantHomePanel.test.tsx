@@ -66,34 +66,41 @@ const baseData: AssistantHomeData = {
 
 describe("AssistantHomePanel", () => {
   it("renders an assistant-first home shell", () => {
-    render(<AssistantHomePanel assistantName="小麦" data={baseData} />);
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        data={baseData}
+        workspaceName="mycc-main"
+        inputSlot={<div data-testid="home-input-slot" />}
+      />,
+    );
 
-    expect(screen.getByText("今天要我帮你做什么？")).toBeInTheDocument();
-    expect(screen.getByText("最近可以继续")).toBeInTheDocument();
-    expect(screen.getByText("调研 Claude Code UI")).toBeInTheDocument();
-    expect(screen.getByText("最近制品")).toBeInTheDocument();
-    expect(screen.getByText("还没有制品")).toBeInTheDocument();
-    expect(screen.getByText("助理记忆")).toBeInTheDocument();
-    expect(screen.getByText("个人偏好")).toBeInTheDocument();
-    expect(screen.getByText("项目背景")).toBeInTheDocument();
-    expect(screen.getByText("长期记忆")).toBeInTheDocument();
-    expect(screen.getByText("高级工作间")).toBeInTheDocument();
-    expect(screen.getByText("代码编辑器")).toBeInTheDocument();
+    expect(screen.getByText("我们应该在 mycc-main 中构建什么？")).toBeInTheDocument();
+    expect(screen.getByTestId("home-input-slot")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开成果空间" })).toBeInTheDocument();
+    expect(screen.getByText("mycc-main")).toBeInTheDocument();
+    expect(screen.queryByText("最近可以继续")).not.toBeInTheDocument();
+    expect(screen.queryByText("助理记忆")).not.toBeInTheDocument();
+    expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
+    expect(screen.queryByText("代码编辑器")).not.toBeInTheDocument();
   });
 
   it("does not present unsupported durable task states", () => {
     render(<AssistantHomePanel assistantName="小麦" data={baseData} />);
 
-    expect(screen.getByText("最近会话")).toBeInTheDocument();
+    expect(screen.queryByText("最近会话")).not.toBeInTheDocument();
     expect(screen.queryByText(/blocked|completed|failed|verified/i)).not.toBeInTheDocument();
     expect(screen.queryByText("已完成")).not.toBeInTheDocument();
     expect(screen.queryByText("失败")).not.toBeInTheDocument();
   });
 
   it("renders derived deliverable cards with user-facing source labels", () => {
+    const onOpenDeliverable = vi.fn();
     render(
       <AssistantHomePanel
         assistantName="小麦"
+        onOpenDeliverable={onOpenDeliverable}
+        inputSlot={<div data-testid="home-input-slot" />}
         data={{
           ...baseData,
           deliverables: [
@@ -114,9 +121,62 @@ describe("AssistantHomePanel", () => {
 
     expect(screen.getByText("Claude UI 调研报告")).toBeInTheDocument();
     expect(screen.getByText("报告")).toBeInTheDocument();
-    expect(screen.getByText("来自当前工作区")).toBeInTheDocument();
-    expect(screen.getByText("/docs/research-report.md")).toBeInTheDocument();
+    expect(screen.getByText("来自当前文件空间")).toBeInTheDocument();
+    expect(screen.queryByText("/docs/research-report.md")).not.toBeInTheDocument();
     expect(screen.queryByText("current_workspace")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开成果" }));
+    expect(onOpenDeliverable).toHaveBeenCalledWith(expect.objectContaining({
+      id: "workspace:/docs/research-report.md",
+      path: "/docs/research-report.md",
+    }));
+  });
+
+  it("shows a compact recent deliverables tray without taking over the new-chat surface", () => {
+    render(
+      <AssistantHomePanel
+        assistantName="小麦"
+        inputSlot={<div data-testid="home-input-slot" />}
+        data={{
+          ...baseData,
+          deliverables: [
+            {
+              id: "workspace:/reports/ui-change.diff",
+              kind: "diff",
+              title: "UI change diff",
+              source: "current_workspace",
+              status: "ready",
+              path: "/reports/ui-change.diff",
+            },
+            {
+              id: "workspace:/logs/agent-run.log",
+              kind: "log",
+              title: "Agent run log",
+              source: "current_workspace",
+              status: "ready",
+              path: "/logs/agent-run.log",
+            },
+            {
+              id: "workspace:/screenshots/homepage-screenshot.png",
+              kind: "screenshot",
+              title: "Homepage screenshot",
+              source: "current_workspace",
+              status: "ready",
+              path: "/screenshots/homepage-screenshot.png",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("最近成果")).toBeInTheDocument();
+    expect(screen.getByText("变更说明")).toBeInTheDocument();
+    expect(screen.getByText("运行记录")).toBeInTheDocument();
+    expect(screen.getByText("UI change diff")).toBeInTheDocument();
+    expect(screen.getByText("Agent run log")).toBeInTheDocument();
+    expect(screen.getByText("Homepage screenshot")).toBeInTheDocument();
+    expect(screen.queryByText("还没有制品")).not.toBeInTheDocument();
+    expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
   });
 
   it("does not render raw launch URLs or secret-like provider fields", () => {
@@ -146,18 +206,18 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText(/\bsandbox\b/i)).not.toBeInTheDocument();
   });
 
-  it("uses suggested prompts without sending immediately", () => {
-    const onStartPrompt = vi.fn();
+  it("keeps the workspace action lightweight on the new-chat surface", () => {
+    const onOpenWorkspace = vi.fn();
     render(
       <AssistantHomePanel
         assistantName="小麦"
         data={baseData}
-        onStartPrompt={onStartPrompt}
+        onOpenWorkspace={onOpenWorkspace}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "整理一下当前项目状态" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开成果空间" }));
 
-    expect(onStartPrompt).toHaveBeenCalledWith("整理一下当前项目状态");
+    expect(onOpenWorkspace).toHaveBeenCalledOnce();
   });
 });

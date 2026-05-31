@@ -267,7 +267,7 @@ export function Sidebar({
                         className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
                       />
                     ) : (
-                      conv.customTitle || conv.lastMessagePreview || conv.sessionId.substring(0, 8)
+                      conv.customTitle || conv.lastMessagePreview || "未命名对话"
                     )}
                   </div>
                   {editingId !== conv.sessionId && (

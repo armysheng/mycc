@@ -9,6 +9,7 @@ describe('E2bSandboxProvider', () => {
     delete process.env.E2B_API_KEY;
     delete process.env.MYCC_IDE_PROVIDER;
     delete process.env.MYCC_E2B_TEMPLATE;
+    delete process.env.MYCC_E2B_DESKTOP_PORT;
   });
 
   it('creates a private E2B sandbox and starts code-server in the background', async () => {
@@ -142,5 +143,42 @@ describe('E2bSandboxProvider', () => {
     expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b_deadbeef' });
     expect(setTimeout).toHaveBeenCalledWith(7200000);
     expect(result.expiresAt).toEqual(expect.any(String));
+  });
+
+  it('starts the GNU desktop service inside an existing sandbox', async () => {
+    process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
+    process.env.MYCC_E2B_DESKTOP_PORT = '16080';
+    const run = vi.fn().mockResolvedValue({ pid: 4321 });
+    const getHost = vi.fn().mockReturnValue('16080-sbx_123.e2b.app');
+    const connect = vi.fn().mockResolvedValue({
+      sandboxId: 'sbx_123',
+      trafficAccessToken: 'traffic-token',
+      commands: { run },
+      getHost,
+    });
+    const provider = new E2bSandboxProvider({ create: vi.fn(), connect });
+
+    const desktop = await provider.startDesktop({
+      provider: 'e2b',
+      sandboxId: 'sbx_123',
+      codeServerPid: 1234,
+      host: '18080-sbx_123.e2b.app',
+      trafficAccessToken: 'traffic-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2026-05-29T14:00:00.000Z',
+    });
+
+    expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b_deadbeef' });
+    expect(run).toHaveBeenCalledWith('mycc-start-desktop', {
+      background: true,
+      cwd: '/home/mycc/workspace',
+    });
+    expect(getHost).toHaveBeenCalledWith(16080);
+    expect(desktop).toEqual({
+      desktopPid: 4321,
+      desktopHost: '16080-sbx_123.e2b.app',
+      desktopPort: 16080,
+    });
   });
 });

@@ -241,6 +241,10 @@ export function getIconForSkill(id: string): string {
   return getSkillById(id)?.icon ?? '⚡';
 }
 
+export function getVersionForSkill(id: string): string {
+  return getSkillById(id)?.version ?? '1.0.0';
+}
+
 export function validateRegistry(catalogBasePath: string): string[] {
   const errors: string[] = [];
   for (const skill of SKILL_REGISTRY) {

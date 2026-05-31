@@ -18,7 +18,7 @@ describe('E2B workspace smoke scripts', () => {
     expect(output).toContain('E2B Agent preflight: needs attention');
     expect(output).toContain('[error] E2B API key: Missing MYCC_E2B_API_KEY or E2B_API_KEY.');
     expect(output).toContain('[error] Claude/CCR credential: No Claude credential is configured.');
-    expect(output).toContain('[skip] E2B template: Skipped remote template check for mycc-code-server-dev');
+    expect(output).toContain('[skip] E2B template: Skipped remote template check for mycc-assistant-sandbox-dev');
     expect(output).toContain('fix the preflight checklist above');
     expect(output).not.toContain('openai-secret-should-not-leak');
   });
@@ -31,6 +31,18 @@ describe('E2B workspace smoke scripts', () => {
     expect(source).toContain('Direct E2B host accepted unauthenticated traffic');
     expect(source).toContain('waitForProxyHealth');
     expect(source).toContain("headers: { cookie }");
+  });
+
+  it('keeps desktop smoke pinned to MyCC proxy-only E2B access', () => {
+    const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-desktop.ts'), 'utf8');
+
+    expect(source).toContain('assertDirectDesktopHostRejectsUnauthenticatedTraffic');
+    expect(source).toContain('https://${session.desktopHost}/vnc.html');
+    expect(source).toContain('Direct E2B desktop host accepted unauthenticated traffic');
+    expect(source).toContain('waitForNoVncProxy');
+    expect(source).toContain("headers: { cookie }");
+    expect(source).toContain('/desktop/proxy');
+    expect(source).toContain('assertNoProviderSecrets');
   });
 });
 

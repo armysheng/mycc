@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MYCC_CCR_PORT="${MYCC_CCR_PORT:-13456}"
+MYCC_CCR_HOST="${MYCC_CCR_HOST:-127.0.0.1}"
+MYCC_CCR_CONFIG_DIR="${MYCC_CCR_CONFIG_DIR:-/home/mycc/.claude-code-router}"
+MYCC_CCR_PROVIDER_NAME="${MYCC_CCR_PROVIDER_NAME:-mycc-upstream}"
+MYCC_CCR_MODEL="${MYCC_CCR_MODEL:-claude-sonnet-4-6}"
+MYCC_CCR_CONFIG_FILE="${MYCC_CCR_CONFIG_FILE:-}"
+
+mkdir -p "$MYCC_CCR_CONFIG_DIR"
+chmod 700 "$MYCC_CCR_CONFIG_DIR"
+
+if [ -z "$MYCC_CCR_CONFIG_FILE" ]; then
+  MYCC_CCR_CONFIG_FILE="$MYCC_CCR_CONFIG_DIR/config.json"
+  export MYCC_CCR_PORT MYCC_CCR_HOST MYCC_CCR_PROVIDER_NAME MYCC_CCR_MODEL
+  node <<'MYCC_CCR_CONFIG' > "$MYCC_CCR_CONFIG_FILE"
+const providerName = process.env.MYCC_CCR_PROVIDER_NAME || 'mycc-upstream';
+const model = process.env.MYCC_CCR_MODEL || 'claude-sonnet-4-6';
+const host = process.env.MYCC_CCR_HOST || '127.0.0.1';
+const port = Number.parseInt(process.env.MYCC_CCR_PORT || '13456', 10);
+
+const config = {
+  HOST: host,
+  PORT: port,
+  APIKEY: '$MYCC_CCR_AUTH_TOKEN',
+  Providers: [
+    {
+      name: providerName,
+      baseUrl: '$MYCC_PROVIDER_BASE_URL',
+      apiKey: '$MYCC_PROVIDER_API_KEY',
+      models: [model],
+    },
+  ],
+  Router: {
+    default: `${providerName},${model}`,
+  },
+};
+
+process.stdout.write(JSON.stringify(config, null, 2));
+MYCC_CCR_CONFIG
+  chmod 600 "$MYCC_CCR_CONFIG_FILE"
+fi
+
+exec ccr start --config "$MYCC_CCR_CONFIG_FILE" --host "$MYCC_CCR_HOST" --port "$MYCC_CCR_PORT"

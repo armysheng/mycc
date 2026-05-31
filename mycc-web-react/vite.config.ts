@@ -9,7 +9,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, resolve(__dirname, ".."), "");
+  const rootEnv = loadEnv(mode, resolve(__dirname, ".."), "");
+  const appEnv = loadEnv(mode, __dirname, "");
+  const env = { ...rootEnv, ...appEnv };
   const apiPort = env.PORT || "8080";
 
   return {

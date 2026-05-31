@@ -43,7 +43,7 @@ export function createSystemMessage(
     type: "system",
     subtype: "init",
     apiKeySource: "user",
-    cwd: "/Users/demo/claude-code-webui",
+    cwd: "/Users/demo/mycc-assistant",
     session_id: sessionId,
     uuid: generateId(),
     tools: ["Read", "Write", "Edit", "Bash"],
@@ -318,7 +318,7 @@ export const DEMO_SCENARIOS = {
         type: "assistant" as const,
         delay: 1500,
         data: createAssistantMessage(
-          "Hello! I'm Claude, your AI assistant. I can help you with coding, file operations, and much more. I can see this is a Claude Code Web UI project - a React frontend with a Deno backend. What specific aspect would you like me to help you understand?",
+          "你好，我是你的 MyCC 个人助理。我可以帮你整理任务、处理文件、生成报告，并把结果沉淀到你的个人空间里。你想先从哪件事开始？",
           "demo-session-basic",
         ),
       },
@@ -343,7 +343,7 @@ export const DEMO_SCENARIOS = {
         delay: 1800,
         data: createToolUseMessage(
           "Read",
-          { file_path: "/Users/demo/claude-code-webui/frontend/src/App.tsx" },
+          { file_path: "/Users/demo/mycc-assistant/frontend/src/App.tsx" },
           "demo-session-files",
           "read-app-tsx",
         ),
@@ -375,7 +375,7 @@ export const DEMO_SCENARIOS = {
         type: "assistant" as const,
         delay: 1000,
         data: createAssistantMessage(
-          "I can see this is the main App.tsx file for the Claude Code Web UI project. It's a React application that uses React Router for navigation between a project selector page and the main chat interface. The app includes theme management with light/dark mode support, and provides a web-based interface for interacting with the Claude CLI tool. The routing system allows users to first select a working directory, then engage in conversations with Claude within that project context.",
+          "我已看过这个入口文件。它负责组织个人助理的主要页面、导航和主题体验，让你可以在一个清晰的界面里发起任务、查看结果并继续推进。",
           "demo-session-files",
         ),
       },
@@ -436,7 +436,7 @@ export const DEMO_SCENARIOS = {
         delay: 1000,
         data: createToolUseMessage(
           "Read",
-          { file_path: "/Users/demo/claude-code-webui/frontend/src" },
+          { file_path: "/Users/demo/mycc-assistant/frontend/src" },
           "demo-session-analysis",
           "read-src-dir",
         ),
@@ -479,7 +479,7 @@ export const DEMO_SCENARIOS = {
         data: createToolUseMessage(
           "Write",
           {
-            file_path: "/Users/demo/claude-code-webui/fibonacci.py",
+            file_path: "/Users/demo/mycc-assistant/fibonacci.py",
             content: `def fibonacci(n):
     """Generate Fibonacci sequence up to n terms"""
     if n <= 0:
@@ -599,7 +599,7 @@ if __name__ == "__main__":
     const planContent = `# README Creation Plan
 
 ## Overview
-I'll create a comprehensive README.md file for the Claude Code Web UI project with essential documentation.
+I'll create a concise README.md file for this personal assistant project with essential documentation.
 
 ## Implementation Steps
 1. **Project Analysis**: Review the project structure to understand key features
@@ -671,7 +671,7 @@ I'll create a comprehensive README.md file for the Claude Code Web UI project wi
           delay: 1800,
           data: createToolUseMessage(
             "Read",
-            { file_path: "/Users/demo/claude-code-webui/package.json" },
+            { file_path: "/Users/demo/mycc-assistant/package.json" },
             "demo-session-plan",
             "read-package-json",
           ),
@@ -680,7 +680,7 @@ I'll create a comprehensive README.md file for the Claude Code Web UI project wi
           type: "assistant" as const,
           delay: 1200,
           data: createAssistantMessage(
-            "Great! I can see this is the Claude Code Web UI project. Now I'll create a comprehensive README.md file with all the essential information.",
+            "很好，我已经了解项目结构。接下来会整理一份简洁的 README，方便后续维护和交接。",
             "demo-session-plan",
           ),
         },
@@ -690,18 +690,18 @@ I'll create a comprehensive README.md file for the Claude Code Web UI project wi
           data: createToolUseMessage(
             "Write",
             {
-              file_path: "/Users/demo/claude-code-webui/README.md",
-              content: `# Claude Code Web UI
+              file_path: "/Users/demo/mycc-assistant/README.md",
+              content: `# MyCC Personal Assistant
 
-A modern, web-based interface for the Claude Code CLI tool that provides streaming responses in an intuitive chat interface.
+A ready-to-use personal assistant experience for planning tasks, producing deliverables, and keeping work organized.
 
 ## ✨ Features
 
-- **🌐 Web Interface**: Access Claude Code through your browser
+- **🌐 Web Interface**: Work with your assistant through your browser
 - **💬 Real-time Chat**: Streaming responses with live updates
 - **📁 Project Management**: Select and switch between project directories
 - **🎨 Theme Support**: Light/dark theme with system preference detection
-- **📝 Conversation History**: Browse and restore previous chat sessions
+- **📝 Task History**: Browse and continue previous work
 
 ## 🚀 Quick Start
 

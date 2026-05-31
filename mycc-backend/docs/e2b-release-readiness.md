@@ -14,19 +14,21 @@ Keep this path opt-in until the release owner has run every gate below.
 - E2B API key in the backend environment: `MYCC_E2B_API_KEY=e2b_<token>` or `E2B_API_KEY=e2b_<token>`.
 - E2B CLI auth for template builds: `E2B_ACCESS_TOKEN` or `npx --yes @e2b/cli auth login`.
 - Claude/CCR credentials: prefer `MYCC_CCR_BASE_URL` plus `MYCC_CCR_AUTH_TOKEN`.
-- E2B template name: `MYCC_E2B_TEMPLATE=mycc-code-server-dev` unless releasing a versioned template.
-- Database migration applied: `db/migrations/003-add-ide-sessions.sql`.
+- E2B template name: `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` unless releasing a versioned template.
+- Database migrations applied: `db/migrations/003-add-ide-sessions.sql` and `db/migrations/004-add-ide-desktop-service.sql`.
 
 Do not configure global `OPENAI_BASE_URL` or `OPENAI_API_KEY` in the MyCC backend process for this path. Put OpenAI-compatible upstream credentials inside the CCR router process instead.
 
 ## Template Release
 
-1. Update template dependencies in `templates/e2b-code-server/e2b.Dockerfile`.
-2. Keep `templates/e2b-code-server/template.ts`, `scripts/create-e2b-code-server-template.sh`, and `templates/e2b-code-server/README.md` ready commands aligned.
-3. Build or update the E2B template from `mycc-backend`:
+1. Update template dependencies in `../mycc-sandbox/templates/e2b-assistant-sandbox/e2b.Dockerfile`.
+2. Keep the assistant sandbox contract, doctor, and smoke scripts in `../mycc-sandbox` aligned.
+3. Build or update the E2B template from `mycc-sandbox`:
 
 ```bash
-npm run template:e2b-code-server:create
+npm install
+npm run doctor:template
+npm run smoke:e2b-template
 ```
 
 4. Record the template name, runtime package versions, build time, and E2B account in the release notes.
@@ -38,6 +40,7 @@ Before enabling E2B in a long-lived environment:
 
 ```bash
 psql "$DATABASE_URL" -f db/migrations/003-add-ide-sessions.sql
+psql "$DATABASE_URL" -f db/migrations/004-add-ide-desktop-service.sql
 psql "$DATABASE_URL" -c "select to_regclass('public.ide_sessions') as ide_sessions;"
 ```
 
@@ -62,12 +65,14 @@ Start the backend with the target `.env`, then run:
 
 ```bash
 BASE_URL=http://localhost:18081 npm run smoke:e2b-ide
+BASE_URL=http://localhost:18081 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:18081 npm run smoke:e2b-agent-sdk-workspace
 ```
 
 Required behavior:
 
-- `smoke:e2b-ide` creates an E2B code-server session, proves the raw E2B host rejects unauthenticated traffic, proves MyCC proxy access works, and cleans up the session.
+- `smoke:e2b-ide` creates an E2B code-server session from the assistant sandbox, proves the raw E2B host rejects unauthenticated traffic, proves MyCC proxy access works, and cleans up the session.
+- `smoke:e2b-desktop` proves the desktop/noVNC service also stays behind the MyCC proxy and does not leak provider routing data.
 - `smoke:e2b-agent-sdk-workspace` proves Agent SDK and code-server share the same workspace, validates the template contract, verifies GNU/native tooling, and cleans up the sandbox.
 
 ## Production Enablement
@@ -78,10 +83,12 @@ Set these values only after all gates pass:
 MYCC_AGENT_RUNTIME=e2b-claude-agent-sdk
 MYCC_IDE_PROVIDER=e2b
 MYCC_WORKSPACE_PROVIDER=e2b
-MYCC_E2B_TEMPLATE=mycc-code-server-dev
+MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev
+MYCC_E2B_DESKTOP_ENABLED=true
+MYCC_E2B_DESKTOP_PORT=16080
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
-MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
+MYCC_AGENT_SDK_PERMISSION_MODE=bypassPermissions
 ```
 
 Keep write-capable smoke defaults such as `Write,Edit,MultiEdit,Bash` out of product defaults unless a separate product review explicitly approves them.

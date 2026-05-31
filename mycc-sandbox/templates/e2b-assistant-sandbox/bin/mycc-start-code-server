@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MYCC_CODE_SERVER_PORT="${MYCC_CODE_SERVER_PORT:-18080}"
+MYCC_WORKSPACE_DIR="${MYCC_WORKSPACE_DIR:-/home/mycc/workspace}"
+
+mkdir -p "$MYCC_WORKSPACE_DIR" /home/mycc/.config/code-server /home/mycc/.local/share/code-server
+
+exec code-server \
+  --bind-addr "127.0.0.1:${MYCC_CODE_SERVER_PORT}" \
+  --auth none \
+  --disable-telemetry \
+  "$MYCC_WORKSPACE_DIR"

@@ -33,7 +33,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
       if (!sessionId) {
         setState((prev) => ({
           ...prev,
-          error: "Session ID is required",
+          error: "请选择要打开的对话",
         }));
         return;
       }

@@ -118,10 +118,11 @@ npm run doctor:e2b-agent
 
 ```bash
 BASE_URL=http://localhost:8080 npm run smoke:e2b-ide
+BASE_URL=http://localhost:8080 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:8080 npm run smoke:e2b-agent-sdk-workspace
 ```
 
-生产启用值必须保持 `MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false`。若需要快速回滚，优先改配置为 `MYCC_AGENT_RUNTIME=remote-claude`、`MYCC_IDE_PROVIDER=disabled`、`MYCC_WORKSPACE_PROVIDER=ssh`，重启服务后再运行 `npm run cleanup:ide-sessions`。
+生产启用值必须保持 `MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false`。如果启用个人助理工作区模板，设置 `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` 与 `MYCC_E2B_DESKTOP_ENABLED=true`，再由后端代理 code-server/noVNC。若需要快速回滚，优先改配置为 `MYCC_AGENT_RUNTIME=remote-claude`、`MYCC_IDE_PROVIDER=disabled`、`MYCC_WORKSPACE_PROVIDER=ssh`，重启服务后再运行 `npm run cleanup:ide-sessions`。
 
 ### 6. 配置反向代理（可选）
 

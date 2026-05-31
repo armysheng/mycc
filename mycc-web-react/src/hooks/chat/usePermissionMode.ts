@@ -6,6 +6,7 @@ export interface UsePermissionModeResult {
   setPermissionMode: (mode: PermissionMode) => void;
   isPlanMode: boolean;
   isDefaultMode: boolean;
+  isBypassPermissionsMode: boolean;
   isAcceptEditsMode: boolean;
 }
 
@@ -16,7 +17,7 @@ export interface UsePermissionModeResult {
  */
 export function usePermissionMode(): UsePermissionModeResult {
   const [permissionMode, setPermissionModeState] =
-    useState<PermissionMode>("default");
+    useState<PermissionMode>("bypassPermissions");
 
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     setPermissionModeState(mode);
@@ -27,6 +28,7 @@ export function usePermissionMode(): UsePermissionModeResult {
     setPermissionMode,
     isPlanMode: permissionMode === "plan",
     isDefaultMode: permissionMode === "default",
+    isBypassPermissionsMode: permissionMode === "bypassPermissions",
     isAcceptEditsMode: permissionMode === "acceptEdits",
   };
 }

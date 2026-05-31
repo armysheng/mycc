@@ -111,6 +111,52 @@ describe('assistant routes', () => {
     await app.close();
   });
 
+  it('filters bootstrap and control conversations out of assistant home tasks', async () => {
+    const options = defaultOptions();
+    options.getUserConversations = vi.fn().mockResolvedValue([
+      {
+        sessionId: 'session_bootstrap',
+        title: '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。',
+        messageCount: 1,
+        totalTokens: 800,
+        createdAt: new Date('2026-05-30T08:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T08:00:00.000Z'),
+      },
+      {
+        sessionId: 'session_continue',
+        title: 'continue',
+        messageCount: 4,
+        totalTokens: 120,
+        createdAt: new Date('2026-05-30T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T09:00:00.000Z'),
+      },
+      {
+        sessionId: 'session_user_task',
+        title: '整理当前项目状态',
+        messageCount: 6,
+        totalTokens: 1200,
+        createdAt: new Date('2026-05-30T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-30T10:00:00.000Z'),
+      },
+    ]);
+    const app = await buildApp(options);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/home',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.data.tasks.map((task: { title: string }) => task.title)).toEqual([
+      '整理当前项目状态',
+    ]);
+    expect(response.body).not.toContain('首次初始化');
+    expect(response.body).not.toContain('"continue"');
+    await app.close();
+  });
+
   it('labels memory sources separately', async () => {
     const app = await buildApp(defaultOptions());
 
@@ -212,6 +258,311 @@ describe('assistant routes', () => {
     ]);
     expect(response.body).not.toContain('.env-plan.md');
     expect(response.body).not.toContain('Random note');
+    await app.close();
+  });
+
+  it('classifies preview, screenshot, log, and diff deliverables from the current workspace', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          path: '/output/app-preview.html',
+          title: 'App Preview',
+          size: 4096,
+          mtime: '2026-05-30T12:00:00.000Z',
+        },
+        {
+          path: '/screenshots/homepage-screenshot.png',
+          title: 'Homepage screenshot',
+          size: 8192,
+          mtime: '2026-05-30T12:05:00.000Z',
+        },
+        {
+          path: '/logs/agent-run.log',
+          title: 'Agent run log',
+          size: 2048,
+          mtime: '2026-05-30T12:10:00.000Z',
+        },
+        {
+          path: '/reports/ui-change.diff',
+          title: 'UI change diff',
+          size: 1024,
+          mtime: '2026-05-30T12:15:00.000Z',
+        },
+        {
+          path: '/output/.secret-preview.html',
+          title: 'secret preview',
+          size: 1024,
+          mtime: '2026-05-30T12:20:00.000Z',
+        },
+      ]),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deliverables).toEqual([
+      expect.objectContaining({ kind: 'diff', path: '/reports/ui-change.diff' }),
+      expect.objectContaining({ kind: 'log', path: '/logs/agent-run.log' }),
+      expect.objectContaining({ kind: 'screenshot', path: '/screenshots/homepage-screenshot.png' }),
+      expect.objectContaining({ kind: 'preview', path: '/output/app-preview.html' }),
+    ]);
+    expect(response.body).not.toContain('.secret-preview.html');
+    await app.close();
+  });
+
+  it('prefers safe manifest deliverables while filtering sensitive registry and scan entries', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        manifest: [
+          {
+            path: '/reports/final-report.md',
+            title: '最终交付报告',
+            kind: 'report',
+            mtime: '2026-05-30T13:00:00.000Z',
+          },
+          {
+            path: '/reports/token-leak-report.md',
+            title: 'token leak report',
+            kind: 'report',
+          },
+        ],
+        scan: [
+          {
+            path: '/reports/final-report.md',
+            title: '扫描出来的同路径旧报告',
+            size: 4096,
+            mtime: '2026-05-30T14:00:00.000Z',
+          },
+          {
+            path: '/reports/scanned-report.md',
+            title: '扫描出来的旧报告',
+            size: 2048,
+            mtime: '2026-05-30T12:00:00.000Z',
+          },
+          {
+            path: '/logs/auth-token.log',
+            title: 'token log',
+            size: 1024,
+            mtime: '2026-05-30T15:00:00.000Z',
+          },
+        ],
+      }),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deliverables).toEqual([
+      expect.objectContaining({
+        id: 'workspace:/reports/final-report.md',
+        kind: 'report',
+        title: '最终交付报告',
+        path: '/reports/final-report.md',
+        updatedAt: '2026-05-30T13:00:00.000Z',
+      }),
+      expect.objectContaining({
+        title: '扫描出来的旧报告',
+        path: '/reports/scanned-report.md',
+      }),
+    ]);
+    expect(response.body).not.toContain('扫描出来的同路径旧报告');
+    expect(response.body).not.toContain('token leak report');
+    expect(response.body).not.toContain('/logs/auth-token.log');
+    await app.close();
+  });
+
+  it('deduplicates manifest and scan entries by normalized workspace path', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        manifest: [
+          {
+            path: 'reports/research-report.md',
+            title: 'Manifest 调研报告',
+            kind: 'report',
+            mtime: '2026-05-30T13:00:00.000Z',
+          },
+        ],
+        scan: [
+          {
+            path: '/reports/research-report.md',
+            title: 'Scanned 调研报告',
+            size: 2048,
+            mtime: '2026-05-30T14:00:00.000Z',
+          },
+        ],
+      }),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const deliverables = response.json().data.deliverables;
+    expect(deliverables).toHaveLength(1);
+    expect(deliverables[0]).toMatchObject({
+      title: 'Manifest 调研报告',
+      path: '/reports/research-report.md',
+    });
+    expect(response.body).not.toContain('Scanned 调研报告');
+    await app.close();
+  });
+
+  it('falls back to scanned workspace candidates when manifest parsing fails', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        manifestError: 'Unexpected token in JSON',
+        scan: [
+          {
+            path: '/reports/fallback-report.md',
+            title: '回退扫描报告',
+            size: 2048,
+            mtime: '2026-05-30T12:00:00.000Z',
+          },
+        ],
+      }),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deliverables).toEqual([
+      expect.objectContaining({
+        title: '回退扫描报告',
+        path: '/reports/fallback-report.md',
+      }),
+    ]);
+    expect(response.body).not.toContain('Unexpected token');
+    await app.close();
+  });
+
+  it('does not leak dangerous manifest paths, secret-like urls, or token content', async () => {
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        manifest: [
+          {
+            path: '/../secrets/report.md',
+            title: '越界报告',
+            kind: 'report',
+          },
+          {
+            path: '/reports/safe-report.md',
+            title: 'safe report with sk-live-secret-token',
+            description: 'token=e2b_live_secret_123456',
+            kind: 'report',
+          },
+          {
+            title: '内部预览',
+            kind: 'preview',
+            url: 'https://18080-sbx-secret.e2b.app?token=e2b_live_secret_123456',
+          },
+          {
+            path: '/reports/public-report.md',
+            title: '公开交付报告',
+            kind: 'report',
+            url: '/workspace?path=%2Freports%2Fpublic-report.md',
+          },
+          {
+            path: '/reports/external-report.md',
+            title: '外部报告',
+            kind: 'report',
+            url: 'https://example.com/reports/public-report',
+          },
+        ],
+        scan: [
+          {
+            path: '/reports/scanned-report.md',
+            title: '扫描报告',
+            size: 2048,
+            mtime: '2026-05-30T12:00:00.000Z',
+          },
+        ],
+      }),
+      stderr: '',
+    });
+    const app = await buildAppWithRunningSession({
+      env: {
+        MYCC_IDE_PROVIDER: 'e2b',
+        MYCC_E2B_WORKSPACE_DIR: '/home/mycc/workspace',
+      },
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/deliverables',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deliverables).toEqual([
+      expect.objectContaining({
+        title: '公开交付报告',
+        path: '/reports/public-report.md',
+        url: '/workspace?path=%2Freports%2Fpublic-report.md',
+      }),
+      expect.objectContaining({
+        title: '扫描报告',
+        path: '/reports/scanned-report.md',
+      }),
+    ]);
+    expect(response.body).not.toContain('越界报告');
+    expect(response.body).not.toContain('safe report with');
+    expect(response.body).not.toContain('sk-live-secret-token');
+    expect(response.body).not.toContain('token=e2b_live_secret_123456');
+    expect(response.body).not.toContain('18080-sbx-secret.e2b.app');
+    expect(response.body).not.toContain('https://example.com/reports/public-report');
     await app.close();
   });
 

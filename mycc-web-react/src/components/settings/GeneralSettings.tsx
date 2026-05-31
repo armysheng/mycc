@@ -24,6 +24,10 @@ import {
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
 
+function toUserFacingQuotaText(text: string) {
+  return text.replace(/\btokens?\b/gi, "额度");
+}
+
 function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="mb-3 flex items-center gap-2">
@@ -210,7 +214,7 @@ export function GeneralSettings() {
                     当前套餐：{subscription.plan_name}
                   </p>
                   <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                    本月剩余 {subscription.tokens_remaining.toLocaleString()} / {subscription.tokens_limit.toLocaleString()} tokens
+                    本月剩余额度 {subscription.tokens_remaining.toLocaleString()} / {subscription.tokens_limit.toLocaleString()}
                   </p>
                 </div>
                 <div className="text-right">
@@ -218,7 +222,7 @@ export function GeneralSettings() {
                     ¥{subscription.monthly_price_cny}/月
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    每千 tokens 约 ¥{subscription.cny_per_1k_tokens}
+                    每千额度约 ¥{subscription.cny_per_1k_tokens}
                   </p>
                 </div>
               </div>
@@ -237,7 +241,7 @@ export function GeneralSettings() {
           {plansData && (
             <>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                推荐：{plansData.recommendation.reason}
+                推荐：{toUserFacingQuotaText(plansData.recommendation.reason)}
               </p>
               <div className="grid gap-2 md:grid-cols-3">
                 {plansData.plans.map((plan) => (
@@ -252,7 +256,9 @@ export function GeneralSettings() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{plan.name}</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{plan.description}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {toUserFacingQuotaText(plan.description)}
+                        </p>
                       </div>
                       {plan.is_recommended && (
                         <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
@@ -264,14 +270,14 @@ export function GeneralSettings() {
                       ¥{plan.monthly_price_cny}/月
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {plan.tokens_limit.toLocaleString()} tokens / 月
+                      {plan.tokens_limit.toLocaleString()} 额度 / 月
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       约可完成 {plan.estimated_deep_tasks} 次深度任务
                     </p>
                     <ul className="mt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
                       {plan.highlights.slice(0, 2).map((highlight) => (
-                        <li key={highlight}>- {highlight}</li>
+                        <li key={highlight}>- {toUserFacingQuotaText(highlight)}</li>
                       ))}
                     </ul>
                     <button
@@ -420,7 +426,7 @@ export function GeneralSettings() {
         <div className="space-y-1 rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
           <p>MyCC Web</p>
           <p>Version: {APP_VERSION}</p>
-          <p className="text-slate-500 dark:text-slate-400">与 Claude Code 协同的多用户前端。</p>
+          <p className="text-slate-500 dark:text-slate-400">面向个人助理协作的多用户前端。</p>
         </div>
       </section>
 

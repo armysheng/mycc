@@ -16,6 +16,13 @@ const baseSession: StoredIdeSession = {
   status: 'running',
 };
 
+const desktopSession: StoredIdeSession = {
+  ...baseSession,
+  desktopPid: 4321,
+  desktopHost: '16080-sbx_123.e2b.app',
+  desktopPort: 16080,
+};
+
 const expiredSession: StoredIdeSession = {
   ...baseSession,
   id: 'ide_expired',
@@ -59,6 +66,9 @@ describe('IDE session stores', () => {
           host: '18080-sbx_123.e2b.app',
           traffic_access_token: 'secret-token',
           port: 18080,
+          desktop_pid: null,
+          desktop_host: null,
+          desktop_port: null,
           access_mode: 'mycc-proxy',
           status: 'running',
           proxy_token: 'proxy-token',
@@ -80,6 +90,9 @@ describe('IDE session stores', () => {
       '18080-sbx_123.e2b.app',
       'secret-token',
       18080,
+      null,
+      null,
+      null,
       'mycc-proxy',
       'running',
       'proxy-token',
@@ -88,6 +101,57 @@ describe('IDE session stores', () => {
     ]);
     expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('SELECT'), ['ide_123']);
     expect(reloaded).toEqual(baseSession);
+  });
+
+  it('persists optional desktop service details through Postgres', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{
+          id: 'ide_123',
+          user_id: 42,
+          provider: 'e2b',
+          sandbox_id: 'sbx_123',
+          code_server_pid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          traffic_access_token: 'secret-token',
+          port: 18080,
+          desktop_pid: 4321,
+          desktop_host: '16080-sbx_123.e2b.app',
+          desktop_port: 16080,
+          access_mode: 'mycc-proxy',
+          status: 'running',
+          proxy_token: 'proxy-token',
+          expires_at: new Date('2099-05-29T14:00:00.000Z'),
+          stopped_at: null,
+        }],
+      });
+    const store = new PostgresIdeSessionStore({ query });
+
+    await store.set(desktopSession);
+    const reloaded = await store.get(desktopSession.id);
+
+    expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('desktop_pid'), [
+      'ide_123',
+      42,
+      'e2b',
+      'sbx_123',
+      1234,
+      '18080-sbx_123.e2b.app',
+      'secret-token',
+      18080,
+      4321,
+      '16080-sbx_123.e2b.app',
+      16080,
+      'mycc-proxy',
+      'running',
+      'proxy-token',
+      '2099-05-29T14:00:00.000Z',
+      null,
+    ]);
+    expect(reloaded).toEqual(desktopSession);
   });
 
   it('loads reusable running IDE sessions for a user from Postgres', async () => {
@@ -102,6 +166,9 @@ describe('IDE session stores', () => {
         host: '18080-sbx_123.e2b.app',
         traffic_access_token: 'secret-token',
         port: 18080,
+        desktop_pid: null,
+        desktop_host: null,
+        desktop_port: null,
         access_mode: 'mycc-proxy',
         status: 'running',
         proxy_token: 'proxy-token',
@@ -130,6 +197,9 @@ describe('IDE session stores', () => {
         host: '18080-sbx_expired.e2b.app',
         traffic_access_token: 'secret-token',
         port: 18080,
+        desktop_pid: null,
+        desktop_host: null,
+        desktop_port: null,
         access_mode: 'mycc-proxy',
         status: 'running',
         proxy_token: 'proxy-token',

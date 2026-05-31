@@ -13,6 +13,7 @@ export interface SkillInfo {
   legacy: boolean;
   enabled: boolean;
   upgradable: boolean;
+  stats?: SkillStats;
 }
 
 export interface SkillsListResult {
@@ -25,6 +26,14 @@ export interface InstallSkillResult {
   skillId: string;
   installed: boolean;
   version: string;
+  source: string;
+  targetPath: string;
+}
+
+export interface SkillInstallMetadata {
+  version: string;
+  source: string;
+  targetPath: string;
 }
 
 export interface SkillActionResult {
@@ -33,7 +42,25 @@ export interface SkillActionResult {
   enabled?: boolean;
   version?: string;
   uninstalled?: boolean;
+  source?: string;
+  targetPath?: string;
 }
+
+export interface SkillStats {
+  downloads: number;
+  installs: number;
+  updates: number;
+  uses: number;
+}
+
+export type SkillEventType =
+  | 'download'
+  | 'install'
+  | 'install_failed'
+  | 'update'
+  | 'update_failed'
+  | 'use'
+  | 'uninstall';
 
 export interface SkillsContext {
   userId: number;
@@ -57,6 +84,7 @@ export interface SkillDefinition {
   id: string;
   name: string;
   description: string;
+  version?: string;
   trigger: string;
   icon: string;
   category: SkillCategory;

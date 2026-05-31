@@ -182,7 +182,7 @@ function buildAgentSdkBridgeEnv(
     MYCC_AGENT_PROMPT_B64: Buffer.from(params.message, 'utf8').toString('base64'),
     MYCC_AGENT_SDK_ALLOWED_TOOLS: process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS,
     MYCC_AGENT_SDK_PARTIAL_MESSAGES: process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES || 'false',
-    MYCC_AGENT_SDK_PERMISSION_MODE: resolvePermissionMode(),
+    MYCC_AGENT_SDK_PERMISSION_MODE: resolvePermissionMode(params.permissionMode),
     MYCC_AGENT_WORKSPACE_CWD: cwd,
     MYCC_E2B_AGENT_SDK_MODEL: resolveAgentSdkModel(),
     XDG_CONFIG_HOME: `${home}/.config`,
@@ -192,8 +192,8 @@ function buildAgentSdkBridgeEnv(
   };
 }
 
-function resolvePermissionMode(): string {
-  const raw = (process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'dontAsk').trim();
+function resolvePermissionMode(requestedMode?: string): string {
+  const raw = (requestedMode || process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'bypassPermissions').trim();
   if (SUPPORTED_PERMISSION_MODES.has(raw)) {
     return raw;
   }

@@ -13,6 +13,8 @@ describe('IDE session service config', () => {
     delete process.env.MYCC_IDE_SESSION_TTL_SECONDS;
     delete process.env.MYCC_E2B_LINUX_USER;
     delete process.env.MYCC_E2B_WORKSPACE_DIR;
+    delete process.env.MYCC_E2B_DESKTOP_ENABLED;
+    delete process.env.MYCC_E2B_DESKTOP_PORT;
   });
 
   it('keeps remote IDE disabled by default', () => {
@@ -23,9 +25,8 @@ describe('IDE session service config', () => {
     });
   });
 
-  it('builds an E2B code-server plan that requires the mycc proxy', () => {
+  it('builds an E2B assistant sandbox plan that requires the mycc proxy by default', () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
-    process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
 
     const plan = buildE2bCodeServerSessionPlan({
       linuxUser: 'tester',
@@ -35,7 +36,7 @@ describe('IDE session service config', () => {
 
     expect(plan).toEqual({
       provider: 'e2b',
-      template: 'mycc-code-server-dev',
+      template: 'mycc-assistant-sandbox-dev',
       userId: 42,
       linuxUser: 'mycc',
       workspaceDir: '/home/mycc/workspace',
@@ -45,6 +46,16 @@ describe('IDE session service config', () => {
       accessMode: 'mycc-proxy',
       startCommand: expect.stringContaining("'code-server'"),
     });
+  });
+
+  it('advertises assistant sandbox desktop capability when E2B is enabled without a custom template', () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+
+    expect(resolveIdeConfig()).toEqual(expect.objectContaining({
+      e2bTemplate: 'mycc-assistant-sandbox-dev',
+      desktopEnabled: true,
+      desktopPort: 16080,
+    }));
   });
 
   it('uses the E2B template linux user instead of the product linux user', () => {
@@ -75,5 +86,29 @@ describe('IDE session service config', () => {
 
     expect(() => resolveIdeConfig())
       .toThrow('Invalid code-server port: 65536');
+  });
+
+  it('advertises desktop capability for the assistant sandbox template', () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_TEMPLATE = 'mycc-assistant-sandbox-dev';
+
+    expect(resolveIdeConfig()).toEqual(expect.objectContaining({
+      e2bTemplate: 'mycc-assistant-sandbox-dev',
+      desktopEnabled: true,
+      desktopPort: 16080,
+    }));
+  });
+
+  it('can explicitly enable desktop for custom E2B templates', () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_TEMPLATE = 'mycc-custom-sandbox';
+    process.env.MYCC_E2B_DESKTOP_ENABLED = 'true';
+    process.env.MYCC_E2B_DESKTOP_PORT = '26080';
+
+    expect(resolveIdeConfig()).toEqual(expect.objectContaining({
+      e2bTemplate: 'mycc-custom-sandbox',
+      desktopEnabled: true,
+      desktopPort: 26080,
+    }));
   });
 });

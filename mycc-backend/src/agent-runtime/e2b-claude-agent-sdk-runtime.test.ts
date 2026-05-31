@@ -76,6 +76,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
           CLAUDE_CONFIG_DIR: '/home/mycc/.mycc/claude',
           HOME: '/home/mycc/.mycc/home',
           MYCC_AGENT_SESSION_ID: 'session-1',
+          MYCC_AGENT_SDK_PERMISSION_MODE: 'bypassPermissions',
           MYCC_AGENT_WORKSPACE_CWD: '/home/mycc/workspace',
         }),
       }),
@@ -147,6 +148,35 @@ describe('E2bClaudeAgentSdkRuntime', () => {
       { type: 'error', error: 'Unsupported E2B Agent SDK permission mode: writeEverything' },
     ]);
     expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it('passes an explicit request permission mode to the sandbox bridge', async () => {
+    const runCommand = vi.fn().mockImplementation(async (_session, _command, options) => {
+      await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+      permissionMode: 'plan',
+    }));
+
+    expect(runCommand).toHaveBeenCalledWith(
+      runningSession,
+      'cd /opt/mycc-agent-runtime && node bridge.mjs',
+      expect.objectContaining({
+        envs: expect.objectContaining({
+          MYCC_AGENT_SDK_PERMISSION_MODE: 'plan',
+        }),
+      }),
+    );
   });
 
   it('creates and stores an E2B IDE sandbox when chat starts before Remote IDE opens', async () => {

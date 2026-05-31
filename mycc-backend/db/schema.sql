@@ -64,6 +64,9 @@ CREATE TABLE ide_sessions (
   host VARCHAR(255) NOT NULL,
   traffic_access_token TEXT,
   port INTEGER NOT NULL,
+  desktop_pid INTEGER,
+  desktop_host VARCHAR(255),
+  desktop_port INTEGER,
   access_mode VARCHAR(40) NOT NULL CHECK (access_mode IN ('mycc-proxy')),
   status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'stopped')),
   proxy_token UUID NOT NULL,
@@ -73,6 +76,27 @@ CREATE TABLE ide_sessions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 技能事件表（安装、更新、使用、失败等运营统计）
+CREATE TABLE skill_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  skill_id VARCHAR(120) NOT NULL,
+  event_type VARCHAR(40) NOT NULL CHECK (event_type IN (
+    'download',
+    'install',
+    'install_failed',
+    'update',
+    'update_failed',
+    'use',
+    'uninstall'
+  )),
+  version VARCHAR(80),
+  source VARCHAR(80),
+  target_path TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 索引
 CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX idx_usage_logs_created_at ON usage_logs(created_at);
@@ -80,6 +104,9 @@ CREATE INDEX idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_ide_sessions_user_id ON ide_sessions(user_id);
 CREATE INDEX idx_ide_sessions_status_expires_at ON ide_sessions(status, expires_at);
+CREATE INDEX idx_skill_events_skill_id_event_type ON skill_events(skill_id, event_type);
+CREATE INDEX idx_skill_events_user_id_created_at ON skill_events(user_id, created_at DESC);
+CREATE INDEX idx_skill_events_created_at ON skill_events(created_at DESC);
 
 -- 触发器：自动更新 updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()

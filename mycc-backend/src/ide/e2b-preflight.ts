@@ -25,7 +25,7 @@ export type E2bPreflightOptions = {
   templateExists?: (templateName: string, apiKey: string) => Promise<boolean>;
 };
 
-export const DEFAULT_E2B_AGENT_TEMPLATE_NAME = 'mycc-code-server-dev';
+export const DEFAULT_E2B_AGENT_TEMPLATE_NAME = 'mycc-assistant-sandbox-dev';
 
 export type E2bPreflightReadyResult = {
   apiKey: string;
@@ -319,7 +319,7 @@ async function checkE2bTemplateExists(params: {
       label: 'E2B template',
       status: 'error',
       message: `E2B template does not exist: ${params.templateName}.`,
-      action: 'Create/build the template from mycc-backend/templates/e2b-code-server in the same E2B account.',
+      action: 'Create/build the assistant template from mycc-sandbox, or use the legacy mycc-backend/templates/e2b-code-server path only for code-server-only checks.',
     };
   }
 

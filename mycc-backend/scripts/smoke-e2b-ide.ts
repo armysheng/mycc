@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { Template } from 'e2b';
 import jwt from 'jsonwebtoken';
 import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
+import { DEFAULT_E2B_AGENT_TEMPLATE_NAME } from '../src/ide/e2b-preflight.js';
 import { PostgresIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 import { pool } from '../src/db/client.js';
 
@@ -28,7 +29,7 @@ type IdeSessionResponse = {
 
 const BASE_URL = (process.env.BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
-const TEMPLATE_NAME = process.env.MYCC_E2B_TEMPLATE || 'mycc-code-server-dev';
+const TEMPLATE_NAME = process.env.MYCC_E2B_TEMPLATE || DEFAULT_E2B_AGENT_TEMPLATE_NAME;
 const TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_TIMEOUT_MS, 120_000);
 const DIRECT_HOST_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_DIRECT_HOST_TIMEOUT_MS, 15_000);
 const USER_ID = parsePositiveInteger(process.env.MYCC_SMOKE_USER_ID, 42);

@@ -121,11 +121,36 @@ export function buildProjectContextPrompt(contextFiles: EmbeddedContextFile[]): 
   return lines.join('\n');
 }
 
+export function buildWorkspaceOperatingPrompt(): string {
+  return [
+    '# MyCC Workspace Operating Rules',
+    '',
+    'When this turn creates or updates a user-facing result, keep the workspace result registry up to date.',
+    'Registry path: `.mycc/deliverables.json` under the current workspace. Create `.mycc/` if it does not exist.',
+    'Use a JSON object like `{ "deliverables": [...] }`. Merge existing entries and deduplicate by `path`.',
+    'Each ready result should include: `path`, `title`, `kind`, `status`, `description`, and `updatedAt`.',
+    'Allowed `kind` values: `report`, `document`, `preview`, `screenshot`, `log`, `diff`, `dataset`, `link`, `code_change`, `pr`.',
+    'Use workspace-relative paths with a leading slash, for example `/reports/product-plan.md`.',
+    'Never write secrets, access tokens, private credentials, internal provider URLs, or raw infrastructure details into the registry.',
+  ].join('\n');
+}
+
+export function injectWorkspaceOperatingPrompt(message: string): string {
+  return [
+    buildWorkspaceOperatingPrompt(),
+    '',
+    '## User Request',
+    message,
+  ].join('\n');
+}
+
 export function injectProjectContextPrompt(message: string, projectContextPrompt: string): string {
   const context = projectContextPrompt.trim();
   if (!context) return message;
   return [
     context,
+    '',
+    buildWorkspaceOperatingPrompt(),
     '',
     '## User Request',
     message,

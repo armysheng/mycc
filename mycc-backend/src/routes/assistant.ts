@@ -43,8 +43,13 @@ type AssistantDeliverableEmptyState = {
 type WorkspaceDeliverableCandidate = {
   path?: unknown;
   title?: unknown;
+  kind?: unknown;
+  status?: unknown;
+  description?: unknown;
+  url?: unknown;
   size?: unknown;
   mtime?: unknown;
+  updatedAt?: unknown;
 };
 
 type AssistantDeliverableCard = {
@@ -65,16 +70,36 @@ const DELIVERABLE_SCAN_SCRIPT = [
   'const path=require("path");',
   'const root=path.resolve(process.argv[1]||process.cwd());',
   'const rootReal=fs.realpathSync(root);',
+  'const manifestPath=path.join(rootReal,".mycc","deliverables.json");',
   'const maxDepth=5;',
   'const maxItems=16;',
   'const ignoreDirs=new Set([".git",".claude",".config",".ssh","node_modules","dist","build","coverage",".next",".vite"]);',
-  'const deliverableWords=["report","summary","spec","plan","proposal","design","research","review","deliverable","artifact","报告","总结","方案","计划","规划","调研","设计","复盘","制品","交付"];',
+  'const deliverableWords=["report","summary","spec","plan","proposal","design","research","review","deliverable","artifact","preview","screenshot","log","diff","patch","报告","总结","方案","计划","规划","调研","设计","复盘","制品","交付","预览","截图","日志"];',
+  'const deliverableExts=new Set([".md",".html",".htm",".png",".jpg",".jpeg",".webp",".svg",".log",".txt",".diff",".patch"]);',
   'const secretWords=[".env","secret","token","credential","password","passwd","private","apikey","api_key","auth"];',
   'const out=[];',
   'const inside=(base,p)=>p===base||p.startsWith(base+path.sep);',
   'const safe=(rel)=>{const lower=rel.toLowerCase();return !secretWords.some((word)=>lower.includes(word));};',
   'const useful=(rel)=>{const lower=rel.toLowerCase();return deliverableWords.some((word)=>lower.includes(word));};',
   'const title=(rel)=>path.basename(rel).replace(/\\.md$/i,"").replace(/[-_]+/g," ").trim()||path.basename(rel);',
+  'const relPath=(value)=>{',
+  '  if(typeof value!=="string"||!value.trim())return "";',
+  '  const raw=value.replace(/\\\\/g,"/");',
+  '  const abs=path.isAbsolute(raw)?path.resolve(raw):path.resolve(rootReal,raw);',
+  '  let real=abs;',
+  '  try{real=fs.existsSync(abs)?fs.realpathSync(abs):abs;}catch{}',
+  '  if(!inside(rootReal,real))return "";',
+  '  return "/"+path.relative(rootReal,real).split(path.sep).join("/");',
+  '};',
+  'let manifest;',
+  'let manifestError;',
+  'try{',
+  '  if(fs.existsSync(manifestPath)){',
+  '    const parsed=JSON.parse(fs.readFileSync(manifestPath,"utf8"));',
+  '    const entries=Array.isArray(parsed)?parsed:(Array.isArray(parsed.deliverables)?parsed.deliverables:(Array.isArray(parsed.items)?parsed.items:[]));',
+  '    manifest=entries.map((entry)=>entry&&typeof entry==="object"?{...entry,path:relPath(entry.path)}:entry);',
+  '  }',
+  '}catch(error){manifestError=error&&error.message?String(error.message):"manifest parse failed";}',
   'function walk(abs,depth){',
   '  if(out.length>=maxItems||depth>maxDepth)return;',
   '  let entries;',
@@ -96,13 +121,13 @@ const DELIVERABLE_SCAN_SCRIPT = [
   '      walk(real,depth+1);',
   '      continue;',
   '    }',
-  '    if(!entry.name.toLowerCase().endsWith(".md"))continue;',
+  '    if(!deliverableExts.has(path.extname(entry.name).toLowerCase()))continue;',
   '    if(!safe(rel)||!useful(rel))continue;',
   '    out.push({path:"/"+rel,title:title(rel),size:stat.size,mtime:new Date(stat.mtimeMs).toISOString()});',
   '  }',
   '}',
   'walk(rootReal,0);',
-  'process.stdout.write(JSON.stringify(out));',
+  'process.stdout.write(JSON.stringify({manifest,manifestError,scan:out}));',
 ].join('');
 
 export async function assistantRoutes(
@@ -123,7 +148,9 @@ export async function assistantRoutes(
     }
 
     const user = await findUserById(request.user.userId);
-    const conversations = await getUserConversations(request.user.userId, 6, 0);
+    const conversations = (await getUserConversations(request.user.userId, 12, 0))
+      .filter(isUserVisibleConversation)
+      .slice(0, 6);
     const session = await sessionStore.findReusableByUser(request.user.userId);
     const memory = buildMemorySources(user, Boolean(session));
     const deliverables = await collectWorkspaceDeliverables({
@@ -218,6 +245,19 @@ function toTaskCard(conversation: ConversationSummary) {
   };
 }
 
+function isUserVisibleConversation(conversation: ConversationSummary): boolean {
+  const title = (conversation.title || '').trim();
+  const lowerTitle = title.toLowerCase();
+
+  if (lowerTitle === 'continue') return false;
+  if (title.includes('你正在执行用户工作区首次初始化')) return false;
+  if (title.includes('初始化票据')) return false;
+  if (title.includes('BOOTSTRAP.md')) return false;
+  if (lowerTitle.includes('onboarding bootstrap')) return false;
+
+  return true;
+}
+
 function buildMemorySources(
   user: User | null,
   hasWorkspace: boolean,
@@ -279,7 +319,7 @@ function buildCapabilities(session: StoredIdeSession | null) {
       id: 'desktop',
       label: '云桌面',
       status: 'disabled',
-      description: 'GNU 图形桌面能力正在单独设计，v0 默认隐藏。',
+      description: '桌面工作间能力正在单独设计，默认隐藏。',
       actionLabel: '暂未启用',
       hidden: true,
     },
@@ -313,12 +353,7 @@ async function collectWorkspaceDeliverables(params: {
       return [];
     }
 
-    const parsed = JSON.parse(result.stdout) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return toWorkspaceDeliverableCards(parsed as WorkspaceDeliverableCandidate[]);
+    return parseWorkspaceDeliverablesPayload(JSON.parse(result.stdout) as unknown);
   } catch {
     return [];
   }
@@ -326,43 +361,111 @@ async function collectWorkspaceDeliverables(params: {
 
 export function toWorkspaceDeliverableCards(
   candidates: WorkspaceDeliverableCandidate[],
+  options: { requireUseful?: boolean; preserveOrder?: boolean } = {},
 ): AssistantDeliverableCard[] {
   const seen = new Set<string>();
   const cards: AssistantDeliverableCard[] = [];
+  const requireUseful = options.requireUseful ?? true;
+  const orderedCandidates = options.preserveOrder ? candidates : sortDeliverableCandidates(candidates);
 
-  for (const candidate of candidates) {
+  for (const candidate of orderedCandidates) {
     const path = typeof candidate.path === 'string' ? candidate.path : '';
     const title = typeof candidate.title === 'string' ? candidate.title.trim() : '';
-    if (!isSafeWorkspaceDeliverablePath(path) || !isUsefulDeliverableCandidate(path, title)) {
+    const description = typeof candidate.description === 'string'
+      ? candidate.description.trim()
+      : '';
+    const url = typeof candidate.url === 'string' ? candidate.url.trim() : '';
+    if (
+      !isSafeWorkspaceDeliverablePath(path)
+      || (requireUseful && !isUsefulDeliverableCandidate(path, title))
+      || !isSafeDeliverableText(title)
+      || !isSafeDeliverableText(description)
+      || (url && !isSafeDeliverableUrl(url))
+    ) {
       continue;
     }
 
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const normalizedPath = normalizeWorkspaceDeliverablePath(path);
+    if (!normalizedPath) {
+      continue;
+    }
     if (seen.has(normalizedPath)) {
       continue;
     }
     seen.add(normalizedPath);
 
-    const updatedAt = typeof candidate.mtime === 'string' && !Number.isNaN(new Date(candidate.mtime).getTime())
-      ? new Date(candidate.mtime).toISOString()
+    const timestamp = typeof candidate.updatedAt === 'string' ? candidate.updatedAt : candidate.mtime;
+    const updatedAt = typeof timestamp === 'string' && !Number.isNaN(new Date(timestamp).getTime())
+      ? new Date(timestamp).toISOString()
       : undefined;
     const size = typeof candidate.size === 'number' && Number.isFinite(candidate.size)
       ? candidate.size
       : null;
+    const kind = isDeliverableKind(candidate.kind)
+      ? candidate.kind
+      : inferDeliverableKind(normalizedPath, title);
+    const status = isDeliverableStatus(candidate.status) ? candidate.status : 'ready';
+    const safeDescription = description || (size ? `${Math.ceil(size / 1024)} KB · 来自当前工作区` : '来自当前工作区');
 
     cards.push({
       id: `workspace:${normalizedPath}`,
-      kind: inferDeliverableKind(normalizedPath, title),
+      kind,
       title: title || deriveTitleFromPath(normalizedPath),
       source: 'current_workspace',
-      status: 'ready',
+      status,
       path: normalizedPath,
+      ...(url ? { url } : {}),
       ...(updatedAt ? { updatedAt } : {}),
-      ...(size ? { description: `${Math.ceil(size / 1024)} KB · 来自当前工作区` } : { description: '来自当前工作区' }),
+      description: safeDescription,
     });
   }
 
   return cards.slice(0, 8);
+}
+
+function parseWorkspaceDeliverablesPayload(parsed: unknown): AssistantDeliverableCard[] {
+  if (Array.isArray(parsed)) {
+    return toWorkspaceDeliverableCards(parsed as WorkspaceDeliverableCandidate[]);
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return [];
+  }
+
+  const payload = parsed as {
+    manifest?: unknown;
+    manifestError?: unknown;
+    scan?: unknown;
+  };
+  const scanCandidates = Array.isArray(payload.scan)
+    ? payload.scan as WorkspaceDeliverableCandidate[]
+    : [];
+  if (payload.manifestError) {
+    return toWorkspaceDeliverableCards(scanCandidates);
+  }
+
+  const manifestCandidates = Array.isArray(payload.manifest)
+    ? payload.manifest as WorkspaceDeliverableCandidate[]
+    : [];
+  return mergeDeliverableCards([
+    ...toWorkspaceDeliverableCards(manifestCandidates, { preserveOrder: true }),
+    ...toWorkspaceDeliverableCards(scanCandidates),
+  ]);
+}
+
+function mergeDeliverableCards(cards: AssistantDeliverableCard[]): AssistantDeliverableCard[] {
+  const seen = new Set<string>();
+  const merged: AssistantDeliverableCard[] = [];
+
+  for (const card of cards) {
+    const key = card.path ?? card.url ?? card.id;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(card);
+  }
+
+  return merged.slice(0, 8);
 }
 
 function isSafeWorkspaceDeliverablePath(rawPath: string): boolean {
@@ -371,8 +474,14 @@ function isSafeWorkspaceDeliverablePath(rawPath: string): boolean {
   }
 
   const normalized = rawPath.replace(/\\/g, '/');
+  if (normalized.includes(':') || normalized.startsWith('//') || normalized.startsWith('/home/')) {
+    return false;
+  }
+  if (normalized.split('/').some((part) => part === '..')) {
+    return false;
+  }
   const lower = normalized.toLowerCase();
-  if (!lower.endsWith('.md')) {
+  if (!isSupportedDeliverablePath(lower)) {
     return false;
   }
   if (normalized.split('/').some((part) => part.startsWith('.') && part !== '')) {
@@ -393,6 +502,60 @@ function isSafeWorkspaceDeliverablePath(rawPath: string): boolean {
   ].some((word) => lower.includes(word));
 }
 
+function normalizeWorkspaceDeliverablePath(rawPath: string): string | null {
+  const normalized = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!normalized || normalized.split('/').some((part) => !part || part === '.' || part === '..')) {
+    return null;
+  }
+
+  return `/${normalized}`;
+}
+
+function isSafeDeliverableText(value: string): boolean {
+  if (!value) {
+    return true;
+  }
+  const lower = value.toLowerCase();
+  return ![
+    'secret',
+    'token',
+    'credential',
+    'password',
+    'passwd',
+    'apikey',
+    'api_key',
+    'authorization',
+    'e2b_live_',
+    'sk-',
+  ].some((word) => lower.includes(word));
+}
+
+function isSafeDeliverableUrl(rawUrl: string): boolean {
+  if (!isSafeDeliverableText(rawUrl)) {
+    return false;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(rawUrl, 'http://mycc.local');
+  } catch {
+    return false;
+  }
+
+  if (url.origin !== 'http://mycc.local') {
+    return false;
+  }
+
+  if (!['/workspace', '/api/workspace/file'].includes(url.pathname)) {
+    return false;
+  }
+
+  return !Array.from(url.searchParams.keys()).some((key) => {
+    const lower = key.toLowerCase();
+    return ['token', 'access_token', 'auth', 'key', 'secret', 'password'].some((word) => lower.includes(word));
+  });
+}
+
 function isUsefulDeliverableCandidate(path: string, title: string): boolean {
   const haystack = `${path} ${title}`.toLowerCase();
   return [
@@ -406,6 +569,11 @@ function isUsefulDeliverableCandidate(path: string, title: string): boolean {
     'review',
     'deliverable',
     'artifact',
+    'preview',
+    'screenshot',
+    'log',
+    'diff',
+    'patch',
     '报告',
     '总结',
     '方案',
@@ -416,15 +584,74 @@ function isUsefulDeliverableCandidate(path: string, title: string): boolean {
     '复盘',
     '制品',
     '交付',
+    '预览',
+    '截图',
+    '日志',
   ].some((word) => haystack.includes(word));
 }
 
 function inferDeliverableKind(path: string, title: string): AssistantDeliverableCard['kind'] {
   const haystack = `${path} ${title}`.toLowerCase();
+  if (/\.(diff|patch)$/i.test(path) || ['diff', 'patch'].some((word) => haystack.includes(word))) {
+    return 'diff';
+  }
+  if (/\.(log|txt)$/i.test(path) || ['log', '日志'].some((word) => haystack.includes(word))) {
+    return 'log';
+  }
+  if (/\.(png|jpe?g|webp|svg)$/i.test(path) || ['screenshot', '截图'].some((word) => haystack.includes(word))) {
+    return 'screenshot';
+  }
+  if (/\.(html?)$/i.test(path) || ['preview', '预览'].some((word) => haystack.includes(word))) {
+    return 'preview';
+  }
   if (['report', 'research', 'review', '调研', '报告', '复盘'].some((word) => haystack.includes(word))) {
     return 'report';
   }
   return 'document';
+}
+
+function isDeliverableKind(value: unknown): value is AssistantDeliverableCard['kind'] {
+  return typeof value === 'string' && [
+    'document',
+    'code_change',
+    'diff',
+    'report',
+    'link',
+    'preview',
+    'screenshot',
+    'log',
+    'pr',
+    'dataset',
+  ].includes(value);
+}
+
+function isDeliverableStatus(value: unknown): value is AssistantDeliverableCard['status'] {
+  return typeof value === 'string' && ['ready', 'pending', 'error'].includes(value);
+}
+
+function isSupportedDeliverablePath(lowerPath: string): boolean {
+  return [
+    '.md',
+    '.html',
+    '.htm',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.svg',
+    '.log',
+    '.txt',
+    '.diff',
+    '.patch',
+  ].some((ext) => lowerPath.endsWith(ext));
+}
+
+function sortDeliverableCandidates(candidates: WorkspaceDeliverableCandidate[]): WorkspaceDeliverableCandidate[] {
+  return [...candidates].sort((a, b) => {
+    const left = typeof a.mtime === 'string' ? new Date(a.mtime).getTime() : 0;
+    const right = typeof b.mtime === 'string' ? new Date(b.mtime).getTime() : 0;
+    return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left);
+  });
 }
 
 function deriveTitleFromPath(path: string): string {

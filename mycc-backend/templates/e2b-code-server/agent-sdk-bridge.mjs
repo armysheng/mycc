@@ -12,7 +12,7 @@ const allowedTools = (process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS || DEFAULT_ALLOWE
   .split(',')
   .map((tool) => tool.trim())
   .filter(Boolean);
-const permissionMode = (process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'dontAsk').trim();
+const permissionMode = (process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'bypassPermissions').trim();
 
 const options = {
   allowedTools,

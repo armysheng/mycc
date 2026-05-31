@@ -14,7 +14,6 @@ import remarkGfm from "remark-gfm";
 import { TimestampComponent } from "./TimestampComponent";
 import { MessageContainer } from "./messages/MessageContainer";
 import { CollapsibleDetails } from "./messages/CollapsibleDetails";
-import { MESSAGE_CONSTANTS } from "../utils/constants";
 import {
   createEditResult,
   createBashPreview,
@@ -78,6 +77,24 @@ function AssistantMarkdown({ content }: { content: string }) {
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+function getToolActivityLabel(
+  toolName: string | undefined,
+  input?: Record<string, unknown>,
+): string {
+  if (!toolName || toolName === "Tool") return "正在处理资料...";
+  if (toolName === "Bash") return "正在执行一个本地操作...";
+  return getToolDisplayText(toolName, input).replace(/命令/g, "本地操作");
+}
+
+function getToolResultLabel(toolName: string): string {
+  if (toolName === "Bash") return "本地操作结果";
+  if (toolName === "Edit" || toolName === "Write") return "整理结果";
+  if (toolName === "Read" || toolName === "Grep" || toolName === "Glob") {
+    return "资料查找结果";
+  }
+  return "运行结果";
+}
 
 // Type guard to check if the message is a hooks message
 function isHooksMessage(
@@ -183,18 +200,14 @@ export function SystemMessageComponent({
       message.subtype === "init"
     ) {
       return [
-        `Model: ${message.model}`,
-        `Session: ${message.session_id.substring(0, MESSAGE_CONSTANTS.SESSION_ID_DISPLAY_LENGTH)}`,
-        `Tools: ${message.tools.length} available`,
-        `CWD: ${message.cwd}`,
-        `Permission Mode: ${message.permissionMode}`,
-        `API Key Source: ${message.apiKeySource}`,
+        "助理已准备好，可以继续为你处理当前任务。",
+        "本地资料和操作能力已就绪。",
+        "需要更多细节时，可以继续问我当前运行记录。",
       ].join("\n");
     } else if (message.type === "result") {
       const details = [
-        `Duration: ${message.duration_ms}ms`,
-        `Cost: $${message.total_cost_usd.toFixed(4)}`,
-        `Tokens: ${message.usage.input_tokens} in, ${message.usage.output_tokens} out`,
+        `本次整理用时：${message.duration_ms}ms`,
+        "已完成本轮回复所需的后台整理。",
       ];
       return details.join("\n");
     } else if (message.type === "error") {
@@ -209,10 +222,10 @@ export function SystemMessageComponent({
 
   // Get label based on message type
   const getLabel = () => {
-    if (message.type === "system") return "System";
-    if (message.type === "result") return "Result";
-    if (message.type === "error") return "系统错误";
-    return "Message";
+    if (message.type === "system") return "运行记录";
+    if (message.type === "result") return "整理完成";
+    if (message.type === "error") return "需要处理的问题";
+    return "运行记录";
   };
 
   const details = getDetails();
@@ -244,7 +257,7 @@ export function SystemMessageComponent({
     <CollapsibleDetails
       label={getLabel()}
       details={details}
-      badge={"subtype" in message ? message.subtype : undefined}
+      badge={undefined}
       icon={
         isError ? (
           <span className="bg-red-500 dark:bg-red-600">!</span>
@@ -264,16 +277,13 @@ interface ToolMessageComponentProps {
 }
 
 export function ToolMessageComponent({ message }: ToolMessageComponentProps) {
-  const displayText = getToolDisplayText(
-    message.toolName || "Tool",
-    message.input,
-  );
+  const displayText = getToolActivityLabel(message.toolName, message.input);
 
   return (
     <CollapsibleDetails
       label={displayText}
       details={message.content}
-      badge="调用中"
+      badge="进行中"
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">⚡</span>}
       colorScheme={{
         header: "text-emerald-800 dark:text-emerald-300",
@@ -347,7 +357,7 @@ export function ToolResultMessageComponent({
 
   return (
     <CollapsibleDetails
-      label={`结果: ${message.toolName}`}
+      label={getToolResultLabel(message.toolName)}
       details={displayContent}
       badge={message.summary}
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">✓</span>}
@@ -382,7 +392,7 @@ export function PlanMessageComponent({ message }: PlanMessageComponentProps) {
           <div className="w-4 h-4 bg-blue-500 dark:bg-blue-600 rounded-full flex items-center justify-center text-white text-xs">
             📋
           </div>
-          Ready to code?
+          准备继续
         </div>
         <TimestampComponent
           timestamp={message.timestamp}
@@ -392,7 +402,7 @@ export function PlanMessageComponent({ message }: PlanMessageComponentProps) {
 
       <div className="mb-3">
         <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
-          Here is Claude's plan:
+          我整理了一个执行计划：
         </p>
         <div className="bg-blue-100/50 dark:bg-blue-800/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
           <pre className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-wrap font-mono leading-relaxed">

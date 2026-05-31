@@ -1,14 +1,17 @@
 import type { QueryResult } from 'pg';
 import { pool as defaultPool } from '../db/client.js';
-import type { StartedCodeServerSession } from './e2b-provider.js';
+import type { StartedCodeServerSession, StartedDesktopService } from './e2b-provider.js';
 
 export type IdeSessionStatus = 'running' | 'stopped';
 
-export type StoredIdeSession = StartedCodeServerSession & {
+export type StoredIdeSession = StartedCodeServerSession & Partial<StartedDesktopService> & {
   id: string;
   proxyToken: string;
   userId: number;
   status: IdeSessionStatus;
+  desktopPid?: number;
+  desktopHost?: string;
+  desktopPort?: number;
 };
 
 export type IdeSessionStore = {
@@ -34,6 +37,9 @@ type IdeSessionRow = {
   host: string;
   traffic_access_token: string | null;
   port: number;
+  desktop_pid: number | null;
+  desktop_host: string | null;
+  desktop_port: number | null;
   access_mode: 'mycc-proxy';
   status: IdeSessionStatus;
   proxy_token: string;
@@ -82,6 +88,9 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
               host,
               traffic_access_token,
               port,
+              desktop_pid,
+              desktop_host,
+              desktop_port,
               access_mode,
               status,
               proxy_token,
@@ -107,13 +116,16 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
          host,
          traffic_access_token,
          port,
+         desktop_pid,
+         desktop_host,
+         desktop_port,
          access_mode,
          status,
          proxy_token,
          expires_at,
          stopped_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz, $13::timestamptz)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::timestamptz, $16::timestamptz)
        ON CONFLICT (id)
        DO UPDATE SET user_id = EXCLUDED.user_id,
                      provider = EXCLUDED.provider,
@@ -122,6 +134,9 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
                      host = EXCLUDED.host,
                      traffic_access_token = EXCLUDED.traffic_access_token,
                      port = EXCLUDED.port,
+                     desktop_pid = EXCLUDED.desktop_pid,
+                     desktop_host = EXCLUDED.desktop_host,
+                     desktop_port = EXCLUDED.desktop_port,
                      access_mode = EXCLUDED.access_mode,
                      status = EXCLUDED.status,
                      proxy_token = EXCLUDED.proxy_token,
@@ -137,6 +152,9 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
         session.host,
         session.trafficAccessToken ?? null,
         session.port,
+        session.desktopPid ?? null,
+        session.desktopHost ?? null,
+        session.desktopPort ?? null,
         session.accessMode,
         session.status,
         session.proxyToken,
@@ -156,6 +174,9 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
               host,
               traffic_access_token,
               port,
+              desktop_pid,
+              desktop_host,
+              desktop_port,
               access_mode,
               status,
               proxy_token,
@@ -184,6 +205,9 @@ export class PostgresIdeSessionStore implements IdeSessionStore {
               host,
               traffic_access_token,
               port,
+              desktop_pid,
+              desktop_host,
+              desktop_port,
               access_mode,
               status,
               proxy_token,
@@ -210,6 +234,9 @@ function fromRow(row: IdeSessionRow): StoredIdeSession {
     host: row.host,
     ...(row.traffic_access_token ? { trafficAccessToken: row.traffic_access_token } : {}),
     port: row.port,
+    ...(row.desktop_pid ? { desktopPid: row.desktop_pid } : {}),
+    ...(row.desktop_host ? { desktopHost: row.desktop_host } : {}),
+    ...(row.desktop_port ? { desktopPort: row.desktop_port } : {}),
     accessMode: row.access_mode,
     status: row.status,
     proxyToken: row.proxy_token,

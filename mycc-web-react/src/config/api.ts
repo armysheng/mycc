@@ -76,6 +76,14 @@ export const getSkillUninstallUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/uninstall`;
 };
 
+export const getSkillUseUrl = (skillId: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/use`;
+};
+
+export const getSkillsDebugUrl = () => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/debug`;
+};
+
 // Helper function to get automations URL
 export const getAutomationsUrl = () => {
   return API_CONFIG.ENDPOINTS.AUTOMATIONS;
@@ -127,6 +135,10 @@ export const getIdeSessionsUrl = () => {
 
 export const getIdeCurrentSessionUrl = () => {
   return `${API_CONFIG.ENDPOINTS.IDE}/sessions/current`;
+};
+
+export const getIdeDesktopSessionUrl = (sessionId: string) => {
+  return `${API_CONFIG.ENDPOINTS.IDE}/sessions/${encodeURIComponent(sessionId)}/desktop`;
 };
 
 export const resolveIdeOpenUrl = (openPath: string) => {

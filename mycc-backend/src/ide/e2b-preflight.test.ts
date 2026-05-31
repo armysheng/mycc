@@ -104,7 +104,7 @@ describe('E2B Agent preflight', () => {
     const missingConfigOutput = missingConfigError instanceof Error ? missingConfigError.message : String(missingConfigError);
     expect(missingConfigOutput).toContain('[error] E2B API key: Missing MYCC_E2B_API_KEY or E2B_API_KEY.');
     expect(missingConfigOutput).toContain('[error] Claude/CCR credential: No Claude credential is configured.');
-    expect(missingConfigOutput).toContain('[skip] E2B template: Skipped remote template check for mycc-code-server-dev');
+    expect(missingConfigOutput).toContain('[skip] E2B template: Skipped remote template check for mycc-assistant-sandbox-dev');
 
     await expect(assertE2bAgentPreflightReady({
       env: {

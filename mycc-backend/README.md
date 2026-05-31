@@ -172,15 +172,17 @@ Authorization: Bearer <token>
 | MYCC_AGENT_SDK_API_KEY | Agent SDK Anthropic API key | ANTHROPIC_API_KEY |
 | MYCC_AGENT_SDK_MODEL | Agent SDK 默认模型 | claude-sonnet-4-6 |
 | MYCC_AGENT_SDK_ALLOWED_TOOLS | Agent SDK 自动允许工具，逗号分隔 | Read,Glob,Grep |
-| MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | dontAsk |
+| MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | bypassPermissions |
 | MYCC_AGENT_SDK_PARTIAL_MESSAGES | 是否输出 SDK partial stream event | false |
 | MYCC_AGENT_SDK_CONFIG_ROOT | Agent SDK 每用户 HOME/Claude 配置根目录；为空时使用 `/home/{linux_user}/.mycc` | - |
-| MYCC_WORKSPACE_PROVIDER | 内置 Workspace API provider：`ssh` 走 VPS，`e2b` 复用当前用户 running E2B IDE session | ssh |
-| MYCC_IDE_PROVIDER | Remote IDE provider：`disabled` 或 `e2b` | disabled |
+| MYCC_WORKSPACE_PROVIDER | 内置 Workspace API provider：`ssh` 走 VPS，`e2b` 复用当前用户 running E2B sandbox session | ssh |
+| MYCC_IDE_PROVIDER | 工作区 provider：`disabled` 或 `e2b` | disabled |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
 | MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY`，格式前缀必须为 `e2b_<token>` | - |
-| MYCC_E2B_TEMPLATE | E2B code-server 模板名 | mycc-code-server-dev |
+| MYCC_E2B_TEMPLATE | E2B 模板名；MyCC 个人助理沙盒默认使用 `mycc-assistant-sandbox-dev`，旧 code-server 路径可继续显式用 `mycc-code-server-dev` | mycc-assistant-sandbox-dev |
+| MYCC_E2B_DESKTOP_ENABLED | 是否暴露 GNU 桌面能力；`mycc-assistant-sandbox-dev` 默认启用，也可显式设为 `true` | auto |
+| MYCC_E2B_DESKTOP_PORT | noVNC 在沙箱内监听的端口 | 16080 |
 | MYCC_E2B_ALLOW_PUBLIC_TRAFFIC | 是否允许 E2B host 直接公网访问；产品路径必须为 false | false |
 
 ### Agent Runtime
@@ -188,7 +190,7 @@ Authorization: Bearer <token>
 后端聊天和自动化都通过 `src/agent-runtime` 工厂创建运行时，方便逐步接入不同底层：
 
 - `remote-claude`：默认稳定路径，保持现有行为，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
-- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: dontAsk`、`allowedTools: Read,Glob,Grep`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: bypassPermissions`、`allowedTools: Read,Glob,Grep`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
 - `e2b-claude-cli`：在 E2B/code-server sandbox 内执行 `claude --print --output-format stream-json`，优先复用当前用户未过期 Remote IDE session；如果 chat 先发生，会自动创建 sandbox/session。
 - `e2b-claude-agent-sdk`：在同一个 E2B/code-server sandbox 内执行 `/opt/mycc-agent-runtime/bridge.mjs`，由 bridge 调用 `@anthropic-ai/claude-agent-sdk`，同样复用 Remote IDE workspace。
 
@@ -201,25 +203,27 @@ MYCC_AGENT_RUNTIME=claude-agent-sdk
 MYCC_CCR_BASE_URL=http://127.0.0.1:3456
 MYCC_CCR_AUTH_TOKEN=<ccr-api-key-or-token>
 MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
-MYCC_AGENT_SDK_PERMISSION_MODE=dontAsk
+MYCC_AGENT_SDK_PERMISSION_MODE=bypassPermissions
 ```
 
 注意：`claude-agent-sdk` runtime 当前是 opt-in 实验能力，适合沙箱/单用户隔离环境验证；生产多用户默认仍使用 `remote-claude`。
 
-### Remote IDE / code-server POC
+### MyCC Assistant Sandbox / code-server / GNU desktop
 
-后端已接入 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions`、`/api/ide/sessions/:id/open`、`/api/ide/sessions/:id/status`、renew/delete 和 `/api/ide/sessions/:id/proxy/*`。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会创建或复用用户未过期的 E2B/code-server session。响应会隐藏 E2B host 与 traffic token，浏览器只拿 mycc 一次性 open token，后端 proxy 再注入 `e2b-traffic-access-token`。
+后端已接入 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions`、`/api/ide/sessions/:id/open`、`/api/ide/sessions/:id/status`、renew/delete 和 `/api/ide/sessions/:id/proxy/*`。在 assistant sandbox 模板上，还支持 `POST /api/ide/sessions/:id/desktop`、`/api/ide/sessions/:id/desktop/open` 和 `/api/ide/sessions/:id/desktop/proxy/*`。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会创建或复用用户未过期的 E2B sandbox，并按需启动 code-server 或 GNU desktop service。响应会隐藏 E2B host 与 traffic token，浏览器只拿 MyCC open path，后端 proxy 再注入 `e2b-traffic-access-token`。
 
 ```bash
 MYCC_IDE_PROVIDER=e2b
 MYCC_WORKSPACE_PROVIDER=e2b
-MYCC_E2B_TEMPLATE=mycc-code-server-dev
+MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev
+MYCC_E2B_DESKTOP_ENABLED=true
+MYCC_E2B_DESKTOP_PORT=16080
 MYCC_E2B_API_KEY=e2b_<token>
 # 或使用 E2B_API_KEY=e2b_<token>
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 ```
 
-安全默认值是：code-server 只作为 mycc 反向代理后的能力暴露，沙箱内部固定端口 `18080`，启动命令使用 `--auth none` 但必须配合 `E2B allowPublicTraffic:false + mycc 一次性访问 token + 后端注入 e2b-traffic-access-token`。不要把 E2B public host 或裸 code-server password 页面直接给产品用户。
+安全默认值是：code-server 和 noVNC 只作为 mycc 反向代理后的能力暴露，沙箱内部固定端口分别为 `18080` 和 `16080`，code-server 启动命令使用 `--auth none` 但必须配合 `E2B allowPublicTraffic:false + MyCC open path + HttpOnly proxy cookie + 后端注入 e2b-traffic-access-token`。不要把 E2B public host、traffic token、provider base URL/token 或裸 noVNC/code-server 地址直接给产品用户。
 
 本地 smoke：
 
@@ -227,6 +231,7 @@ MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 npm run verify:e2b-release
 npm run doctor:e2b-agent
 npm run smoke:e2b-ide
+npm run smoke:e2b-desktop
 npm run smoke:e2b-agent-workspace
 npm run smoke:e2b-agent-sdk-workspace
 ```
@@ -235,11 +240,11 @@ npm run smoke:e2b-agent-sdk-workspace
 
 先跑 `doctor:e2b-agent` 可以在不打印密钥的前提下检查 E2B key、template、Agent runtime、IDE/Workspace provider、Claude/CCR 凭据和全局 `OPENAI_*` 误注入风险。有有效 E2B key 时，它会额外向 E2B 查询 `MYCC_E2B_TEMPLATE` 是否存在。
 
-这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<token>` 或 `E2B_API_KEY=e2b_<token>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。
+这些 smoke 需要有效的 `MYCC_E2B_API_KEY=e2b_<token>` 或 `E2B_API_KEY=e2b_<token>`；agent smoke 还需要 Anthropic/CCR 凭据。过期 session 可用 `npm run cleanup:ide-sessions` 清理。assistant sandbox 模板自身的 contract、doctor 和真实 E2B desktop/browser smoke 在仓库根目录的 `mycc-sandbox` 模块内维护。
 
 `smoke:e2b-agent-workspace` 和 `smoke:e2b-agent-sdk-workspace` 会额外验证 E2B template 契约：`code-server`、Node/Python/Git/curl、GNU 常用工具链必须可用；CLI runtime 需要 `claude`，Agent SDK runtime 需要 `/opt/mycc-agent-runtime/bridge.mjs`。
 
-当前 E2B workspace 是 `/home/mycc/workspace`。Remote IDE 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B IDE session。没有 running session 时，Workspace API 会返回 `409`，提示先打开 Remote IDE，避免一次普通文件树请求隐式创建昂贵 sandbox。
+当前 E2B workspace 是 `/home/mycc/workspace`。代码编辑器、GNU desktop 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B sandbox session。没有 running session 时，Workspace API 会返回 `409`，提示先打开代码编辑器，避免一次普通文件树请求隐式创建昂贵 sandbox。
 
 E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSession` 提前创建或复用 E2B IDE session，从 `/home/mycc/workspace/0-System/about-me` 读取；全新 sandbox 若还没有任何可用 about-me 内容，会跳过注入且不缓存 missing context，后续可通过首次同步/初始化补齐。
 
