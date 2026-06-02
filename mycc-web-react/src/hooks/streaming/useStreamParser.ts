@@ -31,7 +31,10 @@ export function useStreamParser() {
 
         // Current assistant message state
         currentAssistantMessage: context.currentAssistantMessage,
-        setCurrentAssistantMessage: context.setCurrentAssistantMessage,
+        setCurrentAssistantMessage: (message) => {
+          context.currentAssistantMessage = message;
+          context.setCurrentAssistantMessage(message);
+        },
 
         // Session handling
         onSessionId: context.onSessionId,
@@ -45,6 +48,7 @@ export function useStreamParser() {
         // Permission/Error handling
         onPermissionError: context.onPermissionError,
         onAbortRequest: context.onAbortRequest,
+        permissionMode: context.permissionMode,
       };
     },
     [],
@@ -120,7 +124,9 @@ export function useStreamParser() {
           const claudeData = data.data as SDKMessage;
           processClaudeData(claudeData, context);
         } else if (data.type === "done") {
-          // Done message - just ignore, streaming is complete
+          if (typeof data.sessionId === "string" && data.sessionId.trim()) {
+            context.onSessionId?.(data.sessionId);
+          }
           return;
         } else if (data.type === "error") {
           const errorMessage: SystemMessage = {
@@ -134,11 +140,14 @@ export function useStreamParser() {
           const abortedMessage: AbortMessage = {
             type: "system",
             subtype: "abort",
-            message: "Operation was aborted by user",
+            message: data.message || "已暂停这次任务",
+            status: "paused",
             timestamp: Date.now(),
           };
           context.addMessage(abortedMessage);
           context.setCurrentAssistantMessage(null);
+        } else if (data.type === "workbench") {
+          context.onWorkbenchOpen?.(data.tab);
         }
       } catch (parseError) {
         console.error("Failed to parse stream line:", parseError);

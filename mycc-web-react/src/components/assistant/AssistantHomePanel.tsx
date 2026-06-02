@@ -16,6 +16,7 @@ type AssistantHomePanelProps = {
   onOpenDeliverable?: (deliverable: AssistantDeliverableCard) => void;
   inputSlot?: React.ReactNode;
   workspaceName?: string;
+  workspaceLabel?: string;
   modeLabel?: string;
 };
 
@@ -30,6 +31,7 @@ export function AssistantHomePanel({
   onOpenDeliverable,
   inputSlot,
   workspaceName,
+  workspaceLabel,
   modeLabel = "本地模式",
 }: AssistantHomePanelProps) {
   const tasks = selectVisibleTasks(data?.tasks ?? []);
@@ -39,7 +41,11 @@ export function AssistantHomePanel({
   const hasUnreadyDeliverables = deliverables.length === 0
     && rawDeliverables.some((deliverable) => deliverable.status !== "ready");
   const memoryAvailable = (data?.memory.sources ?? []).some((source) => source.status !== "missing");
-  const workspaceChip = workspaceName || toProductWorkspaceLabel(data?.workspace?.label) || "当前项目";
+  const workspaceChip =
+    workspaceLabel ||
+    workspaceName ||
+    toProductWorkspaceLabel(data?.workspace?.label) ||
+    "当前项目";
   const headline = workspaceName
     ? `我们应该在 ${workspaceName} 中构建什么？`
     : `今天想让 ${assistantName} 帮你做什么？`;

@@ -11,6 +11,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenSettings?: () => void;
+  onShowHistory?: () => void;
 }
 
 const UNTITLED_CONVERSATION_LABEL = "未命名对话";
@@ -36,6 +37,7 @@ export function Sidebar({
   isOpen,
   onClose,
   onOpenSettings,
+  onShowHistory,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { token, user, logout } = useAuth();
@@ -208,9 +210,21 @@ export function Sidebar({
       {/* 对话列表（始终显示） */}
       <div className="p-4 flex-1 overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            历史对话
-          </div>
+          <div className="flex items-center gap-2">
+  <span className="text-xs text-slate-500 dark:text-slate-400">历史对话</span>
+{onShowHistory && (
+   <button
+     type="button"
+    onClick={() => {
+       onShowHistory();
+        onClose();
+      }}
+          className="text-xs text-[var(--accent)] hover:underline"
+    >
+      查看全部
+        </button>
+            )}
+       </div>
           <button
             type="button"
             onClick={handleRefresh}
@@ -366,12 +380,17 @@ export function Sidebar({
 
   return (
     <>
-      {/* 桌面端固定 Sidebar */}
+    {/* 桌面端固定 Sidebar：宽度过渡折叠，内层固定宽度防止收起时内容 reflow */}
       <aside
-        className={`panel-surface border-r ${desktopVisible ? 'hidden lg:flex' : 'hidden'} flex-col shrink-0`}
-        style={{ width: "var(--sidebar-width)" }}
-      >
+        className="panel-surface hidden lg:block shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out"
+        style={{ width: desktopVisible ? "var(--sidebar-width)" : "0px" }}
+   >
+        <div
+   className="flex h-full flex-col border-r"
+          style={{ width: "var(--sidebar-width)" }}
+        >
         {sidebarContent}
+ </div>
       </aside>
 
       {/* 移动端抽屉 */}

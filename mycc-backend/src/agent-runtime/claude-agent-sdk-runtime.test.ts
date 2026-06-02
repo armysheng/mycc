@@ -63,6 +63,55 @@ describe('ClaudeAgentSdkRuntime', () => {
     });
   });
 
+  it('sends image attachments as a multimodal Agent SDK user message', async () => {
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    const events = await collect(runtime.chat({
+      message: '看一下截图',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+      images: [
+        {
+          data: 'iVBORw==',
+          mediaType: 'image/png',
+        },
+      ],
+    }));
+
+    expect(events).toEqual([
+      { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' },
+    ]);
+    const prompt = vi.mocked(query).mock.calls[0]![0]!.prompt;
+    expect(typeof prompt).not.toBe('string');
+    const messages = [];
+    for await (const message of prompt as AsyncIterable<unknown>) {
+      messages.push(message);
+    }
+    expect(messages).toEqual([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '看一下截图' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: 'iVBORw==',
+              },
+            },
+          ],
+        },
+        parent_tool_use_id: null,
+      },
+    ]);
+  });
+
   it('lets an explicit request permission mode override the backend default', async () => {
     vi.mocked(query).mockReturnValue((async function* () {
       yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };

@@ -1,11 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { parseStreamLine } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provider.js';
 import { ensureE2bIdeSession } from '../ide/e2b-session.js';
 import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
+import { parseAgentRunnerEventLine } from './agent-runner-events.js';
+import { buildClaudeAgentRunnerRequest, parseCommaSeparatedList } from './agent-runner-request.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
+import { resolveSandboxTaskCwd, resolveSandboxWorkspaceRoot } from './e2b-workspace-paths.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
 type E2bClaudeAgentSdkProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
@@ -18,8 +21,9 @@ export type E2bClaudeAgentSdkRuntimeOptions = {
 
 const DEFAULT_SANDBOX_LINUX_USER = 'mycc';
 const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep';
+const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep,Bash,Edit,Write';
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const BRIDGE_PAYLOAD_CHUNK_SIZE = 16 * 1024;
 const SUPPORTED_PERMISSION_MODES = new Set([
   'default',
   'acceptEdits',
@@ -46,15 +50,16 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         yield { type: 'error', error: 'E2B Agent SDK runtime requires userId' };
         return;
       }
-      if (params.images && params.images.length > 0) {
-        yield { type: 'error', error: 'E2B Agent SDK runtime 暂不支持图片消息' };
-        return;
-      }
 
-      sanitizeLinuxUsername(params.linuxUser);
+      const userLinuxUser = sanitizeLinuxUsername(params.linuxUser);
       const sandboxUser = resolveSandboxLinuxUser();
-      const cwd = resolveSandboxWorkspaceCwd(sandboxUser);
-      const session = await this.findOrCreateSession(params, cwd);
+      const workspaceRoot = resolveSandboxWorkspaceRoot(sandboxUser);
+      const cwd = resolveSandboxTaskCwd({
+        requestedCwd: params.cwd,
+        requestedLinuxUser: userLinuxUser,
+        sandboxWorkspaceRoot: workspaceRoot,
+      });
+      const session = await this.findOrCreateSession(params, workspaceRoot);
 
       yield* this.runAgentSdkBridge(session, params, cwd, sandboxUser);
     } catch (error) {
@@ -82,9 +87,27 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
     cwd: string,
     sandboxUser: string,
   ): AsyncIterable<AgentRuntimeEvent> {
+    const workspaceRoot = resolveSandboxWorkspaceRoot(sandboxUser);
+    const permissionMode = resolvePermissionMode(params.permissionMode);
+    try {
+      await this.ensureSandboxTaskCwd(session, cwd, workspaceRoot);
+    } catch (error) {
+      await this.markSessionStoppedIfStale(session, error);
+      yield {
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      };
+      return;
+    }
+    const envs = await this.prepareAgentSdkBridgeEnv(session, params, cwd, sandboxUser, permissionMode);
+
     let buffer = '';
     let stderrBuffer = '';
     const events: AgentRuntimeEvent[] = [];
+    let pendingResumeEvents: AgentRuntimeEvent[] | null = params.sessionId
+      ? []
+      : null;
+    let resumeMadeProgress = false;
     let finished = false;
     let resolveNext: (() => void) | null = null;
 
@@ -92,6 +115,20 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       resolveNext = resolve;
     });
     const pushEvent = (event: AgentRuntimeEvent) => {
+      if (pendingResumeEvents && !resumeMadeProgress) {
+        if (isResumeProgressEvent(event)) {
+          resumeMadeProgress = true;
+          events.push(...pendingResumeEvents, event);
+          pendingResumeEvents = null;
+        } else {
+          pendingResumeEvents.push(event);
+        }
+        if (resolveNext && events.length > 0) {
+          resolveNext();
+          resolveNext = null;
+        }
+        return;
+      }
       events.push(event);
       if (resolveNext) {
         resolveNext();
@@ -103,22 +140,24 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const line of lines) {
-        const event = parseStreamLine(line);
+        const event = parseAgentRunnerEventLine(line);
         if (event) pushEvent(event);
       }
     };
 
     const runPromise = this.e2bProvider.runCommandInSession(session, buildAgentSdkBridgeCommand(), {
       cwd,
-      envs: buildAgentSdkBridgeEnv(params, cwd, sandboxUser),
+      envs,
       onStdout: handleStdout,
       onStderr: (data) => {
         stderrBuffer += data;
       },
+      signal: params.signal,
       timeoutMs: resolveCommandTimeoutMs(),
     } satisfies E2bCommandRunOptions).then(async (result) => {
+      if (params.signal?.aborted) return;
       if (buffer.trim()) {
-        const event = parseStreamLine(buffer);
+        const event = parseAgentRunnerEventLine(buffer);
         if (event) pushEvent(event);
       }
       if (result.exitCode !== 0) {
@@ -130,6 +169,7 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         });
       }
     }).catch(async (error) => {
+      if (params.signal?.aborted) return;
       await this.markSessionStoppedIfStale(session, error);
       pushEvent({
         type: 'error',
@@ -144,6 +184,9 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
     });
 
     while (!finished || events.length > 0) {
+      if (params.signal?.aborted && events.length === 0) {
+        break;
+      }
       if (events.length > 0) {
         yield events.shift()!;
       } else {
@@ -151,12 +194,122 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       }
     }
     await runPromise;
+
+    if (
+      pendingResumeEvents &&
+      isLikelyStaleResumeFailure(pendingResumeEvents)
+    ) {
+      yield* this.runAgentSdkBridge(
+        session,
+        { ...params, sessionId: undefined },
+        cwd,
+        sandboxUser,
+      );
+      return;
+    }
+
+    if (pendingResumeEvents) {
+      for (const event of pendingResumeEvents) {
+        yield event;
+      }
+    }
+  }
+
+  private async ensureSandboxTaskCwd(
+    session: StoredIdeSession,
+    cwd: string,
+    workspaceRoot: string,
+  ): Promise<void> {
+    if (cwd === workspaceRoot) return;
+
+    const result = await this.e2bProvider.runCommandInSession(
+      session,
+      `mkdir -p -- ${shellQuote(cwd)}`,
+      {
+        cwd: workspaceRoot,
+        timeoutMs: 10_000,
+      },
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Unable to prepare sandbox workspace directory (exit code ${result.exitCode}): ${result.stderr || result.error || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async prepareAgentSdkBridgeEnv(
+    session: StoredIdeSession,
+    params: AgentChatParams,
+    cwd: string,
+    sandboxUser: string,
+    permissionMode: string,
+  ): Promise<Record<string, string>> {
+    const payloadDir = `/tmp/mycc-agent-runtime/${Date.now()}-${randomUUID()}`;
+    const requestFile = `${payloadDir}/request.json`;
+    const request = buildClaudeAgentRunnerRequest(params, {
+      allowedTools: parseCommaSeparatedList(resolveAllowedTools()),
+      cwd,
+      includePartialMessages: resolvePartialMessages(),
+      model: resolveAgentSdkModel(),
+      permissionMode,
+    });
+    await this.writeBridgePayloadFile(session, cwd, requestFile, JSON.stringify(request));
+
+    return buildAgentSdkBridgeEnv(sandboxUser, requestFile);
+  }
+
+  private async writeBridgePayloadFile(
+    session: StoredIdeSession,
+    cwd: string,
+    filePath: string,
+    encodedPayload: string,
+  ): Promise<void> {
+    const parentDir = path.posix.dirname(filePath);
+    const initResult = await this.e2bProvider.runCommandInSession(
+      session,
+      `mkdir -p -- ${shellQuote(parentDir)} && : > ${shellQuote(filePath)}`,
+      {
+        cwd,
+        timeoutMs: 10_000,
+      },
+    );
+    if (initResult.exitCode !== 0) {
+      throw new Error(`Unable to prepare assistant message (exit code ${initResult.exitCode})`);
+    }
+
+    for (let offset = 0; offset < encodedPayload.length; offset += BRIDGE_PAYLOAD_CHUNK_SIZE) {
+      const chunk = encodedPayload.slice(offset, offset + BRIDGE_PAYLOAD_CHUNK_SIZE);
+      const appendResult = await this.e2bProvider.runCommandInSession(
+        session,
+        `printf %s ${shellQuote(chunk)} >> ${shellQuote(filePath)}`,
+        {
+          cwd,
+          timeoutMs: 10_000,
+        },
+      );
+      if (appendResult.exitCode !== 0) {
+        throw new Error(`Unable to prepare assistant message (exit code ${appendResult.exitCode})`);
+      }
+    }
   }
 
   private async markSessionStoppedIfStale(session: StoredIdeSession, error: unknown): Promise<void> {
     if (!isLikelyStaleE2bSessionError(error)) return;
     await this.sessionStore.set({ ...session, status: 'stopped' });
   }
+}
+
+function isResumeProgressEvent(event: AgentRuntimeEvent): boolean {
+  return event.type === 'system' || event.type === 'assistant' || event.type === 'user';
+}
+
+function isLikelyStaleResumeFailure(events: AgentRuntimeEvent[]): boolean {
+  if (events.some(isResumeProgressEvent)) return false;
+  return events.some((event) => {
+    if (event.type === 'error') return true;
+    return event.type === 'result' && event.is_error === true;
+  });
 }
 
 function buildAgentSdkBridgeCommand(): string {
@@ -168,9 +321,8 @@ function buildAgentSdkBridgeCommand(): string {
 }
 
 function buildAgentSdkBridgeEnv(
-  params: AgentChatParams,
-  cwd: string,
   sandboxUser: string,
+  requestFile: string,
 ): Record<string, string> {
   const home = `/home/${sandboxUser}/.mycc/home`;
   const claudeConfigDir = `/home/${sandboxUser}/.mycc/claude`;
@@ -179,20 +331,28 @@ function buildAgentSdkBridgeEnv(
     CLAUDE_AGENT_SDK_CLIENT_APP: process.env.CLAUDE_AGENT_SDK_CLIENT_APP || 'mycc-backend/e2b-agent-sdk-runtime',
     CLAUDE_CONFIG_DIR: claudeConfigDir,
     HOME: home,
-    MYCC_AGENT_PROMPT_B64: Buffer.from(params.message, 'utf8').toString('base64'),
-    MYCC_AGENT_SDK_ALLOWED_TOOLS: process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS,
-    MYCC_AGENT_SDK_PARTIAL_MESSAGES: process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES || 'false',
-    MYCC_AGENT_SDK_PERMISSION_MODE: resolvePermissionMode(params.permissionMode),
-    MYCC_AGENT_WORKSPACE_CWD: cwd,
-    MYCC_E2B_AGENT_SDK_MODEL: resolveAgentSdkModel(),
+    MYCC_AGENT_REQUEST_FILE: requestFile,
     XDG_CONFIG_HOME: `${home}/.config`,
     XDG_DATA_HOME: `${home}/.local/share`,
-    ...(params.sessionId ? { MYCC_AGENT_SESSION_ID: params.sessionId } : {}),
     ...resolveClaudeProviderEnv(),
   };
 }
 
+function resolveAllowedTools(): string {
+  return process.env.MYCC_E2B_AGENT_SDK_ALLOWED_TOOLS
+    || process.env.MYCC_AGENT_SDK_ALLOWED_TOOLS
+    || DEFAULT_ALLOWED_TOOLS;
+}
+
+function resolvePartialMessages(): boolean {
+  return process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES === 'true';
+}
+
 function resolvePermissionMode(requestedMode?: string): string {
+  if (process.env.MYCC_E2B_AGENT_SDK_FORCE_BYPASS_PERMISSIONS !== 'false') {
+    return 'bypassPermissions';
+  }
+
   const raw = (requestedMode || process.env.MYCC_AGENT_SDK_PERMISSION_MODE || 'bypassPermissions').trim();
   if (SUPPORTED_PERMISSION_MODES.has(raw)) {
     return raw;
@@ -202,16 +362,6 @@ function resolvePermissionMode(requestedMode?: string): string {
 
 function resolveSandboxLinuxUser(): string {
   return sanitizeLinuxUsername(process.env.MYCC_E2B_LINUX_USER || DEFAULT_SANDBOX_LINUX_USER);
-}
-
-function resolveSandboxWorkspaceCwd(sandboxUser: string): string {
-  const configured = process.env.MYCC_E2B_WORKSPACE_DIR?.trim();
-  const cwd = path.posix.normalize(configured || `/home/${sandboxUser}/workspace`);
-  const root = `/home/${sandboxUser}/workspace`;
-  if (cwd !== root && !cwd.startsWith(`${root}/`)) {
-    throw new Error(`Invalid E2B workspace directory: ${configured}`);
-  }
-  return cwd;
 }
 
 function resolveAgentSdkModel(): string {
@@ -230,4 +380,8 @@ function resolveCommandTimeoutMs(): number {
     throw new Error(`Invalid E2B Agent SDK timeout: ${raw}`);
   }
   return parsed;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

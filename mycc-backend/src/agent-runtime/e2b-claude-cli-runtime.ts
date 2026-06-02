@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { parseStreamLine } from '../adapters/stream-parser.js';
 import { E2bSandboxProvider, type E2bCommandRunOptions } from '../ide/e2b-provider.js';
 import { ensureE2bIdeSession } from '../ide/e2b-session.js';
@@ -6,6 +5,7 @@ import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
+import { resolveSandboxTaskCwd, resolveSandboxWorkspaceRoot } from './e2b-workspace-paths.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
 type E2bClaudeCliProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
@@ -39,10 +39,15 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
         return;
       }
 
-      sanitizeLinuxUsername(params.linuxUser);
+      const userLinuxUser = sanitizeLinuxUsername(params.linuxUser);
       const sandboxUser = resolveSandboxLinuxUser();
-      const cwd = resolveSandboxWorkspaceCwd(sandboxUser);
-      const session = await this.findOrCreateSession(params, cwd);
+      const workspaceRoot = resolveSandboxWorkspaceRoot(sandboxUser);
+      const cwd = resolveSandboxTaskCwd({
+        requestedCwd: params.cwd,
+        requestedLinuxUser: userLinuxUser,
+        sandboxWorkspaceRoot: workspaceRoot,
+      });
+      const session = await this.findOrCreateSession(params, workspaceRoot);
 
       yield* this.runClaudeCommand(session, params, cwd, sandboxUser);
     } catch (error) {
@@ -103,8 +108,10 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
       onStderr: (data) => {
         stderrBuffer += data;
       },
+      signal: params.signal,
       timeoutMs: resolveCommandTimeoutMs(),
     } satisfies E2bCommandRunOptions).then(async (result) => {
+      if (params.signal?.aborted) return;
       if (buffer.trim()) {
         const event = parseStreamLine(buffer);
         if (event) pushEvent(event);
@@ -118,6 +125,7 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
         });
       }
     }).catch(async (error) => {
+      if (params.signal?.aborted) return;
       await this.markSessionStoppedIfStale(session, error);
       pushEvent({
         type: 'error',
@@ -132,6 +140,9 @@ export class E2bClaudeCliRuntime implements AgentRuntime {
     });
 
     while (!finished || events.length > 0) {
+      if (params.signal?.aborted && events.length === 0) {
+        break;
+      }
       if (events.length > 0) {
         yield events.shift()!;
       } else {
@@ -182,16 +193,6 @@ function buildClaudeEnv(sandboxUser: string): Record<string, string> {
 
 function resolveSandboxLinuxUser(): string {
   return sanitizeLinuxUsername(process.env.MYCC_E2B_LINUX_USER || DEFAULT_SANDBOX_LINUX_USER);
-}
-
-function resolveSandboxWorkspaceCwd(sandboxUser: string): string {
-  const configured = process.env.MYCC_E2B_WORKSPACE_DIR?.trim();
-  const cwd = path.posix.normalize(configured || `/home/${sandboxUser}/workspace`);
-  const root = `/home/${sandboxUser}/workspace`;
-  if (cwd !== root && !cwd.startsWith(`${root}/`)) {
-    throw new Error(`Invalid E2B workspace directory: ${configured}`);
-  }
-  return cwd;
 }
 
 function resolveCommandTimeoutMs(): number {

@@ -3,12 +3,15 @@ export type AgentPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions
 
 export interface AgentChatParams {
   userId?: number;
+  requestId?: string;
   message: string;
   sessionId?: string;
   cwd: string;
   linuxUser: string;
   permissionMode?: AgentPermissionMode;
   images?: Array<{ data: string; mediaType: string }>;
+  abortController?: AbortController;
+  signal?: AbortSignal;
 }
 
 export interface AgentRuntimeEvent {

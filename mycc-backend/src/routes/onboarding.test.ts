@@ -46,6 +46,7 @@ describe('onboarding bootstrap prompt', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('embeds assistant and owner names into first-turn bootstrap message', () => {
@@ -190,6 +191,7 @@ describe('onboarding bootstrap prompt', () => {
       stdout: '',
       stderr: 'E2B sandbox seed failed: SSH 连接池未初始化，请先调用 initSSHPool(); token=traffic-secret',
     });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const app = Fastify({ logger: false });
     await app.register(onboardingRoutes, {
       env: {
@@ -221,6 +223,11 @@ describe('onboarding bootstrap prompt', () => {
       code: 'initialization_unavailable',
     });
     expect(response.body).not.toMatch(/E2B|SSH|initSSHPool|sandbox|沙盒|token|traffic-secret|sbx_onboarding|e2b\.app|code-server/i);
+    const logged = consoleError.mock.calls
+      .flat()
+      .map((value) => value instanceof Error ? value.message : String(value))
+      .join('\n');
+    expect(logged).not.toMatch(/E2B|SSH|initSSHPool|sandbox|沙盒|token|traffic-secret|sbx_onboarding|e2b\.app|code-server/i);
     expect(mocks.getSSHPool).not.toHaveBeenCalled();
     expect(mocks.markUserInitialized).not.toHaveBeenCalled();
     await app.close();

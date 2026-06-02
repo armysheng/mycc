@@ -76,6 +76,7 @@ describe('E2B template contract', () => {
 
     expect(command).toContain('ccr');
     expect(command).toContain('Xvfb');
+    expect(command).toContain('xfwm4');
     expect(command).toContain('startxfce4');
     expect(command).toContain('x11vnc');
     expect(command).toContain('websockify');

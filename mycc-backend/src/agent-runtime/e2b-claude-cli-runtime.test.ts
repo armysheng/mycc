@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { E2bClaudeCliRuntime } from './e2b-claude-cli-runtime.js';
 import type { IdeSessionStore, StoredIdeSession } from '../ide/session-store.js';
 
@@ -35,6 +35,11 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe('E2bClaudeCliRuntime', () => {
+  beforeEach(() => {
+    vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
+    vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -78,6 +83,32 @@ describe('E2bClaudeCliRuntime', () => {
     expect(runCommand.mock.calls[0][1]).toContain("'hello'");
   });
 
+  it('maps a user project cwd into the same path under the sandbox workspace root', async () => {
+    const runCommand = vi.fn().mockImplementation(async (_session, _command, options) => {
+      await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeCliRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace/demo',
+      linuxUser: 'tester',
+    }));
+
+    expect(runCommand).toHaveBeenCalledWith(
+      runningSession,
+      expect.stringContaining('claude'),
+      expect.objectContaining({
+        cwd: '/home/mycc/workspace/demo',
+      }),
+    );
+  });
+
   it('creates and stores an E2B IDE sandbox when chat starts before Remote IDE opens', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const store = createStore(null);
@@ -103,7 +134,7 @@ describe('E2bClaudeCliRuntime', () => {
     const events = await collect(runtime.chat({
       userId: 42,
       message: 'hello',
-      cwd: '/home/tester/workspace',
+      cwd: '/home/tester/workspace/demo',
       linuxUser: 'tester',
     }));
 
@@ -127,7 +158,7 @@ describe('E2bClaudeCliRuntime', () => {
     expect(runCommand).toHaveBeenCalledWith(
       expect.objectContaining({ sandboxId: 'sbx_new' }),
       expect.stringContaining('claude'),
-      expect.objectContaining({ cwd: '/home/mycc/workspace' }),
+      expect.objectContaining({ cwd: '/home/mycc/workspace/demo' }),
     );
   });
 

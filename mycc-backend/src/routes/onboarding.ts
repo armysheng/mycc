@@ -58,6 +58,17 @@ function publicOnboardingFailureResponse() {
   };
 }
 
+function classifyOnboardingFailure(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/Failed to place sandbox/i.test(message)) {
+    return 'placement_unavailable';
+  }
+  if (/seed|写入|workspace/i.test(message)) {
+    return 'workspace_seed_failed';
+  }
+  return 'provider_unavailable';
+}
+
 function buildLegacyGlobalMemoryPath(linuxUser: string): string {
   const projectUserSegment = linuxUser.replace(/_/g, '-');
   return `/home/${linuxUser}/.claude/projects/-home-${projectUserSegment}-workspace/memory/MEMORY.md`;
@@ -415,7 +426,9 @@ export async function onboardingRoutes(fastify: FastifyInstance, options: Onboar
           details: err.issues,
         });
       }
-      console.error('❌ Onboarding 失败:', err);
+      console.error('❌ Onboarding 失败: initialization_unavailable', {
+        reason: classifyOnboardingFailure(err),
+      });
       return reply.status(500).send(publicOnboardingFailureResponse());
     }
   });

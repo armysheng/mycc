@@ -30,7 +30,8 @@ finish_contract() {
 
 for cmd in \
   bash sh git node npm python3 pip uv curl sed awk gawk grep find xargs tar gzip rg jq file lsof realpath stat timeout \
-  gcc g++ make pkg-config code-server claude ccr Xvfb startxfce4 x11vnc websockify dbus-launch xdpyinfo chromium \
+  gcc g++ make pkg-config code-server claude ccr Xvfb xfwm4 startxfce4 x11vnc websockify dbus-launch xdpyinfo chromium \
+  xdg-open x-www-browser sensible-browser exo-open mycc-browser \
   mycc-start-code-server mycc-start-ccr mycc-start-desktop mycc-health-desktop mycc-register-deliverable; do
   require_command "$cmd"
 done
@@ -62,6 +63,9 @@ for skill in browser-use browser pdf docx xlsx pptx data-analysis deep-research 
   if [ ! -f "/home/mycc/.mycc/skills/$skill/SKILL.md" ]; then
     missing="$missing skill:mycc:$skill"
   fi
+  if [ ! -f "/home/mycc/.mycc/claude/skills/$skill/SKILL.md" ]; then
+    missing="$missing skill:claude-config:$skill"
+  fi
 done
 
 if [ "$ready_only" -eq 1 ]; then
@@ -89,6 +93,32 @@ fi
 
 if ! timeout 30s chromium --version >/dev/null 2>&1; then
   missing="$missing browser:chromium"
+fi
+
+if ! timeout 30s mycc-browser --version >/dev/null 2>&1; then
+  missing="$missing browser:mycc-browser"
+fi
+
+if ! grep -qx "WebBrowser=mycc-browser" /home/mycc/.config/xfce4/helpers.rc 2>/dev/null; then
+  missing="$missing browser:xfce-helper"
+fi
+
+if ! grep -qx "x-scheme-handler/http=mycc-browser.desktop" /home/mycc/.config/mimeapps.list 2>/dev/null; then
+  missing="$missing browser:mime-http"
+fi
+
+if ! grep -qx "x-scheme-handler/https=mycc-browser.desktop" /home/mycc/.config/mimeapps.list 2>/dev/null; then
+  missing="$missing browser:mime-https"
+fi
+
+if [ ! -f /usr/share/applications/mycc-browser.desktop ]; then
+  missing="$missing browser:desktop-file"
+fi
+
+if [ ! -f /usr/share/xfce4/helpers/mycc-browser.desktop ]; then
+  missing="$missing browser:xfce-helper-file"
+elif ! grep -qx 'X-XFCE-CommandsWithParameter=/usr/local/bin/mycc-browser "%s"' /usr/share/xfce4/helpers/mycc-browser.desktop 2>/dev/null; then
+  missing="$missing browser:xfce-helper-command"
 fi
 
 if ! timeout 30s ccr -h >/dev/null 2>&1; then

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   PlanMessageComponent,
@@ -11,7 +11,7 @@ const forbiddenVisibleWords =
   /Claude|Bash|command|命令|API Key|CWD|Permission Mode|Tokens|Cost|Session|Tools|System|Result/;
 
 describe("MessageComponents productized system copy", () => {
-  it("renders system init details as assistant-facing running status", () => {
+  it("does not render fabricated system init running records", () => {
     const message = {
       type: "system",
       subtype: "init",
@@ -26,11 +26,53 @@ describe("MessageComponents productized system copy", () => {
 
     const { container } = render(<SystemMessageComponent message={message} />);
 
-    expect(screen.getByText("运行记录")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toHaveTextContent("助理已准备好");
+    expect(container).not.toHaveTextContent("运行记录");
     expect(container).not.toHaveTextContent(forbiddenVisibleWords);
   });
 
-  it("renders result details without token, cost, or session terminology", () => {
+  it("renders real system hook content without the old running-record label", () => {
+    const message = {
+      type: "system",
+      content: "\u001b[32m真实工具记录\u001b[0m",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    render(<SystemMessageComponent message={message} />);
+
+    expect(screen.getByText("处理动态")).toBeInTheDocument();
+    expect(screen.getByText("真实工具记录")).toBeInTheDocument();
+    expect(screen.queryByText("运行记录")).not.toBeInTheDocument();
+  });
+
+  it("collapses verbose skill runtime details until expanded", () => {
+    const message = {
+      type: "system",
+      content: [
+        "Base directory for this skill: /home/mycc/.mycc/claude/skills/browser-use",
+        "",
+        "# Browser Use In MyCC Sandbox",
+        "",
+        "The sandbox includes browser automation dependencies.",
+        "ARGUMENTS: https://bbs.byr.cn/#!board/Job",
+      ].join("\n"),
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(screen.getByRole("button", { name: /处理动态/ })).toBeInTheDocument();
+    expect(container).not.toHaveTextContent("Base directory for this skill");
+    expect(container).not.toHaveTextContent("Browser Use In MyCC Sandbox");
+
+    fireEvent.click(screen.getByRole("button", { name: /处理动态/ }));
+
+    expect(container).toHaveTextContent("Base directory for this skill");
+    expect(container).toHaveTextContent("Browser Use In MyCC Sandbox");
+  });
+
+  it("hides successful result metadata from the chat surface", () => {
     const message = {
       type: "result",
       subtype: "success",
@@ -46,8 +88,80 @@ describe("MessageComponents productized system copy", () => {
 
     const { container } = render(<SystemMessageComponent message={message} />);
 
-    expect(screen.getByText("整理完成")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toHaveTextContent("整理完成");
+    expect(container).not.toHaveTextContent("本次整理用时");
+    expect(container).not.toHaveTextContent("后台整理");
     expect(container).not.toHaveTextContent(forbiddenVisibleWords);
+  });
+
+  it("renders errored result messages as productized problems", () => {
+    const message = {
+      type: "result",
+      subtype: "error_during_execution",
+      duration_ms: 1234,
+      is_error: true,
+      result: "exit status 1",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(screen.getByText("需要处理的问题")).toBeInTheDocument();
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent("exit status 1");
+    expect(container).not.toHaveTextContent("本次整理用时");
+    expect(container).not.toHaveTextContent("后台整理");
+  });
+
+  it("hides low-level stream error details from the chat surface", () => {
+    const message = {
+      type: "error",
+      subtype: "stream_error",
+      message: "exit status 1",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(screen.getByText("需要处理的问题")).toBeInTheDocument();
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent("exit status 1");
+  });
+
+  it("hides internal bridge startup failures from the chat surface", () => {
+    const message = {
+      type: "error",
+      subtype: "stream_error",
+      message:
+        "[invalid_argument] error starting process '/bin/bash -l -c cd /opt/mycc-agent-runtime && node bridge.mjs': fork/exec /bin/sh: argument list too long",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent("bridge.mjs");
+    expect(container).not.toHaveTextContent("/bin/bash");
+    expect(container).not.toHaveTextContent("argument list too long");
+  });
+
+  it("renders paused conversation guidance without technical wording", () => {
+    const message = {
+      type: "system",
+      subtype: "abort",
+      message: "已暂停这次任务",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(screen.getByText("已暂停")).toBeInTheDocument();
+    expect(container).toHaveTextContent("补充说明后继续");
+    expect(container).toHaveTextContent("重新尝试");
+    expect(container).toHaveTextContent("右侧工作区");
+    expect(container).not.toHaveTextContent(forbiddenVisibleWords);
+    expect(container).not.toHaveTextContent(/abort|requestId|SSE|runtime/i);
   });
 
   it("renders plan messages without naming Claude or coding-console prompts", () => {
@@ -75,7 +189,9 @@ describe("MessageComponents productized system copy", () => {
       toolUseResult: { stdout: "ok", stderr: "" },
     };
 
-    const { container } = render(<ToolResultMessageComponent message={message} />);
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
 
     expect(screen.getByText("本地操作结果")).toBeInTheDocument();
     expect(container).not.toHaveTextContent(forbiddenVisibleWords);

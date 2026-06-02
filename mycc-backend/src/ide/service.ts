@@ -26,6 +26,7 @@ export type E2bCodeServerSessionPlan = {
   workspaceDir: string;
   port: number;
   sessionTtlSeconds: number;
+  desktopEnabled: boolean;
   allowPublicTraffic: false;
   accessMode: IdeAccessMode;
   startCommand: string;
@@ -102,6 +103,7 @@ export function buildE2bCodeServerSessionPlan(
     workspaceDir,
     port,
     sessionTtlSeconds: config.sessionTtlSeconds,
+    desktopEnabled: Boolean(config.desktopEnabled),
     allowPublicTraffic: false,
     accessMode: 'mycc-proxy',
     startCommand: buildCodeServerStartCommand({

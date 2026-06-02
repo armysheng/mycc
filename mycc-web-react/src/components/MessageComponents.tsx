@@ -11,6 +11,12 @@ import type {
 } from "../types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  ArrowPathIcon,
+  ClipboardDocumentIcon,
+  PencilSquareIcon,
+} from "@heroicons/react/24/outline";
 import { TimestampComponent } from "./TimestampComponent";
 import { MessageContainer } from "./messages/MessageContainer";
 import { CollapsibleDetails } from "./messages/CollapsibleDetails";
@@ -21,7 +27,7 @@ import {
   isEditToolUseResult,
   isBashToolUseResult,
 } from "../utils/contentUtils";
-import { getToolDisplayText } from "../utils/toolDisplayMapper";
+import { getToolActivityLabel } from "../utils/toolDisplayMapper";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -67,7 +73,9 @@ function AssistantMarkdown({ content }: { content: string }) {
         code: ({ children, className }) => (
           <code className={className || "text-sm"}>{children}</code>
         ),
-        p: ({ children }) => <p className="text-sm leading-relaxed mb-2">{children}</p>,
+        p: ({ children }) => (
+          <p className="text-sm leading-relaxed mb-2">{children}</p>
+        ),
       }}
     >
       {content}
@@ -77,15 +85,8 @@ function AssistantMarkdown({ content }: { content: string }) {
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
-function getToolActivityLabel(
-  toolName: string | undefined,
-  input?: Record<string, unknown>,
-): string {
-  if (!toolName || toolName === "Tool") return "正在处理资料...";
-  if (toolName === "Bash") return "正在执行一个本地操作...";
-  return getToolDisplayText(toolName, input).replace(/命令/g, "本地操作");
-}
+const LOW_LEVEL_SYSTEM_ERROR_PATTERN =
+  /E2B|CCR|Agent SDK|code-server|GNU|Remote IDE|sandbox|Claude Code|base url|traffic|tokens?|provider|desktop_pid|websockify|Bad Request|Internal Server Error|request failed|Command failed|exit status \d+|exit code \d+|invalid_argument|starting process|fork\/exec|argument list too long|\/bin\/(?:ba)?sh|\/opt\/mycc-agent-runtime|bridge\.mjs/i;
 
 function getToolResultLabel(toolName: string): string {
   if (toolName === "Bash") return "本地操作结果";
@@ -94,6 +95,22 @@ function getToolResultLabel(toolName: string): string {
     return "资料查找结果";
   }
   return "运行结果";
+}
+
+function isVerboseSkillRuntimeDetails(content: string): boolean {
+  const trimmed = content.trimStart();
+  return (
+    trimmed.startsWith("Base directory for this skill:") ||
+    trimmed.includes("\n# Browser Use In MyCC Sandbox")
+  );
+}
+
+function getUserFacingSystemError(message: string): string {
+  const cleaned = message.trim();
+  if (!cleaned || LOW_LEVEL_SYSTEM_ERROR_PATTERN.test(cleaned)) {
+    return "这次操作没有跑通。可以直接重试，或让我换个方式继续。";
+  }
+  return cleaned;
 }
 
 // Type guard to check if the message is a hooks message
@@ -108,21 +125,101 @@ function isHooksMessage(
   );
 }
 
+function isAbortMessage(message: SystemMessage): boolean {
+  return (
+    message.type === "system" &&
+    "subtype" in message &&
+    message.subtype === "abort"
+  );
+}
+
+function getAbortGuidance(message: SystemMessage): string {
+  const title =
+    "message" in message && typeof message.message === "string"
+      ? message.message
+      : "已暂停这次任务";
+  const status =
+    "status" in message && typeof message.status === "string"
+      ? message.status
+      : "paused";
+  if (status === "ended") {
+    return [
+      title,
+      "你可以重新发送，或补充说明后再尝试。",
+    ].join("\n");
+  }
+  if (status === "failed") {
+    return [
+      title,
+      "当前未能确认任务是否已暂停；如果页面仍在等待，可以稍后重试或刷新后继续。",
+    ].join("\n");
+  }
+  return [
+    title,
+    "你可以补充说明后继续，或重新尝试这次任务。",
+    "右侧工作区会保留已经整理出的内容，方便你接着查看和接管。",
+  ].join("\n");
+}
+
+function getAbortStatus(message: SystemMessage): string {
+  return "status" in message && typeof message.status === "string"
+    ? message.status
+    : "paused";
+}
+
 interface ChatMessageComponentProps {
   message: ChatMessage;
   assistantDisplayName: string;
   assistantAvatarText: string;
+  onReEditMessage?: (content: string) => void;
+  onRetryMessage?: (content: string) => void;
+  retryContent?: string;
+  retryDisabled?: boolean;
 }
 
 export function ChatMessageComponent({
   message,
   assistantDisplayName,
   assistantAvatarText,
+  onReEditMessage,
+  onRetryMessage,
+  retryContent,
+  retryDisabled = false,
 }: ChatMessageComponentProps) {
   const isUser = message.role === "user";
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const copyMessage = async () => {
+    if (!navigator.clipboard) {
+      setCopyStatus("failed");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+  };
+  const copyLabel =
+    copyStatus === "copied"
+      ? "已复制"
+      : copyStatus === "failed"
+        ? "复制失败"
+        : isUser
+          ? "复制这条消息"
+          : "复制这条回复";
+  const copyTitle =
+    copyStatus === "copied"
+      ? "已复制"
+      : copyStatus === "failed"
+        ? "复制失败"
+        : "复制";
+
   if (isUser) {
     return (
-      <div className="mb-4 flex justify-end">
+      <div className="group mb-4 flex justify-end">
         <div
           className="max-w-[86%] sm:max-w-[72%] rounded-2xl rounded-br-md px-4 py-3 border"
           style={{
@@ -142,13 +239,33 @@ export function ChatMessageComponent({
           <pre className="whitespace-pre-wrap text-sm leading-relaxed">
             {message.content}
           </pre>
+          <MessageActionBar align="right">
+            {onReEditMessage && (
+              <MessageActionButton
+                onClick={() => onReEditMessage(message.content)}
+                aria-label="重新编辑这条消息"
+                title="重新编辑"
+              >
+                <PencilSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              </MessageActionButton>
+            )}
+            <MessageActionButton
+              onClick={() => {
+                void copyMessage();
+              }}
+              aria-label={copyLabel}
+              title={copyTitle}
+            >
+              <ClipboardDocumentIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            </MessageActionButton>
+          </MessageActionBar>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mb-4 flex justify-start">
+    <div className="group mb-4 flex justify-start">
       <div
         className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[10px] font-semibold"
         style={{
@@ -180,8 +297,67 @@ export function ChatMessageComponent({
         <div className="space-y-2">
           <AssistantMarkdown content={message.content} />
         </div>
+        <MessageActionBar align="left">
+          <MessageActionButton
+            onClick={() => {
+              void copyMessage();
+            }}
+            aria-label={copyLabel}
+            title={copyTitle}
+          >
+            <ClipboardDocumentIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          </MessageActionButton>
+          {retryContent && onRetryMessage && (
+            <MessageActionButton
+              onClick={() => onRetryMessage(retryContent)}
+              aria-label="重新生成这条回复"
+              title="重新生成"
+              disabled={retryDisabled}
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            </MessageActionButton>
+          )}
+        </MessageActionBar>
       </div>
     </div>
+  );
+}
+
+function MessageActionBar({
+  align,
+  children,
+}: {
+  align: "left" | "right";
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={[
+        "mt-2 flex gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100",
+        align === "right" ? "justify-end" : "justify-start",
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MessageActionButton({
+  children,
+  disabled = false,
+  onClick,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--surface-border)] bg-white/75 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-slate-900/75 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus:ring-offset-slate-900"
+      {...props}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -194,24 +370,25 @@ export function SystemMessageComponent({
 }: SystemMessageComponentProps) {
   // Generate details based on message type and subtype
   const getDetails = () => {
-    if (
+    if (isAbortMessage(message)) {
+      return getAbortGuidance(message);
+    } else if (
       message.type === "system" &&
       "subtype" in message &&
       message.subtype === "init"
     ) {
-      return [
-        "助理已准备好，可以继续为你处理当前任务。",
-        "本地资料和操作能力已就绪。",
-        "需要更多细节时，可以继续问我当前运行记录。",
-      ].join("\n");
+      return "";
     } else if (message.type === "result") {
-      const details = [
-        `本次整理用时：${message.duration_ms}ms`,
-        "已完成本轮回复所需的后台整理。",
-      ];
-      return details.join("\n");
+      if (message.is_error !== true) {
+        return "";
+      }
+      const resultText =
+        "result" in message && typeof message.result === "string"
+          ? message.result
+          : "";
+      return getUserFacingSystemError(resultText);
     } else if (message.type === "error") {
-      return message.message;
+      return getUserFacingSystemError(message.message);
     } else if (isHooksMessage(message)) {
       // This is a hooks message - show only the content
       // Remove ANSI escape sequences for cleaner display
@@ -222,15 +399,28 @@ export function SystemMessageComponent({
 
   // Get label based on message type
   const getLabel = () => {
-    if (message.type === "system") return "运行记录";
-    if (message.type === "result") return "整理完成";
+    if (isAbortMessage(message)) {
+      const status = getAbortStatus(message);
+      if (status === "ended") return "已结束";
+      if (status === "failed") return "需要处理的问题";
+      return "已暂停";
+    }
+    if (message.type === "system") return "处理动态";
+    if (message.type === "result") return "需要处理的问题";
     if (message.type === "error") return "需要处理的问题";
-    return "运行记录";
+    return "处理动态";
   };
 
-  const details = getDetails();
-  const isError = message.type === "error";
-  const isResult = message.type === "result";
+  const details = getDetails().trim();
+  if (!details) return null;
+  const isError =
+    message.type === "error" ||
+    (message.type === "result" && message.is_error === true);
+  const isResult = message.type === "result" && !isError;
+  const isAbort = isAbortMessage(message);
+  const isHook = isHooksMessage(message);
+  const shouldFoldVerboseRuntimeDetails =
+    isHook && isVerboseSkillRuntimeDetails(details);
 
   const colorScheme = isError
     ? {
@@ -239,19 +429,26 @@ export function SystemMessageComponent({
         border: "border-red-200 dark:border-red-700",
         bg: "bg-red-50/80 dark:bg-red-900/20 border border-red-200 dark:border-red-800",
       }
-    : isResult
-      ? {
-          header: "text-emerald-800 dark:text-emerald-300",
-          content: "text-emerald-700 dark:text-emerald-300",
-          border: "border-emerald-200 dark:border-emerald-700",
-          bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
-        }
-      : {
-          header: "text-blue-800 dark:text-blue-300",
-          content: "text-blue-700 dark:text-blue-300",
-          border: "border-blue-200 dark:border-blue-700",
-          bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
-        };
+      : isResult
+        ? {
+            header: "text-emerald-800 dark:text-emerald-300",
+            content: "text-emerald-700 dark:text-emerald-300",
+            border: "border-emerald-200 dark:border-emerald-700",
+            bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+          }
+        : isAbort
+          ? {
+              header: "text-amber-800 dark:text-amber-200",
+              content: "text-amber-800 dark:text-amber-100",
+              border: "border-amber-200 dark:border-amber-700",
+              bg: "bg-amber-50/90 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800",
+            }
+          : {
+              header: "text-blue-800 dark:text-blue-300",
+              content: "text-blue-700 dark:text-blue-300",
+              border: "border-blue-200 dark:border-blue-700",
+              bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
+            };
 
   return (
     <CollapsibleDetails
@@ -261,12 +458,17 @@ export function SystemMessageComponent({
       icon={
         isError ? (
           <span className="bg-red-500 dark:bg-red-600">!</span>
+        ) : isAbort ? (
+          <span className="bg-amber-500 dark:bg-amber-500">II</span>
         ) : (
           <span className="bg-blue-400 dark:bg-blue-500">⚙</span>
         )
       }
       colorScheme={colorScheme}
-      defaultExpanded={isError}
+      defaultExpanded={
+        isError || isAbort || (isHook && !shouldFoldVerboseRuntimeDetails)
+      }
+      showPreview={!shouldFoldVerboseRuntimeDetails}
       detailsBorderStyle={isError ? "dashed" : "solid"}
     />
   );
@@ -311,6 +513,9 @@ export function ToolResultMessageComponent({
   let maxPreviewLines = 3;
   let displayContent = message.content;
   let defaultExpanded = false;
+  const shouldFoldVerboseRuntimeDetails = isVerboseSkillRuntimeDetails(
+    message.content,
+  );
 
   // Handle Edit tool results with structuredPatch
   if (message.toolName === "Edit" && isEditToolUseResult(toolUseResult)) {
@@ -370,8 +575,10 @@ export function ToolResultMessageComponent({
       previewContent={previewContent}
       previewSummary={previewSummary}
       maxPreviewLines={maxPreviewLines}
-      showPreview={shouldShowPreview}
-      defaultExpanded={defaultExpanded}
+      showPreview={shouldShowPreview && !shouldFoldVerboseRuntimeDetails}
+      defaultExpanded={
+        shouldFoldVerboseRuntimeDetails ? false : defaultExpanded
+      }
       variant="pill"
     />
   );
@@ -533,11 +740,11 @@ export function LoadingComponent({
   assistantAvatarText: string;
 }) {
   return (
-    <MessageContainer
-      alignment="left"
-      colorScheme="panel-surface border"
-    >
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold opacity-90" style={{ color: "var(--text-secondary)" }}>
+    <MessageContainer alignment="left" colorScheme="panel-surface border">
+      <div
+        className="mb-2 flex items-center gap-2 text-xs font-semibold opacity-90"
+        style={{ color: "var(--text-secondary)" }}
+      >
         <span
           className="h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[10px]"
           style={{
@@ -550,7 +757,10 @@ export function LoadingComponent({
         </span>
         <span>{assistantDisplayName}</span>
       </div>
-      <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+      <div
+        className="flex items-center gap-2 text-sm"
+        style={{ color: "var(--text-secondary)" }}
+      >
         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
         <span className="animate-pulse">思考中...</span>
       </div>

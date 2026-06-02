@@ -20,9 +20,7 @@
     "e2e:recent": "playwright test tests/e2e/recent",
     "e2e:list": "playwright test --list",
     "playwright:install": "npx playwright install",
-    "verify:skills": "node scripts/verify-skills-page.mjs",
-    "record-demo": "npx tsx scripts/record-demo.ts",
-    "capture-screenshots": "npx tsx scripts/capture-screenshots.ts"
+    "verify:skills": "node scripts/verify-skills-page.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

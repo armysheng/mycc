@@ -42,6 +42,7 @@ describe('IDE session service config', () => {
       workspaceDir: '/home/mycc/workspace',
       port: 18080,
       sessionTtlSeconds: 3600,
+      desktopEnabled: true,
       allowPublicTraffic: false,
       accessMode: 'mycc-proxy',
       startCommand: expect.stringContaining("'code-server'"),

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MYCC_DESKTOP_DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}"
+MYCC_DESKTOP_CHROMIUM_PROFILE="${MYCC_DESKTOP_CHROMIUM_PROFILE:-/tmp/mycc-desktop/chromium-profile}"
+MYCC_DESKTOP_BROWSER_WINDOW_SIZE="${MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900}"
+
+if [ "${1:-}" = "--version" ]; then
+  exec chromium --version
+fi
+
+mkdir -p "$MYCC_DESKTOP_CHROMIUM_PROFILE"
+export DISPLAY="$MYCC_DESKTOP_DISPLAY"
+
+args=("$@")
+if [ "$#" -eq 0 ]; then
+  args=("about:blank")
+fi
+
+exec chromium \
+  --no-sandbox \
+  --disable-dev-shm-usage \
+  --disable-gpu \
+  --ozone-platform=x11 \
+  --no-first-run \
+  --disable-default-apps \
+  --password-store=basic \
+  --start-maximized \
+  --user-data-dir="$MYCC_DESKTOP_CHROMIUM_PROFILE" \
+  --window-size="$MYCC_DESKTOP_BROWSER_WINDOW_SIZE" \
+  --new-window \
+  "${args[@]}"

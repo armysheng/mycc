@@ -74,6 +74,38 @@ describe('ensureE2bIdeSession', () => {
     expect(await store.findReusableByUser(42)).toEqual(session);
   });
 
+  it('creates a new session when the caller already rejected the reusable session', async () => {
+    const store = new InMemoryIdeSessionStore();
+    await store.set(runningSession);
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_after_live_check',
+      codeServerPid: 4321,
+      host: '18080-sbx_after_live_check.e2b.app',
+      trafficAccessToken: 'new-traffic-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T14:00:00.000Z',
+    });
+
+    const session = await ensureE2bIdeSession({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+      sessionStore: store,
+      e2bProvider: { startCodeServer },
+      env: { MYCC_IDE_PROVIDER: 'e2b' },
+      skipReusable: true,
+    });
+
+    expect(startCodeServer).toHaveBeenCalledOnce();
+    expect(session).toEqual(expect.objectContaining({
+      sandboxId: 'sbx_after_live_check',
+      userId: 42,
+      status: 'running',
+    }));
+  });
+
   it('coalesces concurrent session creation for the same user', async () => {
     const store = new InMemoryIdeSessionStore();
     let resolveStart: ((value: {

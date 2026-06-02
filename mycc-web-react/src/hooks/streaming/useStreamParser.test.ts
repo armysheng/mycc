@@ -344,6 +344,7 @@ describe("useStreamParser", () => {
       result.current.processStreamLine(
         `data: ${JSON.stringify({
           type: "aborted",
+          message: "已暂停这次任务",
         })}`,
         mockContext,
       );
@@ -351,10 +352,28 @@ describe("useStreamParser", () => {
       expect(mockContext.addMessage).toHaveBeenCalledWith({
         type: "system",
         subtype: "abort",
-        message: "Operation was aborted by user",
+        message: "已暂停这次任务",
+        status: "paused",
         timestamp: expect.any(Number),
       });
       expect(mockContext.setCurrentAssistantMessage).toHaveBeenCalledWith(null);
+    });
+
+    it("should open the requested workbench tab from backend stream signals", () => {
+      const { result } = renderHook(() => useStreamParser());
+      mockContext.onWorkbenchOpen = vi.fn();
+
+      result.current.processStreamLine(
+        `data: ${JSON.stringify({
+          type: "workbench",
+          tab: "browser",
+          source: "agent-browser",
+        })}`,
+        mockContext,
+      );
+
+      expect(mockContext.onWorkbenchOpen).toHaveBeenCalledWith("browser");
+      expect(mockContext.addMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -500,6 +519,23 @@ describe("useStreamParser", () => {
           plan: "Plan with session tracking",
         }),
       );
+    });
+
+    it("should update session ID from done events when no init event is present", () => {
+      const { result } = renderHook(() => useStreamParser());
+
+      result.current.processStreamLine(
+        `data: ${JSON.stringify({
+          type: "done",
+          sessionId: "session-from-done",
+        })}`,
+        mockContext,
+      );
+
+      expect(mockContext.onSessionId).toHaveBeenCalledWith(
+        "session-from-done",
+      );
+      expect(mockContext.addMessage).not.toHaveBeenCalled();
     });
   });
 });

@@ -16,10 +16,13 @@ export async function ensureE2bIdeSession(params: {
   e2bProvider: E2bIdeSessionProvider;
   env?: NodeJS.ProcessEnv;
   missingStartCodeServerMessage?: string;
+  skipReusable?: boolean;
 }): Promise<StoredIdeSession> {
-  const reusable = await params.sessionStore.findReusableByUser(params.userId);
-  if (reusable) {
-    return reusable;
+  if (!params.skipReusable) {
+    const reusable = await params.sessionStore.findReusableByUser(params.userId);
+    if (reusable) {
+      return reusable;
+    }
   }
   if (!params.e2bProvider.startCodeServer) {
     throw new Error(params.missingStartCodeServerMessage || 'E2B provider cannot create IDE sessions');

@@ -3,6 +3,7 @@ import { Template } from 'e2b';
 import jwt from 'jsonwebtoken';
 import { pool } from '../src/db/client.js';
 import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
+import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { PostgresIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 
 dotenv.config();
@@ -11,9 +12,7 @@ type IdeConfigResponse = {
   success: true;
   data: {
     enabled: boolean;
-    provider: string;
     desktopEnabled?: boolean;
-    e2bTemplate?: string;
   };
 };
 
@@ -48,6 +47,7 @@ const LINUX_USER = process.env.MYCC_SMOKE_LINUX_USER || 'mycc';
 
 let sessionId: string | undefined;
 const sessionStore = new PostgresIdeSessionStore();
+const e2bProvider = new E2bSandboxProvider();
 
 async function main() {
   const apiKey = requireE2bApiKey();
@@ -65,13 +65,13 @@ async function main() {
     const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
       headers: { authorization },
     });
-    if (!config.data.enabled || config.data.provider !== 'e2b') {
-      throw new Error(`IDE is not enabled for E2B: ${JSON.stringify(config.data)}`);
+    if (!config.data.enabled) {
+      throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
     }
     if (!config.data.desktopEnabled) {
       throw new Error(`GNU desktop is not enabled by MyCC backend config: ${JSON.stringify(config.data)}`);
     }
-    const templateName = config.data.e2bTemplate || FALLBACK_TEMPLATE_NAME;
+    const templateName = FALLBACK_TEMPLATE_NAME;
     const templateExists = await Template.exists(templateName, { apiKey });
     if (!templateExists) {
       throw new Error(`E2B template does not exist: ${templateName}`);
