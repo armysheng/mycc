@@ -69,6 +69,7 @@ interface ChatInputProps {
     installed?: boolean;
     enabled?: boolean;
   }>;
+  queuedMessageCount?: number;
   variant?: "default" | "hero";
   placeholder?: string;
   showPermissionModeControl?: boolean;
@@ -223,6 +224,7 @@ export function ChatInput({
   slashSkillsLoaded = false,
   slashSkillsLoading = false,
   slashSkills = [],
+  queuedMessageCount = 0,
   variant = "default",
   placeholder,
   showPermissionModeControl = true,
@@ -285,10 +287,10 @@ export function ChatInput({
   ]);
 
   useEffect(() => {
-    if (!isLoading && !showPermissions && inputRef.current) {
+    if (!showPermissions && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isLoading, showPermissions]);
+  }, [showPermissions]);
 
   useEffect(() => {
     const focusInput = () => {
@@ -312,7 +314,6 @@ export function ChatInput({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (isLoading) return;
 
     const trimmedInput = input.trim();
     if (!trimmedInput && attachments.length === 0) return;
@@ -438,7 +439,6 @@ export function ChatInput({
   };
 
   const addFiles = async (fileList: FileList | File[]) => {
-    if (isLoading) return;
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
@@ -512,9 +512,7 @@ export function ChatInput({
 
   const canSubmit = Boolean(input.trim()) || attachments.length > 0;
   const resolvedPlaceholder = placeholder
-    ?? (isLoading && currentRequestId
-      ? "正在处理中..."
-      : enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送");
+    ?? (enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送");
 
   return (
     <div className={isHero ? "w-full" : "flex-shrink-0 space-y-2"}>
@@ -630,7 +628,6 @@ export function ChatInput({
               ? "min-h-[132px] w-full resize-none overflow-hidden rounded-[22px] border border-transparent bg-transparent px-4 py-4 text-base leading-7 text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white/45 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-950/20"
               : "min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
           }
-          disabled={isLoading}
         />
 
         {isSlashPickerOpen && (
@@ -734,7 +731,6 @@ export function ChatInput({
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 aria-label="添加资料"
                 title="添加资料"
-                disabled={isLoading}
               >
                 <PlusIcon className="h-4 w-4" />
               </button>
@@ -763,7 +759,7 @@ export function ChatInput({
 
             <button
               type="submit"
-              disabled={!canSubmit || isLoading}
+              disabled={!canSubmit}
               className={
                 isHero
                   ? "inline-flex h-10 items-center gap-1.5 rounded-full bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
@@ -776,6 +772,11 @@ export function ChatInput({
           </div>
         </div>
       </form>
+      {queuedMessageCount > 0 && (
+        <div className="px-1 text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+          已接住{queuedMessageCount > 1 ? ` ${queuedMessageCount} 条` : ""}，稍后继续
+        </div>
+      )}
 
       {!isHero && showPermissionModeControl && (
         <button

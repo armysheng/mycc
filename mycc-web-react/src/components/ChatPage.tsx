@@ -53,6 +53,20 @@ const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKSPACE_REQUEST_PATH = "~/workspace";
 const DEFAULT_WORKSPACE_LABEL = "默认工作区";
 
+type ChatSendPayload = {
+  content: string;
+  tools?: string[];
+  hideUserMessage: boolean;
+  overridePermissionMode?: PermissionMode;
+  displayMessage?: string;
+  images?: ChatImageAttachment[];
+  showQueueNotice?: boolean;
+};
+
+function countVisibleQueuedMessages(queue: ChatSendPayload[]): number {
+  return queue.filter((payload) => payload.showQueueNotice).length;
+}
+
 function formatWorkspaceDisplayLabel(workspacePath?: string): string | undefined {
   if (!workspacePath) return undefined;
   const normalized = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -172,6 +186,17 @@ export function ChatPage() {
     initialMessages: historyMessages,
     initialSessionId: loadedSessionId || undefined,
   });
+  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+  const queuedMessagesRef = useRef<ChatSendPayload[]>([]);
+  const isRequestActiveRef = useRef(isLoading);
+  const activeRequestIdRef = useRef<string | null>(currentRequestId);
+  const currentSessionIdRef = useRef<string | null>(currentSessionId);
+  const currentAssistantMessageRef = useRef(currentAssistantMessage);
+  const hasShownInitMessageRef = useRef(hasShownInitMessage);
+  const allowedToolsRef = useRef<string[]>([]);
+  const permissionModeRef = useRef(permissionMode);
+  const requestWorkingDirectoryRef = useRef(requestWorkingDirectory);
+  const drainQueuedMessageRef = useRef<() => void>(() => undefined);
 
   const {
     allowedTools,
@@ -188,6 +213,38 @@ export function ChatPage() {
   } = usePermissions({
     onPermissionModeChange: setPermissionMode,
   });
+
+  useEffect(() => {
+    isRequestActiveRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    activeRequestIdRef.current = currentRequestId;
+  }, [currentRequestId]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    currentAssistantMessageRef.current = currentAssistantMessage;
+  }, [currentAssistantMessage]);
+
+  useEffect(() => {
+    hasShownInitMessageRef.current = hasShownInitMessage;
+  }, [hasShownInitMessage]);
+
+  useEffect(() => {
+    allowedToolsRef.current = allowedTools;
+  }, [allowedTools]);
+
+  useEffect(() => {
+    permissionModeRef.current = permissionMode;
+  }, [permissionMode]);
+
+  useEffect(() => {
+    requestWorkingDirectoryRef.current = requestWorkingDirectory;
+  }, [requestWorkingDirectory]);
 
   const handlePermissionError = useCallback(
     (toolName: string, patterns: string[], toolUseId: string) => {
@@ -268,40 +325,75 @@ export function ChatPage() {
     [openWorkbenchDock],
   );
 
-  const sendMessage = useCallback(
-    async (
-      messageContent?: string,
-      tools?: string[],
-      hideUserMessage = false,
-      overridePermissionMode?: PermissionMode,
-      displayMessage?: string,
-      images?: ChatImageAttachment[],
-    ) => {
-      const content = messageContent || input.trim();
-      if (!content || isLoading) return;
+  const setCurrentSessionIdNow = useCallback(
+    (nextSessionId: string | null) => {
+      currentSessionIdRef.current = nextSessionId;
+      setCurrentSessionId(nextSessionId);
+    },
+    [setCurrentSessionId],
+  );
 
+  const setCurrentAssistantMessageNow = useCallback(
+    (message: ChatMessage | null) => {
+      currentAssistantMessageRef.current = message;
+      setCurrentAssistantMessage(message);
+    },
+    [setCurrentAssistantMessage],
+  );
+
+  const setHasShownInitMessageNow = useCallback(
+    (shown: boolean) => {
+      hasShownInitMessageRef.current = shown;
+      setHasShownInitMessage(shown);
+    },
+    [setHasShownInitMessage],
+  );
+
+  const finishActiveRequest = useCallback(
+    (requestId: string) => {
+      if (activeRequestIdRef.current !== requestId) return;
+      activeRequestIdRef.current = null;
+      isRequestActiveRef.current = false;
+      resetRequestState();
+      Promise.resolve().then(() => drainQueuedMessageRef.current());
+    },
+    [resetRequestState],
+  );
+
+  const runMessage = useCallback(
+    async (payload: ChatSendPayload) => {
+      const {
+        content,
+        tools,
+        hideUserMessage,
+        overridePermissionMode,
+        displayMessage,
+        images,
+      } = payload;
       const requestId = generateRequestId();
+      activeRequestIdRef.current = requestId;
+      isRequestActiveRef.current = true;
+      currentAssistantMessageRef.current = null;
 
-      // Only add user message to chat if not hidden
       if (!hideUserMessage) {
-        const userMessage: ChatMessage = {
+        addMessage({
           type: "chat",
           role: "user",
           content: displayMessage || content,
           timestamp: Date.now(),
-        };
-        addMessage(userMessage);
+        });
       }
 
-      if (!messageContent) clearInput();
       startRequest();
 
       try {
         let localHasReceivedInit = false;
         let shouldAbort = false;
-        let sessionIdForRequest = currentSessionId || undefined;
+        let sessionIdForRequest = currentSessionIdRef.current || undefined;
         let streamCompleted = false;
-        const requestPermissionMode = overridePermissionMode || permissionMode;
+        const requestPermissionMode =
+          overridePermissionMode || permissionModeRef.current;
+        const requestAllowedTools = tools || allowedToolsRef.current;
 
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const response = await fetch(getChatUrl(), {
@@ -313,8 +405,8 @@ export function ChatPage() {
               ...(sessionIdForRequest
                 ? { sessionId: sessionIdForRequest }
                 : {}),
-              allowedTools: tools || allowedTools,
-              workingDirectory: requestWorkingDirectory,
+              allowedTools: requestAllowedTools,
+              workingDirectory: requestWorkingDirectoryRef.current,
               permissionMode: requestPermissionMode,
               ...(images && images.length > 0 ? { images } : {}),
             } as ChatRequest),
@@ -331,7 +423,7 @@ export function ChatPage() {
             if (sessionDenied) {
               // 旧会话跨账号/权限变化时自动切到新会话重试一次，减少用户手动刷新成本
               sessionIdForRequest = undefined;
-              setCurrentSessionId(null);
+              setCurrentSessionIdNow(null);
               navigate({ search: "" });
               continue;
             }
@@ -345,13 +437,13 @@ export function ChatPage() {
           const decoder = new TextDecoder();
 
           const streamingContext: StreamingContext = {
-            currentAssistantMessage,
-            setCurrentAssistantMessage,
+            currentAssistantMessage: currentAssistantMessageRef.current,
+            setCurrentAssistantMessage: setCurrentAssistantMessageNow,
             addMessage,
             updateLastMessage,
-            onSessionId: setCurrentSessionId,
-            shouldShowInitMessage: () => !hasShownInitMessage,
-            onInitMessageShown: () => setHasShownInitMessage(true),
+            onSessionId: setCurrentSessionIdNow,
+            shouldShowInitMessage: () => !hasShownInitMessageRef.current,
+            onInitMessageShown: () => setHasShownInitMessageNow(true),
             get hasReceivedInit() {
               return localHasReceivedInit;
             },
@@ -396,41 +488,34 @@ export function ChatPage() {
         }
       } catch (error) {
         console.error("Failed to send message:", error);
-        const userMessage = getNetworkErrorMessage(
-          error,
-          "发送失败，请稍后重试。",
-        );
-        addMessage({
-          type: "chat",
-          role: "assistant",
-          content: userMessage,
-          timestamp: Date.now(),
-        });
+        if (activeRequestIdRef.current === requestId) {
+          const userMessage = getNetworkErrorMessage(
+            error,
+            "发送失败，请稍后重试。",
+          );
+          addMessage({
+            type: "chat",
+            role: "assistant",
+            content: userMessage,
+            timestamp: Date.now(),
+          });
+        }
       } finally {
-        resetRequestState();
+        finishActiveRequest(requestId);
       }
     },
     [
-      input,
-      isLoading,
-      currentSessionId,
-      allowedTools,
-      hasShownInitMessage,
-      currentAssistantMessage,
-      requestWorkingDirectory,
-      permissionMode,
       token,
       navigate,
       generateRequestId,
-      clearInput,
       startRequest,
       addMessage,
       updateLastMessage,
-      setCurrentSessionId,
-      setHasShownInitMessage,
+      setCurrentSessionIdNow,
+      setHasShownInitMessageNow,
       setHasReceivedInit,
-      setCurrentAssistantMessage,
-      resetRequestState,
+      setCurrentAssistantMessageNow,
+      finishActiveRequest,
       processStreamLine,
       handlePermissionError,
       createAbortHandler,
@@ -438,8 +523,67 @@ export function ChatPage() {
     ],
   );
 
+  const drainQueuedMessage = useCallback(() => {
+    if (isRequestActiveRef.current) return;
+    const nextPayload = queuedMessagesRef.current.shift();
+    setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+    if (!nextPayload) return;
+    void runMessage(nextPayload);
+  }, [runMessage]);
+
+  useEffect(() => {
+    drainQueuedMessageRef.current = drainQueuedMessage;
+  }, [drainQueuedMessage]);
+
+  const sendMessage = useCallback(
+    async (
+      messageContent?: string,
+      tools?: string[],
+      hideUserMessage = false,
+      overridePermissionMode?: PermissionMode,
+      displayMessage?: string,
+      images?: ChatImageAttachment[],
+    ) => {
+      const content = messageContent || input.trim();
+      if (!content) return;
+
+      if (!messageContent) clearInput();
+
+      const payload: ChatSendPayload = {
+        content,
+        tools,
+        hideUserMessage,
+        overridePermissionMode,
+        displayMessage,
+        images,
+      };
+
+      if (isRequestActiveRef.current) {
+        if (!hideUserMessage) {
+          addMessage({
+            type: "chat",
+            role: "user",
+            content: displayMessage || content,
+            timestamp: Date.now(),
+          });
+        }
+        queuedMessagesRef.current.push({
+          ...payload,
+          hideUserMessage: true,
+          showQueueNotice: !hideUserMessage,
+        });
+        setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+        return;
+      }
+
+      await runMessage(payload);
+    },
+    [input, clearInput, addMessage, runMessage],
+  );
+
   const handleAbort = useCallback(() => {
     void (async () => {
+      const abortingRequestId = currentRequestId;
       try {
         const result = await abortRequest(currentRequestId, isLoading);
         if (!result) return;
@@ -462,7 +606,15 @@ export function ChatPage() {
         };
         addMessage(abortMessage);
       } finally {
-        resetRequestState();
+        if (
+          abortingRequestId &&
+          activeRequestIdRef.current === abortingRequestId
+        ) {
+          activeRequestIdRef.current = null;
+          isRequestActiveRef.current = false;
+          resetRequestState();
+          Promise.resolve().then(() => drainQueuedMessageRef.current());
+        }
       }
     })();
   }, [abortRequest, currentRequestId, isLoading, addMessage, resetRequestState]);
@@ -657,6 +809,10 @@ export function ChatPage() {
     if (isLoading && currentRequestId) {
       abortRequest(currentRequestId, isLoading, resetRequestState);
     }
+    queuedMessagesRef.current = [];
+    setQueuedMessageCount(0);
+    activeRequestIdRef.current = null;
+    isRequestActiveRef.current = false;
     // 直接重置聊天 state，不依赖 URL 变化
     setMessages([]);
     setCurrentSessionId(null);
@@ -762,6 +918,7 @@ export function ChatPage() {
         slashSkillsLoaded={slashSkillsLoaded}
         slashSkillsLoading={slashSkillsLoading}
         onSlashRequestRefresh={loadSlashSkills}
+        queuedMessageCount={queuedMessageCount}
         variant={variant}
         showPermissionModeControl={false}
         placeholder={
@@ -781,6 +938,7 @@ export function ChatPage() {
       permissionData,
       permissionMode,
       planPermissionData,
+      queuedMessageCount,
       sendMessage,
       setInput,
       setPermissionMode,

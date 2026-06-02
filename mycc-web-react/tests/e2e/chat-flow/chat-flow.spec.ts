@@ -188,6 +188,68 @@ test("[CHAT-002] 暂停长任务后显示用户可理解的状态，并可继续
   expect(chatRequests[1]?.message).toBe("现在做另一个任务");
 });
 
+test("[CHAT-005] 任务运行中可继续输入，后续消息会排队接上", async ({
+  page,
+}) => {
+  const chatRequests: ChatPayload[] = [];
+  let releaseFirstResponse: (() => void) | null = null;
+  const firstResponseReleased = new Promise<void>((resolve) => {
+    releaseFirstResponse = resolve;
+  });
+
+  await page.route("**/api/chat", async (route) => {
+    const request = route.request().postDataJSON() as ChatPayload;
+    chatRequests.push(request);
+
+    if (chatRequests.length === 1) {
+      await firstResponseReleased;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: sse([{ type: "done", sessionId: "e2e-queue-root" }]),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse([
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "排队浏览器 OK" }],
+          },
+        },
+        { type: "done", sessionId: "e2e-queue-next" },
+      ]),
+    });
+  });
+
+  await bootstrapAuthenticatedChat(page);
+
+  await chatInput(page).fill("先做一个长任务");
+  await page.getByRole("button", { name: "发送" }).click();
+  await expect.poll(() => chatRequests.length).toBe(1);
+
+  await expect(chatInput(page)).toBeEnabled();
+  await chatInput(page).fill("长任务结束后继续做这个");
+  await page.getByRole("button", { name: "发送" }).click();
+
+  await expect(page.getByText("长任务结束后继续做这个")).toBeVisible();
+  await expect(page.getByText(/已接住/)).toBeVisible();
+  expect(chatRequests).toHaveLength(1);
+
+  releaseFirstResponse?.();
+
+  await expect(page.getByText("排队浏览器 OK")).toBeVisible();
+  expect(chatRequests).toHaveLength(2);
+  expect(chatRequests[1]).toMatchObject({
+    message: "长任务结束后继续做这个",
+    sessionId: "e2e-queue-root",
+  });
+});
+
 test("[CHAT-003] 图片附件随请求发送，但聊天正文不暴露 base64", async ({ page }) => {
   let chatPayload: ChatPayload | undefined;
 

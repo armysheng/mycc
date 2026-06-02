@@ -156,6 +156,42 @@ describe("ChatInput", () => {
     expect(onAbort).toHaveBeenCalledOnce();
   });
 
+  it("keeps the composer usable while a task is running", () => {
+    const onSubmit = vi.fn();
+
+    function Harness() {
+      const [input, setInput] = useState("");
+      return (
+        <SettingsProvider>
+          <ChatInput
+            input={input}
+            isLoading={true}
+            currentRequestId="request-running"
+            onInputChange={setInput}
+            onSubmit={onSubmit}
+            onAbort={vi.fn()}
+            permissionMode="bypassPermissions"
+            onPermissionModeChange={vi.fn()}
+            showPermissionModeControl={false}
+          />
+        </SettingsProvider>
+      );
+    }
+
+    render(<Harness />);
+
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toBeEnabled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+
+    fireEvent.change(textbox, {
+      target: { value: "补充一个新需求" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("keeps dropped files as chips and submits them as assistant context", async () => {
     const onSubmit = vi.fn();
 

@@ -524,6 +524,171 @@ describe("ChatPage workbench dock", () => {
     expect(chatCalls).toHaveLength(2);
   });
 
+  it("queues a follow-up while the current task is running and sends it after completion", async () => {
+    let chatStreamController:
+      | ReadableStreamDefaultController<Uint8Array>
+      | null = null;
+    const encoder = new TextEncoder();
+    const chatBodies: Array<{ message?: string; sessionId?: string }> = [];
+
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/assistant/home") {
+        return Promise.resolve(
+          okJson({
+            assistant: { initialized: true, name: "cc" },
+            tasks: [],
+            deliverables: [],
+            memory: { sources: [] },
+            capabilities: [],
+          }),
+        );
+      }
+      if (url === "/api/skills") {
+        return Promise.resolve(okJson({ skills: [] }));
+      }
+      if (url === "/api/chat" && init?.method === "POST") {
+        chatBodies.push(JSON.parse(String(init.body)));
+        if (chatBodies.length === 1) {
+          return Promise.resolve(
+            pendingSseResponse((controller) => {
+              chatStreamController = controller;
+            }),
+          );
+        }
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "assistant",
+              message: {
+                content: [{ type: "text", text: "排队任务 OK" }],
+              },
+            },
+            { type: "done", sessionId: "session_queue_done" },
+          ]),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderChatPage();
+
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "先做一个长任务" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => expect(chatBodies).toHaveLength(1));
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toBeEnabled();
+
+    fireEvent.change(textbox, {
+      target: { value: "等你结束后接着做这个" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(screen.getByText("等你结束后接着做这个")).toBeInTheDocument();
+    expect(screen.getByText(/已接住/)).toBeInTheDocument();
+    expect(chatBodies).toHaveLength(1);
+
+    await act(async () => {
+      chatStreamController?.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "done", sessionId: "session_queue_root" })}\n\n`,
+        ),
+      );
+      chatStreamController?.close();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("排队任务 OK")).toBeInTheDocument();
+    await waitFor(() => expect(chatBodies).toHaveLength(2));
+    expect(chatBodies[1]).toMatchObject({
+      message: "等你结束后接着做这个",
+      sessionId: "session_queue_root",
+    });
+  });
+
+  it("continues with a queued follow-up after pausing the current task", async () => {
+    let chatStreamController:
+      | ReadableStreamDefaultController<Uint8Array>
+      | null = null;
+    const chatBodies: Array<{ message?: string }> = [];
+
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/assistant/home") {
+        return Promise.resolve(
+          okJson({
+            assistant: { initialized: true, name: "cc" },
+            tasks: [],
+            deliverables: [],
+            memory: { sources: [] },
+            capabilities: [],
+          }),
+        );
+      }
+      if (url === "/api/skills") {
+        return Promise.resolve(okJson({ skills: [] }));
+      }
+      if (url === "/api/chat" && init?.method === "POST") {
+        chatBodies.push(JSON.parse(String(init.body)));
+        if (chatBodies.length === 1) {
+          return Promise.resolve(
+            pendingSseResponse((controller) => {
+              chatStreamController = controller;
+            }),
+          );
+        }
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "assistant",
+              message: {
+                content: [{ type: "text", text: "暂停后接上 OK" }],
+              },
+            },
+            { type: "done", sessionId: "session_queue_after_pause" },
+          ]),
+        );
+      }
+      if (url.startsWith("/api/abort/") && init?.method === "POST") {
+        chatStreamController?.close();
+        return Promise.resolve(
+          okJson({
+            active: true,
+            message: "已暂停这次任务",
+            type: "aborted",
+          }),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderChatPage();
+
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "先跑一个可以暂停的任务" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(chatBodies).toHaveLength(1));
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "暂停后继续做这个" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(chatBodies).toHaveLength(1);
+
+    fireEvent.click(await screen.findByRole("button", { name: "暂停这次任务" }));
+
+    expect(await screen.findByText("暂停后接上 OK")).toBeInTheDocument();
+    await waitFor(() => expect(chatBodies).toHaveLength(2));
+    expect(chatBodies[1]).toMatchObject({
+      message: "暂停后继续做这个",
+    });
+  });
+
   it("retries an assistant reply with the previous user message", async () => {
     let chatCallCount = 0;
     vi.mocked(fetch).mockImplementation((input, init) => {
