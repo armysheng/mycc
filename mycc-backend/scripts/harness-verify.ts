@@ -19,6 +19,8 @@ type HarnessTargetId =
   | 'e2b-ide-smoke'
   | 'e2b-desktop-smoke'
   | 'e2b-agent-sdk-smoke'
+  | 'auth-privacy-smoke'
+  | 'auth-onboarding-smoke'
   | 'frontend-e2e-recent'
   | 'release'
   | 'landing'
@@ -184,6 +186,24 @@ const targets: HarnessTarget[] = [
     expensive: true,
   },
   {
+    id: 'auth-privacy-smoke',
+    label: 'Auth privacy smoke',
+    description: 'Checks failed login privacy against the target backend without registering users or calling chat.',
+    command: 'npm',
+    args: ['run', 'smoke:auth-privacy'],
+    cwd: backendRoot,
+    expensive: true,
+  },
+  {
+    id: 'auth-onboarding-smoke',
+    label: 'Auth onboarding smoke',
+    description: 'Registers an example.test user, initializes onboarding, and verifies /api/auth/me without calling chat.',
+    command: 'npm',
+    args: ['run', 'smoke:auth-onboarding'],
+    cwd: backendRoot,
+    expensive: true,
+  },
+  {
     id: 'frontend-e2e-recent',
     label: 'Recent frontend E2E',
     description: 'Playwright recent-flow regression target. Requires frontend server/base URL setup.',
@@ -229,6 +249,8 @@ const targets: HarnessTarget[] = [
       'e2b-ide-smoke',
       'e2b-desktop-smoke',
       'e2b-agent-sdk-smoke',
+      'auth-privacy-smoke',
+      'auth-onboarding-smoke',
     ],
     expensive: true,
   },

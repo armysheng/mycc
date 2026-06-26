@@ -22,6 +22,8 @@
     "template:e2b-code-server:create": "bash scripts/create-e2b-code-server-template.sh",
     "smoke:e2b-ide": "tsx scripts/smoke-e2b-ide.ts",
     "smoke:e2b-desktop": "tsx scripts/smoke-e2b-desktop.ts",
+    "smoke:auth-privacy": "tsx scripts/smoke-auth-privacy.ts",
+    "smoke:auth-onboarding": "tsx scripts/smoke-auth-onboarding.ts",
     "smoke:local-chat-flow": "tsx scripts/smoke-local-chat-flow.ts",
     "smoke:e2b-agent-workspace": "tsx scripts/smoke-e2b-agent-workspace.ts",
     "smoke:e2b-agent-sdk-workspace": "MYCC_SMOKE_E2B_AGENT_RUNTIME=e2b-claude-agent-sdk tsx scripts/smoke-e2b-agent-workspace.ts"
