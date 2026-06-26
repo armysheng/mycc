@@ -2,8 +2,21 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { createUser, findUserByCredential, findUserById, getSubscription, updateUserProfile } from '../db/client.js';
 import { vpsUserManager } from '../vps/user-manager.js';
+import { shouldInitializeSshAtStartup } from '../startup/ssh-startup.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
+export const DEVELOPMENT_JWT_SECRET_PLACEHOLDER = 'your_jwt_secret_change_in_production';
+
+export function requireSafeJwtSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const secret = env.JWT_SECRET || DEVELOPMENT_JWT_SECRET_PLACEHOLDER;
+  if (env.NODE_ENV === 'production') {
+    if (!env.JWT_SECRET?.trim() || secret === DEVELOPMENT_JWT_SECRET_PLACEHOLDER) {
+      throw new Error('JWT_SECRET must be configured to a non-placeholder value in production');
+    }
+  }
+  return secret;
+}
+
+const JWT_SECRET = requireSafeJwtSecret();
 const JWT_EXPIRES_IN = '24h';
 
 export interface JWTPayload {
@@ -62,10 +75,12 @@ export async function register(params: {
     { expiresIn: JWT_EXPIRES_IN }
   );
 
-  // 异步创建 VPS 用户（不阻塞注册流程）
-  vpsUserManager.createUser(user.linux_user, '用户').catch(err => {
-    console.error(`❌ 异步创建 VPS 用户失败 (${user.linux_user}):`, err);
-  });
+  if (shouldInitializeSshAtStartup()) {
+    // 旧 VPS 运行时需要真实 Linux 用户；E2B 产品路径使用模板内 sandbox 用户，不创建 VPS 用户。
+    vpsUserManager.createUser(user.linux_user, '用户').catch(err => {
+      console.error(`❌ 异步创建 VPS 用户失败 (${user.linux_user}):`, err);
+    });
+  }
 
   return {
     token,

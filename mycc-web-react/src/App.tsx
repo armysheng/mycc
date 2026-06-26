@@ -7,22 +7,12 @@ import { AutomationsPage } from "./components/AutomationsPage";
 import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { useAuth } from "./contexts/AuthContext";
-import { isDevelopment } from "./utils/environment";
 import {
   clearOnboardingBootstrapPendingIfInitialized,
   getOnboardingBootstrapPending,
   setOnboardingBootstrapPending,
   subscribeOnboardingBootstrapPending,
 } from "./utils/onboardingBootstrapState";
-
-// Lazy load DemoPage only in development
-const DemoPage = isDevelopment()
-  ? lazy(() =>
-      import("./components/DemoPage").then((module) => ({
-        default: module.DemoPage,
-      })),
-    )
-  : null;
 
 const WorkspacePage = lazy(() =>
   import("./components/WorkspacePage").then((module) => ({
@@ -87,16 +77,6 @@ function App() {
               </Suspense>
             }
           />
-          {DemoPage && (
-            <Route
-              path="/demo"
-              element={
-                <Suspense fallback={<div>Loading demo...</div>}>
-                  <DemoPage />
-                </Suspense>
-              }
-            />
-          )}
         </Routes>
       </Router>
     </SettingsProvider>

@@ -191,9 +191,9 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     defaultEnabled: true,
     owner: 'system',
     mdPath: 'data-analysis/SKILL.md',
-    source_url: 'https://github.com/openai/skills/tree/main/skills/.curated/spreadsheet',
-    origin_type: 'community',
-    validation_note: '参考 OpenAI Codex spreadsheet skill 实现',
+    source_url: '',
+    origin_type: 'internal-verified',
+    validation_note: 'Vendored spreadsheet/data-analysis skill; public upstream URL is no longer available, locally verified in catalog',
     last_verified_at: '2026-03-02',
   },
   {

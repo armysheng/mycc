@@ -69,6 +69,7 @@ const NATIVE_BUILD_TOOL_COMMANDS = [
 
 const DESKTOP_COMMANDS = [
   'Xvfb',
+  'xfwm4',
   'startxfce4',
   'x11vnc',
   'websockify',

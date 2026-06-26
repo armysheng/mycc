@@ -147,14 +147,13 @@ export const getIdeDesktopSessionUrl = (sessionId: string) => {
 
 export const resolveIdeOpenUrl = (openPath: string) => {
   if (/^https?:\/\//i.test(openPath)) {
-    return openPath;
+    throw new Error("IDE open path must be a MyCC proxy path");
   }
-  const base = API_BASE || window.location.origin;
   const path = openPath.replace(/^\/+/, "");
-  if (/^https?:\/\//i.test(base)) {
-    return `${base}/${path}`;
+  if (!path.startsWith("api/ide/sessions/")) {
+    throw new Error("IDE open path must be a MyCC proxy path");
   }
-  return `${window.location.origin}${base ? `/${base.replace(/^\/+/, "")}` : ""}/${path}`;
+  return `${window.location.origin}/${path}`;
 };
 
 export const getAssistantHomeUrl = () => {

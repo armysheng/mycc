@@ -45,6 +45,46 @@ export function getToolDisplayText(
   if (toolName === "Task" && input?.description) {
     return `正在处理: ${input.description}`;
   }
+  if (toolName === "Skill") {
+    const skillName = getStringInput(input, "skill")
+      || getStringInput(input, "name")
+      || getStringInput(input, "skill_name");
+    if (skillName) {
+      const formatted = formatSkillName(skillName);
+      if (formatted === "浏览器") return "正在打开浏览器...";
+      if (formatted === "浏览器自动化") return "正在操作浏览器...";
+      if (formatted === "设计工具") return "正在打开设计工具...";
+      return `正在使用${formatted}...`;
+    }
+  }
 
   return TOOL_DISPLAY_MAP[toolName] || `正在使用 ${toolName}...`;
+}
+
+export function getToolActivityLabel(
+  toolName: string | undefined,
+  input?: Record<string, unknown>,
+): string {
+  if (!toolName || toolName === "Tool") return "正在处理资料...";
+  if (toolName === "Bash") return "正在执行一个本地操作...";
+  return getToolDisplayText(toolName, input).replace(/命令/g, "本地操作");
+}
+
+function getStringInput(
+  input: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = input?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function formatSkillName(skillName: string): string {
+  const normalized = skillName.toLowerCase();
+  if (normalized.includes("browser")) return "浏览器";
+  if (normalized.includes("figma")) return "设计工具";
+  if (normalized.includes("playwright")) return "浏览器自动化";
+  return skillName
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

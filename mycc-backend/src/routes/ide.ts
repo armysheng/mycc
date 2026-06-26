@@ -126,6 +126,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
         workspaceDir: `/home/${linuxUser}/workspace`,
         sessionStore,
         e2bProvider,
+        skipReusable: true,
       });
 
       attachProxyCookie(reply, session, 'editor');
@@ -407,6 +408,9 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   });
 
   fastify.server.on('upgrade', async (request, socket, head) => {
+    socket.on?.('error', () => {
+      socket.destroy();
+    });
     try {
       const target = await resolveProxyTargetFromUpgrade(sessionStore, request);
       if (!target || !proxyServer.ws) {
@@ -466,11 +470,23 @@ async function findLiveReusableSession(params: {
   if (!session) return null;
   if (!params.e2bProvider?.isCodeServerListening) return session;
 
-  const isListening = await params.e2bProvider.isCodeServerListening(session);
+  const isListening = await isCodeServerServiceLive(params.e2bProvider, session);
   if (isListening) return session;
 
   await params.sessionStore.set({ ...session, status: 'stopped' });
   return null;
+}
+
+async function isCodeServerServiceLive(
+  e2bProvider: IdeRoutesOptions['e2bProvider'],
+  session: StoredIdeSession,
+): Promise<boolean> {
+  if (!e2bProvider?.isCodeServerListening) return true;
+  try {
+    return await e2bProvider.isCodeServerListening(session);
+  } catch {
+    return false;
+  }
 }
 
 async function isDesktopServiceLive(
@@ -478,8 +494,11 @@ async function isDesktopServiceLive(
   session: StoredIdeSession,
 ): Promise<boolean> {
   if (!e2bProvider?.isDesktopListening) return true;
-  const isListening = await e2bProvider.isDesktopListening(session);
-  return isListening;
+  try {
+    return await e2bProvider.isDesktopListening(session);
+  } catch {
+    return false;
+  }
 }
 
 function toPublicSession(session: StoredIdeSession) {
@@ -543,6 +562,8 @@ function publicDesktopProxyLandingPath(session: StoredIdeSession): string {
   const websocketPath = `api/ide/sessions/${session.id}/desktop/proxy/websockify`;
   const query = new URLSearchParams({
     autoconnect: 'true',
+    reconnect: 'true',
+    reconnect_delay: '2000',
     resize: 'scale',
     path: websocketPath,
   });
@@ -655,7 +676,7 @@ function sendPublicIdeError(reply: FastifyReply, statusCode: number, error: unkn
 
 function publicIdeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message
+  const publicMessage = message
     .replace(/^IDE provider is disabled$/, '工作间当前未启用')
     .replace(/^IDE open token is invalid$/, '工作间打开凭据无效')
     .replace(/^Desktop open token is invalid$/, '桌面工作间打开凭据无效')
@@ -669,4 +690,12 @@ function publicIdeErrorMessage(error: unknown): string {
     .replace(/\bGNU desktop\b/gi, '桌面工作间')
     .replace(/\bE2B\b/gi, '文件空间')
     .replace(/\bcode-server\b/gi, '工作间');
+  if (isInternalIdeErrorMessage(publicMessage)) {
+    return '工作间暂时连接失败';
+  }
+  return publicMessage;
+}
+
+function isInternalIdeErrorMessage(message: string): boolean {
+  return /sandbox|provider|token|secret|traffic|host=|e2b\.app|sbx_|code-server|SQLSTATE|constraint|foreign key|invalid input syntax|desktop_pid/i.test(message);
 }

@@ -9,6 +9,7 @@ import type { SSHConnection } from '../ssh/types.js';
 import { parseStreamLine } from './stream-parser.js';
 import { sanitizeLinuxUsername, validatePathPrefix } from '../utils/validation.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from '../agent-runtime/types.js';
+import { DEFAULT_CLAUDE_MODEL } from '../agent-runtime/claude-model.js';
 
 export type ChatParams = AgentChatParams;
 
@@ -56,7 +57,7 @@ export class RemoteClaudeAdapter implements AgentRuntime {
       const configuredModel =
         process.env.VPS_CLAUDE_MODEL ||
         process.env.CLAUDE_MODEL ||
-        'claude-sonnet-4-6';
+        DEFAULT_CLAUDE_MODEL;
 
       if (!authToken || !baseUrl) {
         throw new Error('VPS Claude 认证配置缺失：VPS_ANTHROPIC_AUTH_TOKEN 或 VPS_ANTHROPIC_BASE_URL');

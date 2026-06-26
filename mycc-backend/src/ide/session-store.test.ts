@@ -4,6 +4,9 @@ import { InMemoryIdeSessionStore, PostgresIdeSessionStore, type StoredIdeSession
 const baseSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -58,10 +61,13 @@ describe('IDE session stores', () => {
       .mockResolvedValueOnce({
         rowCount: 1,
         rows: [{
-          id: 'ide_123',
-          user_id: 42,
-          provider: 'e2b',
-          sandbox_id: 'sbx_123',
+	          id: 'ide_123',
+	          user_id: 42,
+	          provider: 'e2b',
+            template: 'mycc-assistant-sandbox-dev',
+            linux_user: 'mycc',
+            workspace_dir: '/home/mycc/workspace',
+	          sandbox_id: 'sbx_123',
           code_server_pid: 1234,
           host: '18080-sbx_123.e2b.app',
           traffic_access_token: 'secret-token',
@@ -82,10 +88,13 @@ describe('IDE session stores', () => {
     const reloaded = await store.get(baseSession.id);
 
     expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO ide_sessions'), [
-      'ide_123',
-      42,
-      'e2b',
-      'sbx_123',
+	      'ide_123',
+	      42,
+	      'e2b',
+        'mycc-assistant-sandbox-dev',
+        'mycc',
+        '/home/mycc/workspace',
+	      'sbx_123',
       1234,
       '18080-sbx_123.e2b.app',
       'secret-token',
@@ -110,10 +119,13 @@ describe('IDE session stores', () => {
       .mockResolvedValueOnce({
         rowCount: 1,
         rows: [{
-          id: 'ide_123',
-          user_id: 42,
-          provider: 'e2b',
-          sandbox_id: 'sbx_123',
+	          id: 'ide_123',
+	          user_id: 42,
+	          provider: 'e2b',
+            template: 'mycc-assistant-sandbox-dev',
+            linux_user: 'mycc',
+            workspace_dir: '/home/mycc/workspace',
+	          sandbox_id: 'sbx_123',
           code_server_pid: 1234,
           host: '18080-sbx_123.e2b.app',
           traffic_access_token: 'secret-token',
@@ -134,10 +146,13 @@ describe('IDE session stores', () => {
     const reloaded = await store.get(desktopSession.id);
 
     expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('desktop_pid'), [
-      'ide_123',
-      42,
-      'e2b',
-      'sbx_123',
+	      'ide_123',
+	      42,
+	      'e2b',
+        'mycc-assistant-sandbox-dev',
+        'mycc',
+        '/home/mycc/workspace',
+	      'sbx_123',
       1234,
       '18080-sbx_123.e2b.app',
       'secret-token',
@@ -159,9 +174,12 @@ describe('IDE session stores', () => {
       rowCount: 1,
       rows: [{
         id: 'ide_123',
-        user_id: 42,
-        provider: 'e2b',
-        sandbox_id: 'sbx_123',
+          user_id: 42,
+          provider: 'e2b',
+          template: 'mycc-assistant-sandbox-dev',
+          linux_user: 'mycc',
+          workspace_dir: '/home/mycc/workspace',
+          sandbox_id: 'sbx_123',
         code_server_pid: 1234,
         host: '18080-sbx_123.e2b.app',
         traffic_access_token: 'secret-token',
@@ -178,11 +196,40 @@ describe('IDE session stores', () => {
     });
     const store = new PostgresIdeSessionStore({ query });
 
-    const reloaded = await store.findReusableByUser(42);
+    const reloaded = await store.findReusableByUser(42, {
+      template: 'mycc-assistant-sandbox-dev',
+      linuxUser: 'mycc',
+      workspaceDir: '/home/mycc/workspace',
+      port: 18080,
+    });
 
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('status = $2'), [42, 'running']);
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('expires_at > NOW()'), [42, 'running']);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('template = $3'), [
+      42,
+      'running',
+      'mycc-assistant-sandbox-dev',
+      'mycc',
+      '/home/mycc/workspace',
+      18080,
+    ]);
     expect(reloaded).toEqual(baseSession);
+  });
+
+  it('does not reuse an in-memory session with a different sandbox workspace identity', async () => {
+    const store = new InMemoryIdeSessionStore();
+    await store.set(baseSession);
+
+    await expect(store.findReusableByUser(42, {
+      template: 'mycc-assistant-sandbox-dev',
+      linuxUser: 'mycc',
+      workspaceDir: '/home/mycc/workspace',
+      port: 18080,
+    })).resolves.toEqual(baseSession);
+    await expect(store.findReusableByUser(42, {
+      template: 'mycc-other-template',
+      linuxUser: 'mycc',
+      workspaceDir: '/home/mycc/workspace',
+      port: 18080,
+    })).resolves.toBeNull();
   });
 
   it('loads expired running IDE sessions for cleanup from Postgres', async () => {
@@ -190,9 +237,12 @@ describe('IDE session stores', () => {
       rowCount: 1,
       rows: [{
         id: 'ide_expired',
-        user_id: 42,
-        provider: 'e2b',
-        sandbox_id: 'sbx_expired',
+          user_id: 42,
+          provider: 'e2b',
+          template: 'mycc-assistant-sandbox-dev',
+          linux_user: 'mycc',
+          workspace_dir: '/home/mycc/workspace',
+          sandbox_id: 'sbx_expired',
         code_server_pid: 1234,
         host: '18080-sbx_expired.e2b.app',
         traffic_access_token: 'secret-token',

@@ -9,7 +9,7 @@ type ClaudeCredentialEnv = {
   target: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
 };
 
-export type ClaudeProviderKind = 'ccr' | 'custom' | 'anthropic' | 'vps' | 'none';
+export type ClaudeProviderKind = 'mycc-claude' | 'ccr' | 'custom' | 'anthropic' | 'vps' | 'none';
 
 export type ClaudeProviderEnvDescription = {
   provider: ClaudeProviderKind;
@@ -21,18 +21,18 @@ export type ClaudeProviderEnvDescription = {
 };
 
 const BASE_URL_ENV_KEYS = [
-  'MYCC_CCR_BASE_URL',
   'MYCC_CLAUDE_BASE_URL',
+  'MYCC_CCR_BASE_URL',
   'MYCC_AGENT_SDK_BASE_URL',
   'ANTHROPIC_BASE_URL',
   'VPS_ANTHROPIC_BASE_URL',
 ];
 
 const CREDENTIAL_ENV_KEYS: ClaudeCredentialEnv[] = [
-  { source: 'MYCC_CCR_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
-  { source: 'MYCC_CCR_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'MYCC_CLAUDE_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
   { source: 'MYCC_CLAUDE_API_KEY', target: 'ANTHROPIC_API_KEY' },
+  { source: 'MYCC_CCR_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+  { source: 'MYCC_CCR_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'MYCC_AGENT_SDK_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
   { source: 'MYCC_AGENT_SDK_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'ANTHROPIC_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
@@ -111,6 +111,7 @@ function classifyProvider(
 ): ClaudeProviderKind {
   const source = baseUrlSource || credentialSource;
   if (!source) return 'none';
+  if (source.startsWith('MYCC_CLAUDE_')) return 'mycc-claude';
   if (source.startsWith('MYCC_CCR_')) return 'ccr';
   if (source.startsWith('VPS_')) return 'vps';
   if (source.startsWith('ANTHROPIC_')) return 'anthropic';

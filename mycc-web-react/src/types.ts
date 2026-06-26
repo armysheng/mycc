@@ -28,6 +28,7 @@ export type AbortMessage = {
   type: "system";
   subtype: "abort";
   message: string;
+  status?: "paused" | "ended" | "failed";
   timestamp: number;
 };
 
@@ -315,7 +316,8 @@ export interface AssistantHomeData {
 export type StreamResponse =
   | { type: "claude_json"; data: unknown }
   | { type: "error"; error: string }
-  | { type: "aborted" }
+  | { type: "aborted"; message?: string; guidance?: string; active?: boolean }
+  | { type: "workbench"; tab: "browser" | "files" | "preview"; source?: string }
   | { type: "done"; sessionId?: string }
   | SDKMessage; // Backend returns SDKMessage directly
 
@@ -326,6 +328,12 @@ export interface ChatRequest {
   allowedTools?: string[];
   workingDirectory?: string;
   permissionMode?: PermissionMode;
+  images?: ChatImageAttachment[];
+}
+
+export interface ChatImageAttachment {
+  data: string;
+  mediaType: string;
 }
 
 export interface ProjectsResponse {

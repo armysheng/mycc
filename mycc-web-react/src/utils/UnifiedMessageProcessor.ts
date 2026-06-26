@@ -1,7 +1,7 @@
 import type {
   AllMessage,
   ChatMessage,
-  ThinkingMessage,
+  PermissionMode,
   SDKMessage,
   TimestampedSDKMessage,
 } from "../types";
@@ -10,7 +10,6 @@ import {
   convertResultMessage,
   createToolMessage,
   createToolResultMessage,
-  createThinkingMessage,
   createTodoMessageFromInput,
 } from "./messageConversion";
 import { isThinkingContentItem } from "./messageTypes";
@@ -52,6 +51,7 @@ export interface ProcessingContext {
     toolUseId: string,
   ) => void;
   onAbortRequest?: () => void;
+  permissionMode?: PermissionMode;
 }
 
 /**
@@ -69,6 +69,22 @@ export interface ProcessingOptions {
  */
 function isToolUseError(content: string): boolean {
   return content.includes("tool_use_error");
+}
+
+function isVerboseSkillRuntimeText(content: string): boolean {
+  const trimmed = content.trimStart();
+  return (
+    trimmed.startsWith("Base directory for this skill:") ||
+    trimmed.includes("\n# Browser Use In MyCC Sandbox") ||
+    (trimmed.includes("\n# ") && trimmed.includes("\nARGUMENTS:"))
+  );
+}
+
+function isInternalTaskLifecycleSystemMessage(
+  message: Extract<SDKMessage | TimestampedSDKMessage, { type: "system" }>,
+): boolean {
+  const subtype = (message as { subtype?: unknown }).subtype;
+  return typeof subtype === "string" && subtype.startsWith("task_");
 }
 
 /**
@@ -159,7 +175,8 @@ export class UnifiedMessageProcessor {
     if (
       options.isStreaming &&
       contentItem.is_error &&
-      !isToolUseError(content)
+      !isToolUseError(content) &&
+      context.permissionMode !== "bypassPermissions"
     ) {
       this.handlePermissionError(contentItem, context);
       return;
@@ -282,6 +299,9 @@ export class UnifiedMessageProcessor {
     options: ProcessingOptions,
   ): void {
     const timestamp = options.timestamp || Date.now();
+    if (isInternalTaskLifecycleSystemMessage(message)) {
+      return;
+    }
 
     // Check if this is an init message and if we should show it (streaming only)
     if (options.isStreaming && message.subtype === "init") {
@@ -332,7 +352,6 @@ export class UnifiedMessageProcessor {
         };
 
     let assistantContent = "";
-    const thinkingMessages: ThinkingMessage[] = [];
 
     // Check if message.content exists and is an array
     if (message.message?.content && Array.isArray(message.message.content)) {
@@ -346,15 +365,8 @@ export class UnifiedMessageProcessor {
         } else if (item.type === "tool_use") {
           this.handleToolUse(item, localContext, options);
         } else if (isThinkingContentItem(item)) {
-          const thinkingMessage = createThinkingMessage(
-            item.thinking,
-            timestamp,
-          );
-          if (options.isStreaming) {
-            context.addMessage(thinkingMessage);
-          } else {
-            thinkingMessages.push(thinkingMessage);
-          }
+          // Reasoning payloads are internal model artifacts, not user-visible chat.
+          continue;
         }
       }
     }
@@ -362,9 +374,6 @@ export class UnifiedMessageProcessor {
     // For batch processing, assemble the messages in proper order
     if (!options.isStreaming) {
       const orderedMessages: AllMessage[] = [];
-
-      // Add thinking messages first (reasoning comes before action)
-      orderedMessages.push(...thinkingMessages);
 
       // Add tool messages second (actions)
       orderedMessages.push(...messages);
@@ -440,10 +449,14 @@ export class UnifiedMessageProcessor {
           );
         } else if (contentItem.type === "text") {
           // Regular text content
+          const content = (contentItem as { text: string }).text;
+          if (isVerboseSkillRuntimeText(content)) {
+            continue;
+          }
           const userMessage: ChatMessage = {
             type: "chat",
             role: "user",
-            content: (contentItem as { text: string }).text,
+            content,
             timestamp,
           };
           localContext.addMessage(userMessage);
@@ -451,6 +464,9 @@ export class UnifiedMessageProcessor {
       }
     } else if (typeof messageContent === "string") {
       // Simple string content
+      if (isVerboseSkillRuntimeText(messageContent)) {
+        return messages;
+      }
       const userMessage: ChatMessage = {
         type: "chat",
         role: "user",

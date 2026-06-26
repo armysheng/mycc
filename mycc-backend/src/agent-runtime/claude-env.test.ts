@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { describeClaudeProviderEnv, omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
 
 describe('Claude provider env resolver', () => {
-  it('prefers CCR base URL and credential aliases over all fallbacks', () => {
+  it('prefers direct MyCC Claude aliases over CCR and all fallbacks', () => {
     const result = resolveClaudeProviderEnv({
       MYCC_CCR_BASE_URL: 'https://ccr.example.test',
       MYCC_CLAUDE_BASE_URL: 'https://claude-proxy.example.test',
@@ -10,18 +10,23 @@ describe('Claude provider env resolver', () => {
       ANTHROPIC_BASE_URL: 'https://anthropic.example.test',
       VPS_ANTHROPIC_BASE_URL: 'https://vps.example.test',
       MYCC_CCR_AUTH_TOKEN: 'ccr-token',
+      MYCC_CLAUDE_AUTH_TOKEN: 'claude-token',
       MYCC_CCR_API_KEY: 'ccr-api-key',
       ANTHROPIC_API_KEY: 'stale-anthropic-key',
     });
 
     expect(result).toEqual({
-      ANTHROPIC_BASE_URL: 'https://ccr.example.test',
-      ANTHROPIC_AUTH_TOKEN: 'ccr-token',
+      ANTHROPIC_BASE_URL: 'https://claude-proxy.example.test',
+      ANTHROPIC_AUTH_TOKEN: 'claude-token',
     });
     expect(result).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
 
-  it('falls back through MYCC_CLAUDE, legacy Agent SDK, Anthropic, and VPS base URLs', () => {
+  it('falls back through CCR, legacy Agent SDK, Anthropic, and VPS base URLs', () => {
+    expect(resolveClaudeProviderEnv({
+      MYCC_CCR_BASE_URL: 'https://ccr.example.test',
+    })).toEqual({ ANTHROPIC_BASE_URL: 'https://ccr.example.test' });
+
     expect(resolveClaudeProviderEnv({
       MYCC_CLAUDE_BASE_URL: 'https://claude-proxy.example.test',
     })).toEqual({ ANTHROPIC_BASE_URL: 'https://claude-proxy.example.test' });
@@ -105,5 +110,26 @@ describe('Claude provider env resolver', () => {
     expect(JSON.stringify(description)).not.toContain('ccr-token');
     expect(JSON.stringify(description)).not.toContain('ccr.example.test');
     expect(JSON.stringify(description)).not.toContain('stale-anthropic-key');
+  });
+
+  it('describes direct MyCC Claude configuration without exposing URLs or credentials', () => {
+    const description = describeClaudeProviderEnv({
+      MYCC_CLAUDE_BASE_URL: 'https://zhuji.example.test/v1',
+      MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-token',
+      MYCC_CCR_BASE_URL: 'https://ccr.example.test/v1',
+      MYCC_CCR_AUTH_TOKEN: 'ccr-token',
+    });
+
+    expect(description).toEqual({
+      provider: 'mycc-claude',
+      baseUrlConfigured: true,
+      baseUrlSource: 'MYCC_CLAUDE_BASE_URL',
+      credentialConfigured: true,
+      credentialSource: 'MYCC_CLAUDE_AUTH_TOKEN',
+      credentialTarget: 'ANTHROPIC_AUTH_TOKEN',
+    });
+    expect(JSON.stringify(description)).not.toContain('zhuji-token');
+    expect(JSON.stringify(description)).not.toContain('zhuji.example.test');
+    expect(JSON.stringify(description)).not.toContain('ccr-token');
   });
 });

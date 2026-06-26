@@ -34,6 +34,7 @@ test('assistant sandbox module exposes the expected file contract', () => {
     'templates/e2b-assistant-sandbox/bin/mycc-start-ccr',
     'templates/e2b-assistant-sandbox/bin/mycc-start-desktop',
     'templates/e2b-assistant-sandbox/bin/mycc-health-desktop',
+    'templates/e2b-assistant-sandbox/bin/mycc-browser',
     'templates/e2b-assistant-sandbox/bin/mycc-register-deliverable',
     'scripts/sync-base-skills.mjs',
     'scripts/create-template.sh',
@@ -68,8 +69,18 @@ test('Dockerfile builds an AI browser automation ready assistant image', () => {
   assert.match(dockerfile, /x11vnc/);
   assert.match(dockerfile, /novnc/);
   assert.match(dockerfile, /websockify/);
+  assert.match(dockerfile, /xdg-utils/);
   assert.match(dockerfile, /xvfb/);
   assert.match(dockerfile, /chromium/);
+  assert.equal((dockerfile.match(/printf '%s\\\\n'/g) || []).length, 4);
+  assert.equal(dockerfile.includes(String.raw`printf '%s\n'`), false);
+  assert.match(dockerfile, /mycc-browser\.desktop/);
+  assert.match(dockerfile, /WebBrowser=mycc-browser/);
+  assert.match(dockerfile, /\/usr\/share\/xfce4\/helpers\/mycc-browser\.desktop/);
+  assert.match(dockerfile, /X-XFCE-CommandsWithParameter=\/usr\/local\/bin\/mycc-browser "%s"/);
+  assert.match(dockerfile, /x-scheme-handler\/http=mycc-browser\.desktop/);
+  assert.match(dockerfile, /ln -sf \/usr\/local\/bin\/mycc-browser \/usr\/local\/bin\/x-www-browser/);
+  assert.match(dockerfile, /ln -sf \/usr\/local\/bin\/mycc-browser \/usr\/local\/bin\/sensible-browser/);
   assert.match(dockerfile, /\/home\/mycc\/workspace/);
 });
 
@@ -80,6 +91,15 @@ test('template ready command runs the sandbox contract inside the user image', (
   assert.match(template, /\.setUser\('mycc'\)/);
   assert.match(template, /\.setWorkdir\('\/home\/mycc\/workspace'\)/);
   assert.match(template, /\/opt\/mycc\/contracts\/template-contract\.sh --ready/);
+});
+
+test('Agent SDK bridge loads Claude native skills from user and project sources', () => {
+  const bridge = read('templates/e2b-assistant-sandbox/scripts/agent-sdk-bridge.mjs');
+
+  assert.match(bridge, /MYCC_AGENT_SDK_SETTING_SOURCES \|\| 'user,project'/);
+  assert.match(bridge, /MYCC_AGENT_SDK_SKILLS \|\| 'all'/);
+  assert.match(bridge, /settingSources,\s+skills,/);
+  assert.doesNotMatch(bridge, /settingSources:\s*\[\]/);
 });
 
 test('template contract covers runtime, browser automation, desktop, and service scripts', () => {
@@ -100,12 +120,18 @@ test('template contract covers runtime, browser automation, desktop, and service
     'gcc',
     'make',
     'Xvfb',
+    'xfwm4',
     'startxfce4',
     'x11vnc',
     'websockify',
     'dbus-launch',
     'xdpyinfo',
     'chromium',
+    'xdg-open',
+    'x-www-browser',
+    'sensible-browser',
+    'exo-open',
+    'mycc-browser',
     'mycc-start-code-server',
     'mycc-start-ccr',
     'mycc-start-desktop',
@@ -123,6 +149,12 @@ test('template contract covers runtime, browser automation, desktop, and service
   assert.match(contract, /timeout 30s .*claude/);
   assert.match(contract, /timeout 30s ccr -h/);
   assert.match(contract, /timeout 30s .*chromium/);
+  assert.match(contract, /timeout 30s .*mycc-browser --version/);
+  assert.match(contract, /WebBrowser=mycc-browser/);
+  assert.match(contract, /mycc-browser\.desktop/);
+  assert.match(contract, /\/usr\/share\/xfce4\/helpers\/mycc-browser\.desktop/);
+  assert.match(contract, /x-scheme-handler\/http=mycc-browser\.desktop/);
+  assert.doesNotMatch(contract, /mycc-open-browser/);
   assert.match(contract, /mycc-register-deliverable/);
   assert.match(contract, /deliverables\.json/);
 });
@@ -157,6 +189,9 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   const startCcr = read('templates/e2b-assistant-sandbox/bin/mycc-start-ccr');
   const startCodeServer = read('templates/e2b-assistant-sandbox/bin/mycc-start-code-server');
   const startDesktop = read('templates/e2b-assistant-sandbox/bin/mycc-start-desktop');
+  const healthDesktop = read('templates/e2b-assistant-sandbox/bin/mycc-health-desktop');
+  const browserWrapper = read('templates/e2b-assistant-sandbox/bin/mycc-browser');
+  const browserUseSkill = read('templates/e2b-assistant-sandbox/skills/browser-use/SKILL.md');
   const registerDeliverable = read('templates/e2b-assistant-sandbox/bin/mycc-register-deliverable');
 
   assert.match(startCcr, /MYCC_CCR_PORT/);
@@ -169,11 +204,46 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   assert.match(startCodeServer, /\/home\/mycc\/workspace/);
 
   assert.match(startDesktop, /MYCC_DESKTOP_NOVNC_PORT/);
+  assert.match(startDesktop, /MYCC_DESKTOP_NOVNC_HOST/);
+  assert.match(startDesktop, /MYCC_DESKTOP_RESOLUTION="\$\{MYCC_DESKTOP_RESOLUTION:-1440x900\}"/);
+  assert.match(startDesktop, /MYCC_DESKTOP_MODE="\$\{MYCC_DESKTOP_MODE:-browser-only\}"/);
+  assert.match(startDesktop, /MYCC_DESKTOP_OPEN_BROWSER="\$\{MYCC_DESKTOP_OPEN_BROWSER:-1\}"/);
+  assert.match(startDesktop, /MYCC_DESKTOP_START_URL="\$\{MYCC_DESKTOP_START_URL:-about:blank\}"/);
+  assert.match(startDesktop, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE="\$\{MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-\$\{MYCC_DESKTOP_RESOLUTION\/x\/,\}\}"/);
+  assert.match(startDesktop, /0\.0\.0\.0/);
   assert.match(startDesktop, /MYCC_DESKTOP_VNC_PORT/);
   assert.match(startDesktop, /MYCC_DESKTOP_DISPLAY/);
+  assert.match(startDesktop, /browser-only\|browser/);
+  assert.match(startDesktop, /xfwm4 --replace --compositor=off/);
+  assert.match(startDesktop, /xfce\|desktop/);
+  assert.match(startDesktop, /startxfce4/);
+  assert.match(startDesktop, /mycc-browser "\$MYCC_DESKTOP_START_URL"/);
   assert.match(startDesktop, /websockify/);
   assert.match(startDesktop, /websockify\.log/);
+  assert.match(startDesktop, /websockify_pid=/);
+  assert.match(startDesktop, /wait "\$websockify_pid"/);
+  assert.doesNotMatch(startDesktop, /trap cleanup EXIT/);
   assert.match(startDesktop, /x11vnc/);
+  assert.doesNotMatch(startDesktop, /chromium/);
+
+  assert.match(healthDesktop, /\/websockify/);
+  assert.match(healthDesktop, /Sec-WebSocket-Key/);
+  assert.match(healthDesktop, /payload\.startswith\(b"RFB "\)/);
+
+  assert.match(browserWrapper, /chromium/);
+  assert.match(browserWrapper, /--no-sandbox/);
+  assert.match(browserWrapper, /--disable-dev-shm-usage/);
+  assert.match(browserWrapper, /--password-store=basic/);
+  assert.match(browserWrapper, /--start-maximized/);
+  assert.match(browserWrapper, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE="\$\{MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900\}"/);
+  assert.match(browserWrapper, /MYCC_DESKTOP_CHROMIUM_PROFILE/);
+
+  assert.match(browserUseSkill, /`baidu` or `百度`/);
+  assert.match(browserUseSkill, /https:\/\/www\.baidu\.com\//);
+  assert.match(browserUseSkill, /exo-open --launch WebBrowser/);
+  assert.match(browserUseSkill, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900/);
+  assert.doesNotMatch(browserUseSkill, /chromium --no-sandbox/);
+  assert.doesNotMatch(browserUseSkill, /mycc-open-browser/);
 
   assert.match(registerDeliverable, /deliverables\.json/);
   assert.match(registerDeliverable, /allowedKinds/);
@@ -236,6 +306,7 @@ test('package exposes local and E2B smoke checks', () => {
 
   assert.equal(packageJson.scripts['smoke:local-contract'], 'node scripts/smoke-local-contract.mjs');
   assert.equal(packageJson.scripts['smoke:e2b-template'], 'node scripts/smoke-e2b-template.mjs');
+  assert.equal(packageJson.scripts['smoke:e2b-agent-browser'], 'node scripts/smoke-e2b-agent-browser.mjs');
 });
 
 test('E2B smoke checks runtime services without exposing raw sandbox access', () => {
@@ -247,10 +318,37 @@ test('E2B smoke checks runtime services without exposing raw sandbox access', ()
   assert.match(smoke, /mycc-start-code-server/);
   assert.match(smoke, /mycc-start-desktop/);
   assert.match(smoke, /mycc-health-desktop/);
+  assert.match(smoke, /desktop-browser-only-mode/);
+  assert.match(smoke, /pgrep -af "\[x\]fwm4"/);
+  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic"/);
+  assert.match(smoke, /pgrep -af "\[x\]fce4-panel"/);
+  assert.match(smoke, /DISPLAY=:99/);
+  assert.match(smoke, /MYCC_DESKTOP_CHROMIUM_PROFILE=\/tmp\/mycc-desktop\/chromium-profile-smoke/);
+  assert.match(smoke, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE=1360,820/);
+  assert.match(smoke, /exo-open --launch WebBrowser about:blank/);
+  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic\.\*chromium-profile-smoke"/);
+  assert.doesNotMatch(smoke, /chromium-smoke\.log 2>&1 &'/);
+  assert.doesNotMatch(smoke, /&;\s*for/);
   assert.match(smoke, /playwright/);
   assert.match(smoke, /onStdout/);
   assert.match(smoke, /onStderr/);
   assert.match(smoke, /redacted-secret/);
+  assert.doesNotMatch(smoke, /\.getHost\(/);
+  assert.doesNotMatch(smoke, /trafficAccessToken/);
+});
+
+test('E2B agent browser smoke verifies Claude opens the mirrored browser safely', () => {
+  const smoke = read('scripts/smoke-e2b-agent-browser.mjs');
+
+  assert.match(smoke, /MYCC_AGENT_SDK_SKILLS/);
+  assert.match(smoke, /user,project/);
+  assert.match(smoke, /sawDesktopBrowserToolUse/);
+  assert.match(smoke, /exo-open/);
+  assert.match(smoke, /mycc-browser/);
+  assert.match(smoke, /baidu/);
+  assert.match(smoke, /pgrep -af chromium/);
+  assert.match(smoke, /allowPublicTraffic:\s*false/);
+  assert.match(smoke, /sanitize/);
   assert.doesNotMatch(smoke, /\.getHost\(/);
   assert.doesNotMatch(smoke, /trafficAccessToken/);
 });

@@ -20,10 +20,7 @@ describe('ClaudeAgentSdkRuntime', () => {
     vi.unstubAllEnvs();
   });
 
-  it('passes isolated and safe defaults to the Agent SDK', async () => {
-    vi.stubEnv('MYCC_AGENT_SDK_ALLOWED_TOOLS', 'Read,Glob,Grep');
-    vi.stubEnv('MYCC_AGENT_SDK_MODEL', 'claude-sonnet-4-6');
-
+  it('passes sandbox home defaults, default model, and guarded broad tool access to the Agent SDK', async () => {
     vi.mocked(query).mockReturnValue((async function* () {
       yield { type: 'system', subtype: 'init', session_id: 'session-1' };
       yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
@@ -44,23 +41,97 @@ describe('ClaudeAgentSdkRuntime', () => {
     expect(query).toHaveBeenCalledWith({
       prompt: 'hello',
       options: expect.objectContaining({
-        allowedTools: ['Read', 'Glob', 'Grep'],
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'],
         cwd: '/home/tester/workspace',
         env: expect.objectContaining({
-          CLAUDE_CONFIG_DIR: '/home/tester/.mycc/claude',
-          HOME: '/home/tester/.mycc/home',
-          XDG_CONFIG_HOME: '/home/tester/.mycc/home/.config',
-          XDG_DATA_HOME: '/home/tester/.mycc/home/.local/share',
+          CLAUDE_CONFIG_DIR: '/home/tester/.claude',
+          HOME: '/home/tester',
+          XDG_CONFIG_HOME: '/home/tester/.config',
+          XDG_DATA_HOME: '/home/tester/.local/share',
         }),
+        hooks: expect.objectContaining({
+          PreToolUse: expect.any(Array),
+        }),
+        includeHookEvents: false,
         includePartialMessages: false,
-        model: 'claude-sonnet-4-6',
+        model: 'claude-opus-4-7',
         allowDangerouslySkipPermissions: true,
         permissionMode: 'bypassPermissions',
         resume: 'session-1',
-        settingSources: [],
+        settingSources: ['user', 'project'],
         systemPrompt: { type: 'preset', preset: 'claude_code', excludeDynamicSections: true },
       }),
     });
+  });
+
+  it('normalizes legacy Opus model aliases', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_MODEL', 'claude-opus-4.7');
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(query).toHaveBeenCalledWith({
+      prompt: 'hello',
+      options: expect.objectContaining({
+        model: 'claude-opus-4-7',
+      }),
+    });
+  });
+
+  it('sends image attachments as a multimodal Agent SDK user message', async () => {
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    const events = await collect(runtime.chat({
+      message: '看一下截图',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+      images: [
+        {
+          data: 'iVBORw==',
+          mediaType: 'image/png',
+        },
+      ],
+    }));
+
+    expect(events).toEqual([
+      { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' },
+    ]);
+    const prompt = vi.mocked(query).mock.calls[0]![0]!.prompt;
+    expect(typeof prompt).not.toBe('string');
+    const messages = [];
+    for await (const message of prompt as AsyncIterable<unknown>) {
+      messages.push(message);
+    }
+    expect(messages).toEqual([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '看一下截图' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: 'iVBORw==',
+              },
+            },
+          ],
+        },
+        parent_tool_use_id: null,
+      },
+    ]);
   });
 
   it('lets an explicit request permission mode override the backend default', async () => {

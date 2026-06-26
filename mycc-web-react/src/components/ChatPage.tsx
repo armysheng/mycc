@@ -5,6 +5,8 @@ import {
   ComputerDesktopIcon,
 } from "@heroicons/react/24/outline";
 import type {
+  AbortMessage,
+  ChatImageAttachment,
   ChatRequest,
   ChatMessage,
   PermissionMode,
@@ -21,7 +23,6 @@ import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { useSettings } from "../hooks/useSettings";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
-import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import {
@@ -49,6 +50,30 @@ import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardin
 import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
 
 const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
+const DEFAULT_WORKSPACE_REQUEST_PATH = "~/workspace";
+const DEFAULT_WORKSPACE_LABEL = "默认工作区";
+
+type ChatSendPayload = {
+  content: string;
+  tools?: string[];
+  hideUserMessage: boolean;
+  overridePermissionMode?: PermissionMode;
+  displayMessage?: string;
+  images?: ChatImageAttachment[];
+  showQueueNotice?: boolean;
+};
+
+function countVisibleQueuedMessages(queue: ChatSendPayload[]): number {
+  return queue.filter((payload) => payload.showQueueNotice).length;
+}
+
+function formatWorkspaceDisplayLabel(workspacePath?: string): string | undefined {
+  if (!workspacePath) return undefined;
+  const normalized = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  const name = parts[parts.length - 1];
+  return name || DEFAULT_WORKSPACE_LABEL;
+}
 
 export function ChatPage() {
   const location = useLocation();
@@ -60,9 +85,14 @@ export function ChatPage() {
   const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] =
     useState(sidebarDefaultOpen);
   const [isWorkbenchDockOpen, setIsWorkbenchDockOpen] = useState(false);
+  const [hasWorkbenchDockMounted, setHasWorkbenchDockMounted] = useState(false);
   const [workbenchDockTab, setWorkbenchDockTab] =
-    useState<WorkbenchTab>("browser");
+    useState<WorkbenchTab>("activity");
   const [workbenchDockRequestId, setWorkbenchDockRequestId] = useState(0);
+  const [
+    workbenchBrowserAutoOpenRequestId,
+    setWorkbenchBrowserAutoOpenRequestId,
+  ] = useState(0);
   // 移动端抽屉：始终默认关闭
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [slashSkills, setSlashSkills] = useState<
@@ -91,8 +121,8 @@ export function ChatPage() {
   const assistantDisplayName = user?.assistant_name?.trim() || "cc";
   const assistantAvatarText = assistantDisplayName.trim().slice(0, 2) || "cc";
 
-  // Extract and normalize working directory from URL
-  const workingDirectory = (() => {
+  // Extract and normalize project directory from URL.
+  const routeWorkingDirectory = (() => {
     const rawPath = location.pathname.replace("/projects", "");
     if (!rawPath || rawPath === "/") return undefined;
 
@@ -102,6 +132,13 @@ export function ChatPage() {
     // Normalize Windows paths (remove leading slash from /C:/... format)
     return normalizeWindowsPath(decodedPath);
   })();
+  const requestWorkingDirectory =
+    routeWorkingDirectory ?? DEFAULT_WORKSPACE_REQUEST_PATH;
+  const workspaceDisplayLabel =
+    formatWorkspaceDisplayLabel(routeWorkingDirectory) ?? DEFAULT_WORKSPACE_LABEL;
+  const workspaceHeadlineName = routeWorkingDirectory
+    ? workspaceDisplayLabel
+    : undefined;
 
   // Get current view and sessionId from query parameters
   const currentView = searchParams.get("view");
@@ -110,7 +147,7 @@ export function ChatPage() {
   const isLoadedConversation = !!sessionId && !isHistoryView;
 
   const { processStreamLine } = useClaudeStreaming();
-  const { abortRequest, createAbortHandler } = useAbortController();
+  const { abortRequest, createAbortHandler } = useAbortController(token);
 
   // Permission mode state management
   const { permissionMode, setPermissionMode } = usePermissionMode();
@@ -149,6 +186,17 @@ export function ChatPage() {
     initialMessages: historyMessages,
     initialSessionId: loadedSessionId || undefined,
   });
+  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+  const queuedMessagesRef = useRef<ChatSendPayload[]>([]);
+  const isRequestActiveRef = useRef(isLoading);
+  const activeRequestIdRef = useRef<string | null>(currentRequestId);
+  const currentSessionIdRef = useRef<string | null>(currentSessionId);
+  const currentAssistantMessageRef = useRef(currentAssistantMessage);
+  const hasShownInitMessageRef = useRef(hasShownInitMessage);
+  const allowedToolsRef = useRef<string[]>([]);
+  const permissionModeRef = useRef(permissionMode);
+  const requestWorkingDirectoryRef = useRef(requestWorkingDirectory);
+  const drainQueuedMessageRef = useRef<() => void>(() => undefined);
 
   const {
     allowedTools,
@@ -165,6 +213,38 @@ export function ChatPage() {
   } = usePermissions({
     onPermissionModeChange: setPermissionMode,
   });
+
+  useEffect(() => {
+    isRequestActiveRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    activeRequestIdRef.current = currentRequestId;
+  }, [currentRequestId]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    currentAssistantMessageRef.current = currentAssistantMessage;
+  }, [currentAssistantMessage]);
+
+  useEffect(() => {
+    hasShownInitMessageRef.current = hasShownInitMessage;
+  }, [hasShownInitMessage]);
+
+  useEffect(() => {
+    allowedToolsRef.current = allowedTools;
+  }, [allowedTools]);
+
+  useEffect(() => {
+    permissionModeRef.current = permissionMode;
+  }, [permissionMode]);
+
+  useEffect(() => {
+    requestWorkingDirectoryRef.current = requestWorkingDirectory;
+  }, [requestWorkingDirectory]);
 
   const handlePermissionError = useCallback(
     (toolName: string, patterns: string[], toolUseId: string) => {
@@ -222,37 +302,98 @@ export function ChatPage() {
     };
   }, [token]);
 
-  const sendMessage = useCallback(
-    async (
-      messageContent?: string,
-      tools?: string[],
-      hideUserMessage = false,
-      overridePermissionMode?: PermissionMode,
+  const openWorkbenchDock = useCallback(
+    (
+      tab: WorkbenchTab = "browser",
+      options: { autoStartBrowser?: boolean } = {},
     ) => {
-      const content = messageContent || input.trim();
-      if (!content || isLoading) return;
+      setWorkbenchDockTab(tab);
+      setWorkbenchDockRequestId((requestId) => requestId + 1);
+      if (tab === "browser" && options.autoStartBrowser) {
+        setWorkbenchBrowserAutoOpenRequestId((requestId) => requestId + 1);
+      }
+      setHasWorkbenchDockMounted(true);
+      setIsWorkbenchDockOpen(true);
+    },
+    [],
+  );
 
+  const handleStreamWorkbenchOpen = useCallback(
+    (tab: WorkbenchTab) => {
+      openWorkbenchDock(tab, { autoStartBrowser: tab === "browser" });
+    },
+    [openWorkbenchDock],
+  );
+
+  const setCurrentSessionIdNow = useCallback(
+    (nextSessionId: string | null) => {
+      currentSessionIdRef.current = nextSessionId;
+      setCurrentSessionId(nextSessionId);
+    },
+    [setCurrentSessionId],
+  );
+
+  const setCurrentAssistantMessageNow = useCallback(
+    (message: ChatMessage | null) => {
+      currentAssistantMessageRef.current = message;
+      setCurrentAssistantMessage(message);
+    },
+    [setCurrentAssistantMessage],
+  );
+
+  const setHasShownInitMessageNow = useCallback(
+    (shown: boolean) => {
+      hasShownInitMessageRef.current = shown;
+      setHasShownInitMessage(shown);
+    },
+    [setHasShownInitMessage],
+  );
+
+  const finishActiveRequest = useCallback(
+    (requestId: string) => {
+      if (activeRequestIdRef.current !== requestId) return;
+      activeRequestIdRef.current = null;
+      isRequestActiveRef.current = false;
+      resetRequestState();
+      Promise.resolve().then(() => drainQueuedMessageRef.current());
+    },
+    [resetRequestState],
+  );
+
+  const runMessage = useCallback(
+    async (payload: ChatSendPayload) => {
+      const {
+        content,
+        tools,
+        hideUserMessage,
+        overridePermissionMode,
+        displayMessage,
+        images,
+      } = payload;
       const requestId = generateRequestId();
+      activeRequestIdRef.current = requestId;
+      isRequestActiveRef.current = true;
+      currentAssistantMessageRef.current = null;
 
-      // Only add user message to chat if not hidden
       if (!hideUserMessage) {
-        const userMessage: ChatMessage = {
+        addMessage({
           type: "chat",
           role: "user",
-          content: content,
+          content: displayMessage || content,
           timestamp: Date.now(),
-        };
-        addMessage(userMessage);
+        });
       }
 
-      if (!messageContent) clearInput();
       startRequest();
 
       try {
         let localHasReceivedInit = false;
         let shouldAbort = false;
-        let sessionIdForRequest = currentSessionId || undefined;
+        let sessionIdForRequest = currentSessionIdRef.current || undefined;
         let streamCompleted = false;
+        const requestPermissionMode =
+          overridePermissionMode || permissionModeRef.current;
+        const requestAllowedTools = tools || allowedToolsRef.current;
 
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const response = await fetch(getChatUrl(), {
@@ -264,9 +405,10 @@ export function ChatPage() {
               ...(sessionIdForRequest
                 ? { sessionId: sessionIdForRequest }
                 : {}),
-              allowedTools: tools || allowedTools,
-              ...(workingDirectory ? { workingDirectory } : {}),
-              permissionMode: overridePermissionMode || permissionMode,
+              allowedTools: requestAllowedTools,
+              workingDirectory: requestWorkingDirectoryRef.current,
+              permissionMode: requestPermissionMode,
+              ...(images && images.length > 0 ? { images } : {}),
             } as ChatRequest),
           });
 
@@ -281,7 +423,7 @@ export function ChatPage() {
             if (sessionDenied) {
               // 旧会话跨账号/权限变化时自动切到新会话重试一次，减少用户手动刷新成本
               sessionIdForRequest = undefined;
-              setCurrentSessionId(null);
+              setCurrentSessionIdNow(null);
               navigate({ search: "" });
               continue;
             }
@@ -295,13 +437,13 @@ export function ChatPage() {
           const decoder = new TextDecoder();
 
           const streamingContext: StreamingContext = {
-            currentAssistantMessage,
-            setCurrentAssistantMessage,
+            currentAssistantMessage: currentAssistantMessageRef.current,
+            setCurrentAssistantMessage: setCurrentAssistantMessageNow,
             addMessage,
             updateLastMessage,
-            onSessionId: setCurrentSessionId,
-            shouldShowInitMessage: () => !hasShownInitMessage,
-            onInitMessageShown: () => setHasShownInitMessage(true),
+            onSessionId: setCurrentSessionIdNow,
+            shouldShowInitMessage: () => !hasShownInitMessageRef.current,
+            onInitMessageShown: () => setHasShownInitMessageNow(true),
             get hasReceivedInit() {
               return localHasReceivedInit;
             },
@@ -312,8 +454,14 @@ export function ChatPage() {
             onPermissionError: handlePermissionError,
             onAbortRequest: async () => {
               shouldAbort = true;
-              await createAbortHandler(requestId)();
+              try {
+                await createAbortHandler(requestId)();
+              } catch (error) {
+                console.error("Failed to abort request:", error);
+              }
             },
+            permissionMode: requestPermissionMode,
+            onWorkbenchOpen: handleStreamWorkbenchOpen,
           };
 
           while (true) {
@@ -340,50 +488,136 @@ export function ChatPage() {
         }
       } catch (error) {
         console.error("Failed to send message:", error);
-        const userMessage = getNetworkErrorMessage(
-          error,
-          "发送失败，请稍后重试。",
-        );
-        addMessage({
-          type: "chat",
-          role: "assistant",
-          content: userMessage,
-          timestamp: Date.now(),
-        });
+        if (activeRequestIdRef.current === requestId) {
+          const userMessage = getNetworkErrorMessage(
+            error,
+            "发送失败，请稍后重试。",
+          );
+          addMessage({
+            type: "chat",
+            role: "assistant",
+            content: userMessage,
+            timestamp: Date.now(),
+          });
+        }
       } finally {
-        resetRequestState();
+        finishActiveRequest(requestId);
       }
     },
     [
-      input,
-      isLoading,
-      currentSessionId,
-      allowedTools,
-      hasShownInitMessage,
-      currentAssistantMessage,
-      workingDirectory,
-      permissionMode,
       token,
       navigate,
       generateRequestId,
-      clearInput,
       startRequest,
       addMessage,
       updateLastMessage,
-      setCurrentSessionId,
-      setHasShownInitMessage,
+      setCurrentSessionIdNow,
+      setHasShownInitMessageNow,
       setHasReceivedInit,
-      setCurrentAssistantMessage,
-      resetRequestState,
+      setCurrentAssistantMessageNow,
+      finishActiveRequest,
       processStreamLine,
       handlePermissionError,
       createAbortHandler,
+      handleStreamWorkbenchOpen,
     ],
   );
 
+  const drainQueuedMessage = useCallback(() => {
+    if (isRequestActiveRef.current) return;
+    const nextPayload = queuedMessagesRef.current.shift();
+    setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+    if (!nextPayload) return;
+    void runMessage(nextPayload);
+  }, [runMessage]);
+
+  useEffect(() => {
+    drainQueuedMessageRef.current = drainQueuedMessage;
+  }, [drainQueuedMessage]);
+
+  const sendMessage = useCallback(
+    async (
+      messageContent?: string,
+      tools?: string[],
+      hideUserMessage = false,
+      overridePermissionMode?: PermissionMode,
+      displayMessage?: string,
+      images?: ChatImageAttachment[],
+    ) => {
+      const content = messageContent || input.trim();
+      if (!content) return;
+
+      if (!messageContent) clearInput();
+
+      const payload: ChatSendPayload = {
+        content,
+        tools,
+        hideUserMessage,
+        overridePermissionMode,
+        displayMessage,
+        images,
+      };
+
+      if (isRequestActiveRef.current) {
+        if (!hideUserMessage) {
+          addMessage({
+            type: "chat",
+            role: "user",
+            content: displayMessage || content,
+            timestamp: Date.now(),
+          });
+        }
+        queuedMessagesRef.current.push({
+          ...payload,
+          hideUserMessage: true,
+          showQueueNotice: !hideUserMessage,
+        });
+        setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+        return;
+      }
+
+      await runMessage(payload);
+    },
+    [input, clearInput, addMessage, runMessage],
+  );
+
   const handleAbort = useCallback(() => {
-    abortRequest(currentRequestId, isLoading, resetRequestState);
-  }, [abortRequest, currentRequestId, isLoading, resetRequestState]);
+    void (async () => {
+      const abortingRequestId = currentRequestId;
+      try {
+        const result = await abortRequest(currentRequestId, isLoading);
+        if (!result) return;
+        const abortMessage: AbortMessage = {
+          type: "system",
+          subtype: "abort",
+          message: result.message,
+          status: result.active ? "paused" : "ended",
+          timestamp: Date.now(),
+        };
+        addMessage(abortMessage);
+      } catch (error) {
+        console.error("Failed to abort request:", error);
+        const abortMessage: AbortMessage = {
+          type: "system",
+          subtype: "abort",
+          message: "暂停请求失败，请稍后再试",
+          status: "failed",
+          timestamp: Date.now(),
+        };
+        addMessage(abortMessage);
+      } finally {
+        if (
+          abortingRequestId &&
+          activeRequestIdRef.current === abortingRequestId
+        ) {
+          activeRequestIdRef.current = null;
+          isRequestActiveRef.current = false;
+          resetRequestState();
+          Promise.resolve().then(() => drainQueuedMessageRef.current());
+        }
+      }
+    })();
+  }, [abortRequest, currentRequestId, isLoading, addMessage, resetRequestState]);
 
   // Permission request handlers
   const handlePermissionAllow = useCallback(() => {
@@ -515,12 +749,6 @@ export function ChatPage() {
     setIsSettingsOpen(false);
   }, []);
 
-  const openWorkbenchDock = useCallback((tab: WorkbenchTab = "browser") => {
-    setWorkbenchDockTab(tab);
-    setWorkbenchDockRequestId((requestId) => requestId + 1);
-    setIsWorkbenchDockOpen(true);
-  }, []);
-
   const handleOpenDeliverable = useCallback(
     (deliverable: AssistantDeliverableCard) => {
       const target = resolveDeliverableOpenTarget(deliverable);
@@ -566,10 +794,10 @@ export function ChatPage() {
   }, [navigate]);
 
   const handleBackToProjectChat = useCallback(() => {
-    if (workingDirectory) {
-      navigate(`/projects${workingDirectory}`);
+    if (routeWorkingDirectory) {
+      navigate(`/projects${routeWorkingDirectory}`);
     }
-  }, [navigate, workingDirectory]);
+  }, [navigate, routeWorkingDirectory]);
 
   const handleNewChat = useCallback(() => {
     navigate({ search: "" });
@@ -581,6 +809,10 @@ export function ChatPage() {
     if (isLoading && currentRequestId) {
       abortRequest(currentRequestId, isLoading, resetRequestState);
     }
+    queuedMessagesRef.current = [];
+    setQueuedMessageCount(0);
+    activeRequestIdRef.current = null;
+    isRequestActiveRef.current = false;
     // 直接重置聊天 state，不依赖 URL 变化
     setMessages([]);
     setCurrentSessionId(null);
@@ -666,7 +898,16 @@ export function ChatPage() {
         isLoading={isLoading}
         currentRequestId={currentRequestId}
         onInputChange={setInput}
-        onSubmit={() => sendMessage()}
+        onSubmit={(messageOverride, displayMessage, images) =>
+          sendMessage(
+            messageOverride,
+            undefined,
+            false,
+            undefined,
+            displayMessage,
+            images,
+          )
+        }
         onAbort={handleAbort}
         permissionMode={permissionMode}
         onPermissionModeChange={setPermissionMode}
@@ -677,7 +918,9 @@ export function ChatPage() {
         slashSkillsLoaded={slashSkillsLoaded}
         slashSkillsLoading={slashSkillsLoading}
         onSlashRequestRefresh={loadSlashSkills}
+        queuedMessageCount={queuedMessageCount}
         variant={variant}
+        showPermissionModeControl={false}
         placeholder={
           variant === "hero"
             ? "描述你想完成的事，MyCC 会帮你拆解并执行…"
@@ -695,6 +938,7 @@ export function ChatPage() {
       permissionData,
       permissionMode,
       planPermissionData,
+      queuedMessageCount,
       sendMessage,
       setInput,
       setPermissionMode,
@@ -702,6 +946,21 @@ export function ChatPage() {
       slashSkillsLoaded,
       slashSkillsLoading,
     ],
+  );
+
+  const handleReEditMessage = useCallback(
+    (content: string) => {
+      setInput(content);
+      window.dispatchEvent(new CustomEvent("mycc:focus-chat-input"));
+    },
+    [setInput],
+  );
+
+  const handleRetryMessage = useCallback(
+    (content: string) => {
+      void sendMessage(content);
+    },
+    [sendMessage],
   );
 
   useEffect(() => {
@@ -856,11 +1115,12 @@ export function ChatPage() {
     <div className="app-shell h-screen flex overflow-hidden">
       <Sidebar
         onNewChat={handleNewChat}
-        currentPathLabel={workingDirectory}
+        currentPathLabel={workspaceDisplayLabel}
         desktopVisible={isDesktopSidebarVisible}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onShowHistory={handleHistoryClick}
       />
 
       <div className="flex-1 min-w-0 h-screen flex overflow-hidden">
@@ -868,6 +1128,34 @@ export function ChatPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
             <div className="flex items-center gap-4 min-w-0">
+              <button
+                onClick={() => {
+                  if (window.matchMedia("(min-width: 1024px)").matches) {
+                    setIsDesktopSidebarVisible((v) => !v);
+                  } else {
+                    setIsMobileSidebarOpen(true);
+                  }
+                }}
+                className="p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+                aria-label="切换侧栏"
+              >
+                <svg
+                  className="w-5 h-5 text-slate-600 dark:text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <rect
+                    x="3"
+                    y="4"
+                    width="18"
+                    height="16"
+                    rx="2"
+                    strokeWidth={2}
+                  />
+                  <path strokeWidth={2} strokeLinecap="round" d="M9 4v16" />
+                </svg>
+              </button>
               {isHistoryView && (
                 <button
                   onClick={handleBackToChat}
@@ -915,15 +1203,21 @@ export function ChatPage() {
                     )}
                   </div>
                 </nav>
-                {workingDirectory && (
+                {workspaceDisplayLabel && (
                   <div className="flex items-center text-sm font-mono mt-1">
-                    <button
-                      onClick={handleBackToProjectChat}
-                      className="text-slate-600 dark:text-slate-400 hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
-                      aria-label={`Return to new chat in ${workingDirectory}`}
-                    >
-                      {workingDirectory}
-                    </button>
+                    {routeWorkingDirectory ? (
+                      <button
+                        onClick={handleBackToProjectChat}
+                        className="text-slate-600 dark:text-slate-400 hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
+                        aria-label={`Return to new chat in ${workspaceDisplayLabel}`}
+                      >
+                        {workspaceDisplayLabel}
+                      </button>
+                    ) : (
+                      <span className="text-slate-600 dark:text-slate-400">
+                        {workspaceDisplayLabel}
+                      </span>
+                    )}
                     {sessionId && (
                       <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
                         继续之前的对话
@@ -935,52 +1229,12 @@ export function ChatPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => openWorkbenchDock("browser")}
+                onClick={() => openWorkbenchDock("activity")}
                 className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 aria-label="打开工作台"
               >
                 <ComputerDesktopIcon className="h-4 w-4" aria-hidden="true" />
                 <span className="hidden sm:inline">工作台</span>
-              </button>
-              {/* 桌面端侧栏 toggle（仅 lg 以上显示） */}
-              <button
-                onClick={() => setIsDesktopSidebarVisible((v) => !v)}
-                className="hidden lg:inline-flex p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                aria-label={isDesktopSidebarVisible ? "收起侧栏" : "展开侧栏"}
-              >
-                <svg
-                  className="w-5 h-5 text-slate-600 dark:text-slate-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-              </button>
-              {/* 移动端汉堡按钮 */}
-              <button
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg panel-surface border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                aria-label="打开菜单"
-              >
-                <svg
-                  className="w-5 h-5 text-slate-600 dark:text-slate-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
               </button>
               {/* 移动端技能入口 */}
               <button
@@ -997,7 +1251,6 @@ export function ChatPage() {
                   清空
                 </button>
               )}
-              {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
               <SettingsButton onClick={handleSettingsClick} />
             </div>
           </div>
@@ -1141,7 +1394,8 @@ export function ChatPage() {
                     onOpenWorkspace={() => openWorkbenchDock("files")}
                     onOpenDeliverable={handleOpenDeliverable}
                     inputSlot={renderChatInput("hero")}
-                    workspaceName={workingDirectory}
+                    workspaceName={workspaceHeadlineName}
+                    workspaceLabel={workspaceDisplayLabel}
                   />
                 </div>
               ) : (
@@ -1151,6 +1405,8 @@ export function ChatPage() {
                     isLoading={isLoading}
                     assistantDisplayName={assistantDisplayName}
                     assistantAvatarText={assistantAvatarText}
+                    onReEditMessage={handleReEditMessage}
+                    onRetryMessage={handleRetryMessage}
                   />
                   {renderChatInput()}
                 </>
@@ -1164,15 +1420,27 @@ export function ChatPage() {
           />
         </main>
 
-        {isWorkbenchDockOpen && (
-          <AssistantWorkbenchDock
-            token={token}
-            initialTab={workbenchDockTab}
-            tabRequestId={workbenchDockRequestId}
-            onClose={() => setIsWorkbenchDockOpen(false)}
-            onOpenWorkspaceFile={() => openWorkbenchDock("files")}
-          />
-        )}
+        <div
+          className="shrink-0 max-lg:!w-0 lg:overflow-hidden lg:transition-[width] lg:duration-200 lg:ease-in-out"
+          style={{
+            width: isWorkbenchDockOpen
+              ? "clamp(640px, 52vw, 880px)"
+              : "0px",
+          }}
+        >
+          {hasWorkbenchDockMounted && (
+            <AssistantWorkbenchDock
+              token={token}
+              isOpen={isWorkbenchDockOpen}
+              initialTab={workbenchDockTab}
+              tabRequestId={workbenchDockRequestId}
+              autoOpenBrowserRequestId={workbenchBrowserAutoOpenRequestId}
+              messages={messages}
+              onClose={() => setIsWorkbenchDockOpen(false)}
+              onOpenWorkspaceFile={() => openWorkbenchDock("files")}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

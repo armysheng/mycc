@@ -42,10 +42,19 @@ describe('IDE session service config', () => {
       workspaceDir: '/home/mycc/workspace',
       port: 18080,
       sessionTtlSeconds: 3600,
+      desktopEnabled: true,
       allowPublicTraffic: false,
       accessMode: 'mycc-proxy',
       startCommand: expect.stringContaining("'code-server'"),
     });
+  });
+
+  it('caps custom E2B session TTL at the provider one-hour limit', () => {
+    process.env.MYCC_IDE_SESSION_TTL_SECONDS = '7200';
+
+    expect(resolveIdeConfig()).toEqual(expect.objectContaining({
+      sessionTtlSeconds: 3600,
+    }));
   });
 
   it('advertises assistant sandbox desktop capability when E2B is enabled without a custom template', () => {

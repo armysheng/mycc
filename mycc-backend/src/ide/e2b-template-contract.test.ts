@@ -8,6 +8,9 @@ import type { StoredIdeSession } from './session-store.js';
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -76,6 +79,7 @@ describe('E2B template contract', () => {
 
     expect(command).toContain('ccr');
     expect(command).toContain('Xvfb');
+    expect(command).toContain('xfwm4');
     expect(command).toContain('startxfce4');
     expect(command).toContain('x11vnc');
     expect(command).toContain('websockify');

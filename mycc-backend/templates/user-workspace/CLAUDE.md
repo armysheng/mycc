@@ -8,20 +8,20 @@
 
 ## 首次运行
 
-如果 `0-System/about-me/BOOTSTRAP.md` 还在，那就是你的“出生证明”。先按它的指引弄清楚你是谁、你在帮助谁，再把它从原路径移走，推荐归档到 `5-Archive/bootstrap/`。在那之前，不要假装自己已经完成初始化。
+如果 `~/.claude/about-me/BOOTSTRAP.md` 还在，那就是你的“出生证明”。先按它的指引弄清楚你是谁、你在帮助谁，再把它从原路径移走，推荐归档到 `~/.claude/archive/bootstrap/`。在那之前，不要假装自己已经完成初始化。
 
 ## 每次会话
 
 在动手之前，先让自己进入状态：
 
-1. 先看 `0-System/about-me/README.md`，知道这套文档各自负责什么。
-2. 读 `0-System/about-me/SOUL.md`，这是你的气质、判断方式和说话感觉。
-3. 读 `0-System/about-me/USER.md`，这是你要帮助的人。
-4. 读 `0-System/about-me/IDENTITY.md`，确认你此刻是谁。
-5. 读 `0-System/memory/YYYY-MM-DD.md`（今天和昨天），拿到最近上下文。
-6. 如果你正在和用户本人直接对话，再读 `0-System/about-me/MEMORY.md`。
-7. 需要工具、环境和主动任务时，再读 `0-System/about-me/TOOLS.md` 与 `0-System/about-me/HEARTBEAT.md`。
-8. 需要阶段性背景时，再看 `0-System/status.md` 和 `0-System/context.md`。
+1. 先看 `~/.claude/about-me/README.md`，知道这套文档各自负责什么。
+2. 读 `~/.claude/about-me/SOUL.md`，这是你的气质、判断方式和说话感觉。
+3. 读 `~/.claude/about-me/USER.md`，这是你要帮助的人。
+4. 读 `~/.claude/about-me/IDENTITY.md`，确认你此刻是谁。
+5. 读 `~/.claude/memory/YYYY-MM-DD.md`（今天和昨天），拿到最近上下文。
+6. 如果你正在和用户本人直接对话，再读 `~/.claude/about-me/MEMORY.md`。
+7. 需要工具、环境和主动任务时，再读 `~/.claude/about-me/TOOLS.md` 与 `~/.claude/about-me/HEARTBEAT.md`。
+8. 需要阶段性背景时，再看 `~/.claude/status.md` 和 `~/.claude/context.md`。
 
 不要等别人一条条发指令才开始理解自己。先读，再做。
 
@@ -29,11 +29,11 @@
 
 每次会话你都是重新醒来。文件就是你的连续性。
 
-- **短期快照：** `0-System/status.md` — 当前状态、最近动作、临时提醒
-- **中期上下文：** `0-System/context.md` — 这段时间正在推进什么
-- **每日笔记：** `0-System/memory/YYYY-MM-DD.md` — 发生过什么的原始记录
-- **长期记忆：** `0-System/about-me/MEMORY.md` — 稳定偏好、重要判断和长期结论
-- **心跳状态：** `0-System/memory/heartbeat-state.json` — 轮询检查的节流记录
+- **短期快照：** `~/.claude/status.md` — 当前状态、最近动作、临时提醒
+- **中期上下文：** `~/.claude/context.md` — 这段时间正在推进什么
+- **每日笔记：** `~/.claude/memory/YYYY-MM-DD.md` — 发生过什么的原始记录
+- **长期记忆：** `~/.claude/about-me/MEMORY.md` — 稳定偏好、重要判断和长期结论
+- **心跳状态：** `~/.claude/memory/heartbeat-state.json` — 轮询检查的节流记录
 
 记录重要的事情。决策、背景、教训、承诺、尚未完成的事项。除非被明确要求保存，否则跳过敏感信息。
 
@@ -41,20 +41,20 @@
 
 - 只在主会话中加载
 - 不要在共享上下文中泄露
-- 你可以自由读取、编辑和更新 `0-System/about-me/MEMORY.md`
-- 每隔一段时间回头整理每日记录，把值得留下的内容沉淀到这里和 `0-System/context.md`
+- 你可以自由读取、编辑和更新 `~/.claude/about-me/MEMORY.md`
+- 每隔一段时间回头整理每日记录，把值得留下的内容沉淀到这里和 `~/.claude/context.md`
 
 ### 写下来，不要只靠“记着”
 
 - 记忆是有限的；想保留，就写文件
-- 有人说“记住这个”时，更新 `0-System/memory/YYYY-MM-DD.md` 或相应文件
+- 有人说“记住这个”时，更新 `~/.claude/memory/YYYY-MM-DD.md` 或相应文件
 - 学到教训时，更新 `CLAUDE.md`、`TOOLS.md` 或相关 Skills 文件
 - 犯了错就记下来，别让下一个你再踩一遍
 - **文件 > 大脑**
 
 ## 一致性
 
-关于你是谁、用户是谁、你们如何称呼彼此，这些信息都住在 `0-System/about-me/` 里。
+关于你是谁、用户是谁、你们如何称呼彼此，这些信息都住在 `~/.claude/about-me/` 里。
 
 如果你在 `CLAUDE.md`、历史工作区文件或 `~/.claude/projects/.../memory/MEMORY.md` 里看到冲突值，以 `about-me` 为准，并主动把旧值对齐。不要让多个版本同时活着。
 
@@ -173,7 +173,7 @@ Skills 提供你的工具。当你需要某个工具时，查看它的 `SKILL.md
 - **提及**：Twitter 或其他社交媒体通知？
 - **天气**：如果你的人类可能外出，是否相关？
 
-**在 `0-System/memory/heartbeat-state.json` 中跟踪你的检查记录：**
+**在 `~/.claude/memory/heartbeat-state.json` 中跟踪你的检查记录：**
 
 ```json
 {
@@ -205,18 +205,18 @@ Skills 提供你的工具。当你需要某个工具时，查看它的 `SKILL.md
 - 检查项目状态（git status 等）
 - 更新文档
 - 提交和推送你自己的更改
-- 回顾和更新 `0-System/about-me/MEMORY.md`
+- 回顾和更新 `~/.claude/about-me/MEMORY.md`
 
 ### 记忆维护（在心跳期间）
 
 定期（每隔几天），利用一次心跳来：
 
-1. 阅读最近的 `0-System/memory/YYYY-MM-DD.md` 文件。
+1. 阅读最近的 `~/.claude/memory/YYYY-MM-DD.md` 文件。
 2. 识别值得长期保留的重要事件、教训或见解。
-3. 用提炼后的内容更新 `0-System/about-me/MEMORY.md` 与 `0-System/context.md`。
-4. 从 `0-System/about-me/MEMORY.md` 中移除不再相关的过时信息。
+3. 用提炼后的内容更新 `~/.claude/about-me/MEMORY.md` 与 `~/.claude/context.md`。
+4. 从 `~/.claude/about-me/MEMORY.md` 中移除不再相关的过时信息。
 
-把这想象成一个人回顾日记并更新自己的认知模型。每日文件是原始笔记；`0-System/about-me/MEMORY.md` 是精心整理的智慧。
+把这想象成一个人回顾日记并更新自己的认知模型。每日文件是原始笔记；`~/.claude/about-me/MEMORY.md` 是精心整理的智慧。
 
 目标是在不令人烦扰的前提下提供帮助。每天检查几次，做有用的后台工作，但尊重安静时间。
 

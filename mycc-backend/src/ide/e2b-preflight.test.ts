@@ -26,7 +26,7 @@ describe('E2B Agent preflight', () => {
     expect(check(report, 'claude-provider').status).toBe('error');
     expect(check(report, 'e2b-template-exists').status).toBe('skip');
     expect(output).toContain('MYCC_E2B_API_KEY');
-    expect(output).toContain('MYCC_CCR_AUTH_TOKEN');
+    expect(output).toContain('MYCC_CLAUDE_AUTH_TOKEN');
   });
 
   it('checks the remote E2B template when a valid API key is configured', async () => {
@@ -39,8 +39,8 @@ describe('E2B Agent preflight', () => {
         MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
         MYCC_IDE_PROVIDER: 'e2b',
         MYCC_WORKSPACE_PROVIDER: 'e2b',
-        MYCC_CCR_BASE_URL: 'http://127.0.0.1:3456',
-        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        MYCC_CLAUDE_BASE_URL: 'https://zhuji.example.test/v1',
+        MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
         MYCC_E2B_ALLOW_PUBLIC_TRAFFIC: 'false',
       },
       templateExists,
@@ -52,8 +52,8 @@ describe('E2B Agent preflight', () => {
 
     const output = formatE2bAgentPreflightReport(report);
     expect(output).not.toContain('e2b_liveKey-ABC_123');
-    expect(output).not.toContain('ccr-secret');
-    expect(output).not.toContain('127.0.0.1');
+    expect(output).not.toContain('zhuji-secret');
+    expect(output).not.toContain('zhuji.example.test');
   });
 
   it('flags a missing remote E2B template as blocking', async () => {
@@ -61,7 +61,7 @@ describe('E2B Agent preflight', () => {
       env: {
         MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
         MYCC_E2B_TEMPLATE: 'missing-template',
-        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
       },
       templateExists: vi.fn().mockResolvedValue(false),
     });
@@ -77,7 +77,7 @@ describe('E2B Agent preflight', () => {
     const report = await buildE2bAgentPreflightReport({
       env: {
         MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
-        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
       },
       templateExists: vi.fn().mockRejectedValue(new Error('401 unauthorized for e2b_liveKey-ABC_123')),
     });
@@ -103,14 +103,14 @@ describe('E2B Agent preflight', () => {
     }
     const missingConfigOutput = missingConfigError instanceof Error ? missingConfigError.message : String(missingConfigError);
     expect(missingConfigOutput).toContain('[error] E2B API key: Missing MYCC_E2B_API_KEY or E2B_API_KEY.');
-    expect(missingConfigOutput).toContain('[error] Claude/CCR credential: No Claude credential is configured.');
+    expect(missingConfigOutput).toContain('[error] Claude provider credential: No Claude credential is configured.');
     expect(missingConfigOutput).toContain('[skip] E2B template: Skipped remote template check for mycc-assistant-sandbox-dev');
 
     await expect(assertE2bAgentPreflightReady({
       env: {
         MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
         MYCC_E2B_TEMPLATE: 'missing-template',
-        MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
       },
       templateExists: vi.fn().mockResolvedValue(false),
     })).rejects.toThrowError(expect.objectContaining({
@@ -122,14 +122,14 @@ describe('E2B Agent preflight', () => {
         env: {
           MYCC_E2B_API_KEY: 'e2b_liveKey-ABC_123',
           MYCC_E2B_TEMPLATE: 'missing-template',
-          MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+          MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
         },
         templateExists: vi.fn().mockResolvedValue(false),
       });
     } catch (error) {
       const output = error instanceof Error ? error.message : String(error);
       expect(output).not.toContain('e2b_liveKey-ABC_123');
-      expect(output).not.toContain('ccr-secret');
+      expect(output).not.toContain('zhuji-secret');
     }
   });
 

@@ -137,13 +137,17 @@ async function assertCodeServerLocalHealth(activeSession: StoredIdeSession): Pro
   const startedAt = Date.now();
   let lastError = 'not checked';
   while (Date.now() - startedAt < CODE_SERVER_READY_TIMEOUT_MS) {
-    const result = await provider.runCommandInSession(
-      activeSession,
-      `curl -fsS http://127.0.0.1:${activeSession.port}/healthz`,
-      { cwd: WORKSPACE_DIR, timeoutMs: 30_000 },
-    );
-    if (result.exitCode === 0) return;
-    lastError = result.stderr || result.error || result.stdout || `exit=${result.exitCode}`;
+    try {
+      const result = await provider.runCommandInSession(
+        activeSession,
+        `curl -fsS http://127.0.0.1:${activeSession.port}/healthz`,
+        { cwd: WORKSPACE_DIR, timeoutMs: 30_000 },
+      );
+      if (result.exitCode === 0) return;
+      lastError = result.stderr || result.error || result.stdout || `exit=${result.exitCode}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
     await sleep(2_000);
   }
   throw new Error(`code-server health check timed out: ${lastError}`);

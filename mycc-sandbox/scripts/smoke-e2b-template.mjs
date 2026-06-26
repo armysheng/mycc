@@ -51,6 +51,36 @@ try {
     timeoutMs: 120_000,
   });
 
+  await runChecked('desktop-browser-only-mode', [
+    'for _ in $(seq 1 30); do',
+    '  pgrep -af "[x]fwm4" >/dev/null',
+    '  has_wm="$?"',
+    '  pgrep -af "[c]hromium.*--password-store=basic" >/dev/null',
+    '  has_browser="$?"',
+    '  pgrep -af "[x]fce4-panel" >/dev/null',
+    '  has_panel="$?"',
+    '  if [ "$has_wm" -eq 0 ] && [ "$has_browser" -eq 0 ] && [ "$has_panel" -ne 0 ]; then exit 0; fi',
+    '  sleep 1',
+    'done',
+    'pgrep -af "[x]fwm4|[c]hromium|[x]fce4-panel" >&2 || true',
+    'exit 1',
+  ].join('\n'), {
+    timeoutMs: 60_000,
+  });
+
+  await runChecked('desktop-browser-open', [
+    'export DISPLAY=:99',
+    'export MYCC_DESKTOP_CHROMIUM_PROFILE=/tmp/mycc-desktop/chromium-profile-smoke',
+    'export MYCC_DESKTOP_BROWSER_WINDOW_SIZE=1360,820',
+    'mkdir -p "$MYCC_DESKTOP_CHROMIUM_PROFILE"',
+    'timeout 30s exo-open --launch WebBrowser about:blank >/tmp/mycc-desktop/xfce-web-browser-smoke.log 2>&1',
+    'for _ in $(seq 1 30); do pgrep -af "[c]hromium.*--password-store=basic.*chromium-profile-smoke" >/dev/null && exit 0; sleep 1; done',
+    'cat /tmp/mycc-desktop/xfce-web-browser-smoke.log >&2',
+    'exit 1',
+  ].join('; '), {
+    timeoutMs: 60_000,
+  });
+
   await runChecked('browser-automation', `timeout 60s /opt/mycc/browser-agent/venv/bin/python - <<'PY'
 from playwright.sync_api import sync_playwright
 

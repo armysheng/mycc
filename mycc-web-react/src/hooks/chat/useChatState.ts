@@ -9,6 +9,14 @@ interface ChatStateOptions {
 
 const DEFAULT_MESSAGES: AllMessage[] = [];
 
+function isAbortMessage(message: AllMessage): boolean {
+  return (
+    message.type === "system" &&
+    "subtype" in message &&
+    message.subtype === "abort"
+  );
+}
+
 export function useChatState(options: ChatStateOptions = {}) {
   const { initialMessages = DEFAULT_MESSAGES, initialSessionId = null } =
     options;
@@ -43,7 +51,17 @@ export function useChatState(options: ChatStateOptions = {}) {
   }, [initialSessionId]);
 
   const addMessage = useCallback((msg: AllMessage) => {
-    setMessages((prev) => [...prev, msg]);
+    setMessages((prev) => {
+      const previousMessage = prev[prev.length - 1];
+      if (
+        previousMessage &&
+        isAbortMessage(previousMessage) &&
+        isAbortMessage(msg)
+      ) {
+        return prev;
+      }
+      return [...prev, msg];
+    });
   }, []);
 
   const updateLastMessage = useCallback((content: string) => {

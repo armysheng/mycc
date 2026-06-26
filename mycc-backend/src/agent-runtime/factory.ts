@@ -3,10 +3,14 @@ import { E2bClaudeAgentSdkRuntime } from './e2b-claude-agent-sdk-runtime.js';
 import { E2bClaudeCliRuntime } from './e2b-claude-cli-runtime.js';
 import { RemoteClaudeAdapter } from '../adapters/remote-claude-adapter.js';
 import { describeClaudeProviderEnv, type ClaudeProviderEnvDescription } from './claude-env.js';
+import { getDefaultAgentRunStore, TracedAgentRuntime, type AgentRunStore } from './run-trace.js';
+import { PostgresAgentRunStore } from './run-trace-postgres.js';
 import type { AgentRuntime, AgentRuntimeKind } from './types.js';
 
 export type AgentRuntimeFactoryOptions = {
   kind?: AgentRuntimeKind | string;
+  runStore?: AgentRunStore;
+  trace?: boolean;
 };
 
 export type AgentRuntimeConfigDescription = {
@@ -20,6 +24,17 @@ export type AgentRuntimeConfigDescription = {
 export function createAgentRuntime(options: AgentRuntimeFactoryOptions = {}): AgentRuntime {
   const kind = resolveAgentRuntimeKind(options.kind, process.env);
 
+  const runtime = createRawAgentRuntime(kind);
+  if (!shouldTraceAgentRuns(options.trace, process.env)) {
+    return runtime;
+  }
+
+  return new TracedAgentRuntime(runtime, kind, {
+    runStore: options.runStore ?? resolveAgentRunStore(process.env),
+  });
+}
+
+function createRawAgentRuntime(kind: AgentRuntimeKind): AgentRuntime {
   switch (kind) {
     case 'claude-agent-sdk':
       return new ClaudeAgentSdkRuntime();
@@ -49,7 +64,7 @@ function resolveAgentRuntimeKind(
   explicitKind: AgentRuntimeKind | string | undefined,
   env: NodeJS.ProcessEnv,
 ): AgentRuntimeKind {
-  const kind = (explicitKind ?? env.MYCC_AGENT_RUNTIME ?? 'remote-claude').trim();
+  const kind = (explicitKind ?? env.MYCC_AGENT_RUNTIME ?? 'e2b-claude-agent-sdk').trim();
   if (
     kind === 'remote-claude' ||
     kind === 'claude-agent-sdk' ||
@@ -65,4 +80,19 @@ function resolveExecutionEnvironment(kind: AgentRuntimeKind): AgentRuntimeConfig
   if (kind === 'remote-claude') return 'vps';
   if (kind === 'claude-agent-sdk') return 'local';
   return 'e2b';
+}
+
+function shouldTraceAgentRuns(
+  explicitTrace: boolean | undefined,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  if (explicitTrace !== undefined) return explicitTrace;
+  return env.MYCC_AGENT_RUN_TRACE !== 'false';
+}
+
+export function resolveAgentRunStore(env: NodeJS.ProcessEnv = process.env): AgentRunStore {
+  if (env.MYCC_AGENT_RUN_STORE === 'postgres') {
+    return new PostgresAgentRunStore();
+  }
+  return getDefaultAgentRunStore();
 }

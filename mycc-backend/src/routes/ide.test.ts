@@ -11,6 +11,9 @@ const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -225,6 +228,27 @@ describe('ide routes', () => {
     expect(startCodeServer).toHaveBeenCalledOnce();
   });
 
+  it('keeps IDE session creation failures product-facing without leaking provider details', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const startCodeServer = vi.fn().mockRejectedValue(
+      new Error('500: Failed to place sandbox; token=secret-token; host=18080-sbx_123.e2b.app'),
+    );
+    const app = await buildApp({ e2bProvider: { startCodeServer } });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: '工作间暂时连接失败' });
+    expectPublicIdeError(response.json());
+    expect(JSON.stringify(response.json())).not.toContain('secret-token');
+    expect(JSON.stringify(response.json())).not.toContain('18080-sbx_123.e2b.app');
+    expect(JSON.stringify(response.json())).not.toContain('sbx_123');
+  });
+
   it('reuses an existing running IDE session for the same user', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const startCodeServer = vi.fn().mockResolvedValue({
@@ -291,7 +315,7 @@ describe('ide routes', () => {
         id: 'ide_123',
         desktop: {
           status: 'running',
-          openPath: '/api/ide/sessions/ide_123/desktop/proxy/vnc.html?autoconnect=true&resize=scale&path=api%2Fide%2Fsessions%2Fide_123%2Fdesktop%2Fproxy%2Fwebsockify',
+          openPath: '/api/ide/sessions/ide_123/desktop/proxy/vnc.html?autoconnect=true&reconnect=true&reconnect_delay=2000&resize=scale&path=api%2Fide%2Fsessions%2Fide_123%2Fdesktop%2Fproxy%2Fwebsockify',
         },
       }),
     });
@@ -345,6 +369,47 @@ describe('ide routes', () => {
     }));
     expect(JSON.stringify(response.json())).not.toContain('sbx_replacement');
     expect(isCodeServerListening).toHaveBeenCalledWith(runningSession);
+    expect(startCodeServer).toHaveBeenCalledOnce();
+    await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
+      status: 'stopped',
+    }));
+  });
+
+  it('replaces a reusable session when the code-server health probe throws', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set(runningSession);
+    const isCodeServerListening = vi.fn().mockRejectedValue(new Error('exit status 1'));
+    const startCodeServer = vi.fn().mockResolvedValue({
+      provider: 'e2b',
+      sandboxId: 'sbx_replacement',
+      codeServerPid: 5678,
+      host: '18080-sbx_replacement.e2b.app',
+      trafficAccessToken: 'replacement-token',
+      port: 18080,
+      accessMode: 'mycc-proxy',
+      expiresAt: '2099-05-29T15:00:00.000Z',
+    });
+    const app = await buildApp({
+      sessionStore,
+      e2bProvider: {
+        isCodeServerListening,
+        startCodeServer,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toEqual(expect.objectContaining({
+      status: 'running',
+      openPath: expect.stringMatching(/^\/api\/ide\/sessions\/.+\/proxy\/$/),
+    }));
+    expect(JSON.stringify(response.json())).not.toContain('exit status 1');
     expect(startCodeServer).toHaveBeenCalledOnce();
     await expect(sessionStore.get('ide_123')).resolves.toEqual(expect.objectContaining({
       status: 'stopped',
@@ -1061,5 +1126,48 @@ describe('ide routes', () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('does not leave upgraded sockets without an error handler', async () => {
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    const web = vi.fn();
+    const ws = vi.fn();
+    const app = await buildApp({
+      e2bProvider: {
+        startCodeServer: vi.fn().mockResolvedValue({
+          provider: 'e2b',
+          sandboxId: 'sbx_123',
+          codeServerPid: 1234,
+          host: '18080-sbx_123.e2b.app',
+          trafficAccessToken: 'secret-token',
+          port: 18080,
+          accessMode: 'mycc-proxy',
+          expiresAt: '2026-05-29T14:00:00.000Z',
+        }),
+      },
+      proxyServer: { web, ws },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ide/sessions',
+      headers: { authorization: authHeader() },
+    });
+    const id = created.json().data.id;
+    const cookie = firstSetCookie(created);
+    const socket = {
+      destroy: vi.fn(),
+      on: vi.fn(),
+    };
+
+    app.server.emit('upgrade', {
+      headers: { cookie },
+      url: `/api/ide/sessions/${id}/proxy/?reconnectionToken=abc`,
+    }, socket, Buffer.alloc(0));
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(socket.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(ws).toHaveBeenCalledOnce();
   });
 });

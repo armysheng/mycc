@@ -13,6 +13,9 @@ const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_secret_123',
   codeServerPid: 1234,
   host: '18080-sbx-secret.e2b.app',

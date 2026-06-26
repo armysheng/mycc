@@ -46,6 +46,7 @@ describe('onboarding bootstrap prompt', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('embeds assistant and owner names into first-turn bootstrap message', () => {
@@ -58,15 +59,17 @@ describe('onboarding bootstrap prompt', () => {
 
     expect(prompt).toContain('助手名称：cc');
     expect(prompt).toContain('用户称呼：婷妈');
-    expect(prompt).toContain('0-System/about-me/BOOTSTRAP.md');
+    expect(prompt).toContain('~/.claude/about-me/BOOTSTRAP.md');
     expect(prompt).toContain('/home/mycc_u2/workspace/CLAUDE.md');
+    expect(prompt).toContain('/home/mycc_u2/.claude/CLAUDE.md');
     expect(prompt).toContain('/home/mycc_u2/.claude/projects/-home-mycc-u2-workspace/memory/MEMORY.md');
-    expect(prompt).toContain('以 `0-System/about-me/` 作为唯一身份真相源');
-    expect(prompt).toContain('确保存在 0-System/memory/ 目录');
+    expect(prompt).toContain('以 `~/.claude/about-me/` 作为唯一身份真相源');
+    expect(prompt).toContain('确保存在 ~/.claude/memory/ 目录');
     expect(prompt).toContain('初始化票据：ticket-123');
     expect(prompt).toContain('已完成初始化');
     expect(prompt).toContain('<!-- MYCC_BOOTSTRAP_REQUIRED -->');
     expect(prompt).toContain('初始化成功后删除这一行');
+    expect(prompt).not.toContain('更新 0-System/about-me');
   });
 
   it('uses SSH workspace preparation unless E2B workspace mode is explicitly enabled', () => {
@@ -146,15 +149,22 @@ describe('onboarding bootstrap prompt', () => {
     expect(startCodeServer).toHaveBeenCalledOnce();
     expect(runCommandInSession).toHaveBeenCalledWith(
       expect.objectContaining({ sandboxId: 'sbx_onboarding', userId: 42 }),
-      expect.stringContaining('MYCC_E2B_ONBOARDING_SEED'),
+      expect.stringContaining('MYCC_CLAUDE_HOME_TEMPLATE_SEED'),
       {
-        cwd: '/home/mycc/workspace',
+        cwd: '/home/mycc/.claude',
         timeoutMs: 30000,
       },
     );
-    const seedCommand = runCommandInSession.mock.calls[0]![1] as string;
-    expect(seedCommand).toContain('0-System/about-me/BOOTSTRAP.md');
-    expect(seedCommand).toContain('CLAUDE.md');
+    const seedCommands = runCommandInSession.mock.calls.map((call) => call[1] as string);
+    expect(seedCommands.some((command) => command.includes('MYCC_CLAUDE_HOME_TEMPLATE_SEED'))).toBe(true);
+    expect(seedCommands.some((command) => command.includes('MYCC_WORKSPACE_TEMPLATE_SEED'))).toBe(true);
+    expect(seedCommands.some((command) => command.includes('MYCC_E2B_ONBOARDING_SEED'))).toBe(false);
+    const claudeHomeSeedCommand = seedCommands.find((command) => command.includes('MYCC_CLAUDE_HOME_TEMPLATE_SEED'))!;
+    const workspaceSeedCommand = seedCommands.find((command) => command.includes('MYCC_WORKSPACE_TEMPLATE_SEED'))!;
+    expect(claudeHomeSeedCommand).toContain('about-me/BOOTSTRAP.md');
+    expect(claudeHomeSeedCommand).toContain('CLAUDE.md');
+    expect(workspaceSeedCommand).toContain('CLAUDE.md');
+    expect(workspaceSeedCommand).not.toContain('0-System/about-me');
     expect(mocks.getSSHPool).not.toHaveBeenCalled();
     expect(mocks.markUserInitialized).not.toHaveBeenCalled();
     await app.close();
@@ -190,6 +200,7 @@ describe('onboarding bootstrap prompt', () => {
       stdout: '',
       stderr: 'E2B sandbox seed failed: SSH 连接池未初始化，请先调用 initSSHPool(); token=traffic-secret',
     });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const app = Fastify({ logger: false });
     await app.register(onboardingRoutes, {
       env: {
@@ -221,6 +232,11 @@ describe('onboarding bootstrap prompt', () => {
       code: 'initialization_unavailable',
     });
     expect(response.body).not.toMatch(/E2B|SSH|initSSHPool|sandbox|沙盒|token|traffic-secret|sbx_onboarding|e2b\.app|code-server/i);
+    const logged = consoleError.mock.calls
+      .flat()
+      .map((value) => value instanceof Error ? value.message : String(value))
+      .join('\n');
+    expect(logged).not.toMatch(/E2B|SSH|initSSHPool|sandbox|沙盒|token|traffic-secret|sbx_onboarding|e2b\.app|code-server/i);
     expect(mocks.getSSHPool).not.toHaveBeenCalled();
     expect(mocks.markUserInitialized).not.toHaveBeenCalled();
     await app.close();

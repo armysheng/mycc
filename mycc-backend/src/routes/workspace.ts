@@ -48,14 +48,21 @@ export type WorkspaceRoutesOptions = {
 const treeQuerySchema = z.object({
   path: z.string().optional().default('/'),
   depth: z.coerce.number().int().min(1).max(6).optional().default(3),
+  ideSessionId: z.string().trim().min(1).max(120).optional(),
 });
 
 const fileQuerySchema = z.object({
   path: z.string().min(1, '文件路径不能为空'),
+  ideSessionId: z.string().trim().min(1).max(120).optional(),
 });
 
 const previewQuerySchema = z.object({
   path: z.string().min(1, '文件路径不能为空'),
+  ideSessionId: z.string().trim().min(1).max(120).optional(),
+});
+
+const workspaceSessionQuerySchema = z.object({
+  ideSessionId: z.string().trim().min(1).max(120).optional(),
 });
 
 const saveFileSchema = z.object({
@@ -365,6 +372,7 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
 
   const withE2bRunner = async <T>(
     user: JWTPayload,
+    ideSessionId: string | undefined,
     handler: (runner: WorkspaceCommandRunner) => Promise<T>,
   ) => {
     const linuxUser = sanitizeLinuxUsername(user.linuxUser);
@@ -373,9 +381,14 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
       linuxUser,
       workspaceDir: `/home/${linuxUser}/workspace`,
     }, env);
-    const session = await sessionStore.findReusableByUser(user.userId);
+    const session = ideSessionId
+      ? await findOwnedWorkspaceSession(sessionStore, user.userId, ideSessionId)
+      : await sessionStore.findReusableByUser(user.userId);
     if (!session) {
       throw new WorkspaceRouteError(409, '需要先打开工作间', 'workbench_required');
+    }
+    if (session.status !== 'running' || new Date(session.expiresAt).getTime() <= Date.now()) {
+      throw new WorkspaceRouteError(409, '工作间已过期，请重新打开工作间', 'workbench_stale');
     }
 
     const run = async (command: string, timeoutMs: number = 30000): Promise<WorkspaceCommandResult> => {
@@ -412,11 +425,12 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
 
   const withWorkspaceRunner = async <T>(
     user: JWTPayload,
+    ideSessionId: string | undefined,
     handler: (runner: WorkspaceCommandRunner) => Promise<T>,
   ) => {
     const provider = resolveWorkspaceProviderKind(env);
     if (provider === 'e2b') {
-      return withE2bRunner(user, handler);
+      return withE2bRunner(user, ideSessionId, handler);
     }
     return withSshRunner(user.linuxUser, handler);
   };
@@ -432,7 +446,7 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
       const query = treeQuerySchema.parse(request.query);
       const relPath = normalizeWorkspacePath(query.path);
 
-      const data = await withWorkspaceRunner(request.user, async (runner) => {
+      const data = await withWorkspaceRunner(request.user, query.ideSessionId, async (runner) => {
         return runNodeTask<{
           tree: Record<string, unknown>;
           truncated: boolean;
@@ -465,7 +479,7 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
       const query = fileQuerySchema.parse(request.query);
       const relPath = normalizeWorkspacePath(query.path);
 
-      const file = await withWorkspaceRunner(request.user, async (runner) => {
+      const file = await withWorkspaceRunner(request.user, query.ideSessionId, async (runner) => {
         return runNodeTask<{
           path: string;
           size: number;
@@ -502,7 +516,7 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
       const relPath = normalizeWorkspacePath(query.path);
       assertPreviewablePath(relPath);
 
-      const preview = await withWorkspaceRunner(request.user, async (runner) => {
+      const preview = await withWorkspaceRunner(request.user, query.ideSessionId, async (runner) => {
         return runNodeTask<{
           path: string;
           size: number;
@@ -540,9 +554,10 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
 
     try {
       const body = saveFileSchema.parse(request.body);
+      const query = workspaceSessionQuerySchema.parse(request.query);
       const relPath = normalizeWorkspacePath(body.path);
 
-      const saved = await withWorkspaceRunner(request.user, async (runner) => {
+      const saved = await withWorkspaceRunner(request.user, query.ideSessionId, async (runner) => {
         return runNodeTask<{
           path: string;
           size: number;
@@ -577,9 +592,10 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
 
       try {
         const body = execSchema.parse(request.body);
+        const query = workspaceSessionQuerySchema.parse(request.query);
         const relCwd = normalizeWorkspacePath(body.cwd);
 
-        const result = await withWorkspaceRunner(request.user, async (runner) => {
+        const result = await withWorkspaceRunner(request.user, query.ideSessionId, async (runner) => {
           return runNodeTask<{
             cwd: string;
             exitCode: number;
@@ -603,6 +619,16 @@ export async function workspaceRoutes(fastify: FastifyInstance, options: Workspa
       }
     });
   }
+}
+
+async function findOwnedWorkspaceSession(
+  sessionStore: IdeSessionStore,
+  userId: number,
+  sessionId: string,
+): Promise<StoredIdeSession | null> {
+  const session = await sessionStore.get(sessionId);
+  if (!session || session.userId !== userId) return null;
+  return session;
 }
 
 function assertPreviewablePath(relPath: string): void {

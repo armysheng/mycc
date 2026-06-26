@@ -51,6 +51,7 @@ RUN apt-get update && apt-get install -y \
   x11-utils \
   x11vnc \
   xdotool \
+  xdg-utils \
   xfce4 \
   xvfb \
   xz-utils \
@@ -94,20 +95,56 @@ COPY bin/mycc-start-code-server /usr/local/bin/mycc-start-code-server
 COPY bin/mycc-start-ccr /usr/local/bin/mycc-start-ccr
 COPY bin/mycc-start-desktop /usr/local/bin/mycc-start-desktop
 COPY bin/mycc-health-desktop /usr/local/bin/mycc-health-desktop
+COPY bin/mycc-browser /usr/local/bin/mycc-browser
 COPY bin/mycc-register-deliverable /usr/local/bin/mycc-register-deliverable
 COPY skills /opt/mycc/skills
 
 RUN useradd -m -s /bin/bash mycc \
-  && mkdir -p /home/mycc/workspace /home/mycc/.mycc /home/mycc/.claude /home/mycc/.cache /opt/mycc/bin \
+  && mkdir -p /home/mycc/workspace /home/mycc/.mycc/claude /home/mycc/.mycc/home/.claude /home/mycc/.claude /home/mycc/.cache /home/mycc/.config/xfce4 /usr/share/xfce4/helpers /opt/mycc/bin \
+  && printf '%s\\n' \
+    '[Desktop Entry]' \
+    'Type=Application' \
+    'Name=CC Browser' \
+    'GenericName=Web Browser' \
+    'Exec=/usr/local/bin/mycc-browser %u' \
+    'Terminal=false' \
+    'Categories=Network;WebBrowser;' \
+    'MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;' \
+    > /usr/share/applications/mycc-browser.desktop \
+  && printf '%s\\n' \
+    '[Desktop Entry]' \
+    'NoDisplay=true' \
+    'Type=X-XFCE-Helper' \
+    'Name=CC Browser' \
+    'X-XFCE-Category=WebBrowser' \
+    'X-XFCE-Commands=/usr/local/bin/mycc-browser' \
+    'X-XFCE-CommandsWithParameter=/usr/local/bin/mycc-browser "%s"' \
+    > /usr/share/xfce4/helpers/mycc-browser.desktop \
+  && printf '%s\\n' \
+    'WebBrowser=mycc-browser' \
+    > /home/mycc/.config/xfce4/helpers.rc \
+  && printf '%s\\n' \
+    '[Default Applications]' \
+    'x-scheme-handler/http=mycc-browser.desktop' \
+    'x-scheme-handler/https=mycc-browser.desktop' \
+    'text/html=mycc-browser.desktop' \
+    > /home/mycc/.config/mimeapps.list \
+  && ln -sf /usr/local/bin/mycc-browser /usr/local/bin/x-www-browser \
+  && ln -sf /usr/local/bin/mycc-browser /usr/local/bin/sensible-browser \
+  && update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/local/bin/mycc-browser 100 \
+  && update-alternatives --set x-www-browser /usr/local/bin/mycc-browser \
   && ln -sfn /ms-playwright /home/mycc/.cache/ms-playwright \
   && cp -R /opt/mycc/skills /home/mycc/.mycc/skills \
   && cp -R /opt/mycc/skills /home/mycc/.claude/skills \
+  && cp -R /opt/mycc/skills /home/mycc/.mycc/claude/skills \
+  && ln -sfn /home/mycc/.mycc/claude/skills /home/mycc/.mycc/home/.claude/skills \
   && chmod +x \
     /opt/mycc/contracts/template-contract.sh \
     /usr/local/bin/mycc-start-code-server \
     /usr/local/bin/mycc-start-ccr \
     /usr/local/bin/mycc-start-desktop \
     /usr/local/bin/mycc-health-desktop \
+    /usr/local/bin/mycc-browser \
     /usr/local/bin/mycc-register-deliverable \
   && chown -R mycc:mycc /home/mycc /opt/mycc /opt/mycc-agent-runtime
 

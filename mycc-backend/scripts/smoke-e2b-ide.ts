@@ -12,7 +12,6 @@ type IdeConfigResponse = {
   success: true;
   data: {
     enabled: boolean;
-    provider: string;
   };
 };
 
@@ -58,30 +57,24 @@ async function main() {
     const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
       headers: { authorization },
     });
-    if (!config.data.enabled || config.data.provider !== 'e2b') {
-      throw new Error(`IDE is not enabled for E2B: ${JSON.stringify(config.data)}`);
+    if (!config.data.enabled) {
+      throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
     }
 
-    const created = await requestJson<IdeSessionResponse>('/api/ide/sessions', {
+    const created = await requestJsonWithHeaders<IdeSessionResponse>('/api/ide/sessions', {
       method: 'POST',
       headers: { authorization },
     });
-    sessionId = created.data.id;
-    assertNoProviderSecrets(created.data);
+    sessionId = created.body.data.id;
+    assertNoProviderSecrets(created.body.data);
 
     const privateSession = await getPrivateSession(sessionId);
     await assertDirectHostRejectsUnauthenticatedTraffic(privateSession);
 
-    const open = await fetch(resolveUrl(created.data.openPath), {
-      redirect: 'manual',
-    });
-    if (open.status !== 302) {
-      throw new Error(`Expected /open to return 302, got ${open.status}`);
-    }
-    const cookie = extractProxyCookie(open.headers);
-    const location = open.headers.get('location');
+    const cookie = extractProxyCookie(created.headers);
+    const location = created.body.data.openPath;
     if (!location?.endsWith(`/api/ide/sessions/${sessionId}/proxy/`) && location !== `/api/ide/sessions/${sessionId}/proxy/`) {
-      throw new Error(`Unexpected /open redirect location: ${location}`);
+      throw new Error(`Unexpected proxy location: ${location}`);
     }
 
     await waitForProxyHealth(sessionId, cookie);
@@ -98,6 +91,14 @@ async function main() {
 }
 
 async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {
+  const { body } = await requestJsonWithHeaders<T>(pathOrUrl, init);
+  return body;
+}
+
+async function requestJsonWithHeaders<T>(
+  pathOrUrl: string,
+  init: RequestInit = {},
+): Promise<{ body: T; headers: Headers }> {
   const response = await fetch(resolveUrl(pathOrUrl), {
     ...init,
     headers: {
@@ -109,7 +110,10 @@ async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promis
   if (!response.ok) {
     throw new Error(`${init.method || 'GET'} ${pathOrUrl} failed: ${response.status} ${body}`);
   }
-  return JSON.parse(body) as T;
+  return {
+    body: JSON.parse(body) as T,
+    headers: response.headers,
+  };
 }
 
 async function waitForProxyHealth(id: string, cookie: string): Promise<void> {

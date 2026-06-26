@@ -4,21 +4,32 @@ set -euo pipefail
 MYCC_DESKTOP_DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}"
 MYCC_DESKTOP_RESOLUTION="${MYCC_DESKTOP_RESOLUTION:-1440x900}"
 MYCC_DESKTOP_VNC_PORT="${MYCC_DESKTOP_VNC_PORT:-15900}"
+MYCC_DESKTOP_NOVNC_HOST="${MYCC_DESKTOP_NOVNC_HOST:-0.0.0.0}"
 MYCC_DESKTOP_NOVNC_PORT="${MYCC_DESKTOP_NOVNC_PORT:-16080}"
 MYCC_DESKTOP_LOG_DIR="${MYCC_DESKTOP_LOG_DIR:-/tmp/mycc-desktop}"
+MYCC_DESKTOP_MODE="${MYCC_DESKTOP_MODE:-browser-only}"
+MYCC_DESKTOP_OPEN_BROWSER="${MYCC_DESKTOP_OPEN_BROWSER:-1}"
+MYCC_DESKTOP_START_URL="${MYCC_DESKTOP_START_URL:-about:blank}"
+MYCC_DESKTOP_BROWSER_WINDOW_SIZE="${MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-${MYCC_DESKTOP_RESOLUTION/x/,}}"
 
 mkdir -p "$MYCC_DESKTOP_LOG_DIR"
 export DISPLAY="$MYCC_DESKTOP_DISPLAY"
+export MYCC_DESKTOP_BROWSER_WINDOW_SIZE
+
+pids=()
 
 cleanup() {
-  jobs -pr | xargs -r kill 2>/dev/null || true
+  for pid in "${pids[@]:-}"; do
+    kill "$pid" 2>/dev/null || true
+  done
 }
-trap cleanup EXIT INT TERM
+trap 'cleanup; exit 0' INT TERM
 
 Xvfb "$MYCC_DESKTOP_DISPLAY" \
   -screen 0 "${MYCC_DESKTOP_RESOLUTION}x24" \
   -ac +extension GLX +render -noreset \
   >"$MYCC_DESKTOP_LOG_DIR/xvfb.log" 2>&1 &
+pids+=("$!")
 
 for _ in $(seq 1 50); do
   if xdpyinfo -display "$MYCC_DESKTOP_DISPLAY" >/dev/null 2>&1; then
@@ -27,8 +38,36 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-dbus-launch --exit-with-session startxfce4 \
-  >"$MYCC_DESKTOP_LOG_DIR/xfce.log" 2>&1 &
+start_initial_browser() {
+  if [ "$MYCC_DESKTOP_OPEN_BROWSER" = "0" ]; then
+    return
+  fi
+
+  mycc-browser "$MYCC_DESKTOP_START_URL" \
+    >"$MYCC_DESKTOP_LOG_DIR/browser.log" 2>&1 &
+  pids+=("$!")
+}
+
+case "$MYCC_DESKTOP_MODE" in
+  browser-only|browser)
+    dbus-launch --exit-with-session xfwm4 --replace --compositor=off \
+      >"$MYCC_DESKTOP_LOG_DIR/xfwm4.log" 2>&1 &
+    pids+=("$!")
+    sleep 0.5
+    start_initial_browser
+    ;;
+  xfce|desktop)
+    dbus-launch --exit-with-session startxfce4 \
+      >"$MYCC_DESKTOP_LOG_DIR/xfce.log" 2>&1 &
+    pids+=("$!")
+    sleep 1
+    start_initial_browser
+    ;;
+  *)
+    echo "Unsupported MYCC_DESKTOP_MODE: $MYCC_DESKTOP_MODE" >&2
+    exit 64
+    ;;
+esac
 
 x11vnc \
   -display "$MYCC_DESKTOP_DISPLAY" \
@@ -39,9 +78,19 @@ x11vnc \
   -rfbport "$MYCC_DESKTOP_VNC_PORT" \
   -quiet \
   >"$MYCC_DESKTOP_LOG_DIR/x11vnc.log" 2>&1 &
+pids+=("$!")
 
-exec websockify \
+websockify \
   --web=/usr/share/novnc \
-  "127.0.0.1:${MYCC_DESKTOP_NOVNC_PORT}" \
+  "${MYCC_DESKTOP_NOVNC_HOST}:${MYCC_DESKTOP_NOVNC_PORT}" \
   "127.0.0.1:${MYCC_DESKTOP_VNC_PORT}" \
-  >"$MYCC_DESKTOP_LOG_DIR/websockify.log" 2>&1
+  >"$MYCC_DESKTOP_LOG_DIR/websockify.log" 2>&1 &
+websockify_pid="$!"
+pids+=("$websockify_pid")
+
+set +e
+wait "$websockify_pid"
+status="$?"
+set -e
+cleanup
+exit "$status"

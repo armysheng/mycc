@@ -26,6 +26,7 @@ export type E2bCodeServerSessionPlan = {
   workspaceDir: string;
   port: number;
   sessionTtlSeconds: number;
+  desktopEnabled: boolean;
   allowPublicTraffic: false;
   accessMode: IdeAccessMode;
   startCommand: string;
@@ -39,7 +40,8 @@ export type BuildE2bCodeServerSessionPlanParams = {
 
 const DEFAULT_E2B_ASSISTANT_TEMPLATE = 'mycc-assistant-sandbox-dev';
 const DEFAULT_E2B_TEMPLATE = DEFAULT_E2B_ASSISTANT_TEMPLATE;
-const DEFAULT_IDE_SESSION_TTL_SECONDS = 3600;
+const MAX_E2B_SESSION_TTL_SECONDS = 60 * 60;
+const DEFAULT_IDE_SESSION_TTL_SECONDS = MAX_E2B_SESSION_TTL_SECONDS;
 const DEFAULT_E2B_LINUX_USER = 'mycc';
 export const DEFAULT_DESKTOP_NOVNC_PORT = 16080;
 
@@ -50,10 +52,13 @@ export function resolveIdeConfig(env: NodeJS.ProcessEnv = process.env): IdeConfi
     DEFAULT_CODE_SERVER_PORT,
     'MYCC_IDE_PORT',
   ));
-  const sessionTtlSeconds = parsePositiveInteger(
-    env.MYCC_IDE_SESSION_TTL_SECONDS,
-    DEFAULT_IDE_SESSION_TTL_SECONDS,
-    'MYCC_IDE_SESSION_TTL_SECONDS',
+  const sessionTtlSeconds = Math.min(
+    parsePositiveInteger(
+      env.MYCC_IDE_SESSION_TTL_SECONDS,
+      DEFAULT_IDE_SESSION_TTL_SECONDS,
+      'MYCC_IDE_SESSION_TTL_SECONDS',
+    ),
+    MAX_E2B_SESSION_TTL_SECONDS,
   );
 
   if (env.MYCC_E2B_ALLOW_PUBLIC_TRAFFIC === 'true') {
@@ -102,6 +107,7 @@ export function buildE2bCodeServerSessionPlan(
     workspaceDir,
     port,
     sessionTtlSeconds: config.sessionTtlSeconds,
+    desktopEnabled: Boolean(config.desktopEnabled),
     allowPublicTraffic: false,
     accessMode: 'mycc-proxy',
     startCommand: buildCodeServerStartCommand({

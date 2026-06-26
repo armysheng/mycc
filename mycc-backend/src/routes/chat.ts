@@ -1,8 +1,8 @@
-import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import path from 'path';
-import { jwtAuthMiddleware } from '../middleware/jwt.js';
-import { concurrencyLimiter } from '../concurrency-limiter.js';
+import { FastifyInstance } from "fastify";
+import { z } from "zod";
+import path from "path";
+import { jwtAuthMiddleware } from "../middleware/jwt.js";
+import { concurrencyLimiter } from "../concurrency-limiter.js";
 import {
   appendConversationMessages,
   checkQuota,
@@ -15,86 +15,115 @@ import {
   updateConversationStats,
   userOwnsConversation,
   type ConversationMessageSnapshot,
-} from '../db/client.js';
-import { createAgentRuntime } from '../agent-runtime/index.js';
-import { describeAgentRuntimeConfig } from '../agent-runtime/factory.js';
-import { extractSessionId, extractUsage, extractModel } from '../adapters/stream-parser.js';
-import { E2bSandboxProvider } from '../ide/e2b-provider.js';
+} from "../db/client.js";
+import { createAgentRuntime } from "../agent-runtime/index.js";
+import { describeAgentRuntimeConfig } from "../agent-runtime/factory.js";
+import { DEFAULT_CLAUDE_MODEL } from "../agent-runtime/claude-model.js";
+import {
+  extractSessionId,
+  extractUsage,
+  extractModel,
+} from "../adapters/stream-parser.js";
+import { E2bSandboxProvider } from "../ide/e2b-provider.js";
 import {
   buildE2bAgentPreflightReport,
   type E2bPreflightCheck,
   type E2bPreflightReport,
-} from '../ide/e2b-preflight.js';
-import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
-import { ensureE2bIdeSession } from '../ide/e2b-session.js';
-import { buildE2bCodeServerSessionPlan } from '../ide/service.js';
-import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
+} from "../ide/e2b-preflight.js";
+import { isLikelyStaleE2bSessionError } from "../ide/e2b-session-errors.js";
+import { ensureE2bIdeSession } from "../ide/e2b-session.js";
+import { buildE2bCodeServerSessionPlan } from "../ide/service.js";
+import {
+  PostgresIdeSessionStore,
+  type IdeSessionStore,
+  type StoredIdeSession,
+} from "../ide/session-store.js";
 import {
   escapeShellArg,
   sanitizeLinuxUsername,
   validateLinuxUsername,
   validatePathPrefix,
-} from '../utils/validation.js';
-import { getSSHPool } from '../ssh/pool.js';
-import { createSkillsService } from '../skills/index.js';
+} from "../utils/validation.js";
+import { getSSHPool } from "../ssh/pool.js";
+import { createSkillsService } from "../skills/index.js";
 import {
   buildBootstrapContextFiles,
   buildProjectContextPrompt,
   injectProjectContextPrompt,
   injectWorkspaceOperatingPrompt,
   type WorkspaceBootstrapFile,
-} from '../chat/openclaw-context.js';
+} from "../chat/openclaw-context.js";
 import {
   hasHiddenConversationMarker,
   isUserVisibleConversation,
-} from '../chat/conversation-visibility.js';
-import { consumeOnboardingBootstrapTicket } from '../onboarding/bootstrap-ticket-store.js';
+} from "../chat/conversation-visibility.js";
+import { consumeOnboardingBootstrapTicket } from "../onboarding/bootstrap-ticket-store.js";
 
 // 发送消息请求验证
 const chatSchema = z.object({
   message: z.string().min(1),
+  requestId: z.string().min(1).max(160).optional(),
   sessionId: z.string().optional(),
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto']).optional(),
-  images: z.array(z.object({
-    data: z.string(),
-    mediaType: z.string(),
-  })).optional(),
+  workingDirectory: z.string().optional(),
+  permissionMode: z
+    .enum([
+      "default",
+      "acceptEdits",
+      "bypassPermissions",
+      "plan",
+      "dontAsk",
+      "auto",
+    ])
+    .optional(),
+  images: z
+    .array(
+      z.object({
+        data: z.string(),
+        mediaType: z.string(),
+      }),
+    )
+    .optional(),
 });
 
-type HistoryMessageType = 'user' | 'assistant' | 'system' | 'result';
+type HistoryMessageType = "user" | "assistant" | "system" | "result";
 type HistoryMessage = {
   type: HistoryMessageType;
   timestamp: string;
   [key: string]: unknown;
 };
 type PersistedConversationMessage = {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   createdAt: Date;
 };
 
 const REQUIRED_BOOTSTRAP_FILE_NAMES = [
-  'README.md',
-  'SOUL.md',
-  'TOOLS.md',
-  'IDENTITY.md',
-  'USER.md',
-  'HEARTBEAT.md',
+  "README.md",
+  "SOUL.md",
+  "TOOLS.md",
+  "IDENTITY.md",
+  "USER.md",
+  "HEARTBEAT.md",
 ] as const;
 
-const OPTIONAL_BOOTSTRAP_FILE_NAMES = ['MEMORY.md', 'memory.md'] as const;
-const OPENCLAW_ABOUT_ME_DIR = '0-System/about-me';
+const OPTIONAL_BOOTSTRAP_FILE_NAMES = ["MEMORY.md", "memory.md"] as const;
+const OPENCLAW_ABOUT_ME_DIR = "about-me";
 const CONTEXT_PROMPT_CACHE_TTL_MS = 10 * 60 * 1000;
 const SESSION_INJECTION_MARK_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONTEXT_PROMPT_CACHE_ENTRIES = 512;
 const MAX_SESSION_INJECTION_MARKS = 5000;
+const DESKTOP_BROWSER_TOOL_COMMAND_PATTERN =
+  /(^|[\/\s;&|()])(chromium|chromium-browser|google-chrome)(\s|$)|\b(browser-use|browser_use|playwright)\b|\/opt\/mycc\/browser-agent/i;
 
 type CachedContextPrompt = {
   prompt: string;
   expiresAt: number;
 };
-type E2bProjectContextProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
-  & Partial<Pick<E2bSandboxProvider, 'startCodeServer'>>;
+type E2bProjectContextProvider = Pick<
+  E2bSandboxProvider,
+  "runCommandInSession"
+> &
+  Partial<Pick<E2bSandboxProvider, "startCodeServer">>;
 type ChatProjectContextOptions = {
   env?: NodeJS.ProcessEnv;
   e2bProvider?: E2bProjectContextProvider;
@@ -108,13 +137,38 @@ type ProjectContextSource = {
 const contextPromptCache = new Map<string, CachedContextPrompt>();
 const sessionInjectionMarks = new Map<string, number>();
 const skillsService = createSkillsService();
-const SKILL_INSTALL_SKIP_KEYWORDS = ['如何', '怎么', '怎样', '为什么', '无法', '失败', '报错', '不能', '教程', '文档'];
+const SKILL_INSTALL_SKIP_KEYWORDS = [
+  "如何",
+  "怎么",
+  "怎样",
+  "为什么",
+  "无法",
+  "失败",
+  "报错",
+  "不能",
+  "教程",
+  "文档",
+];
 const SKILL_INSTALL_PATTERNS: RegExp[] = [
   /(?:^|[\s，,。.!！?？])(?:请\s*)?(?:帮我\s*)?(?:麻烦\s*)?(?:安装|装上|添加)\s*([^\s，,。.!！?？]{2,64})\s*(?:技能|skill)/i,
   /(?:安装|添加)\s*(?:技能|skill)\s*[:：]?\s*([^\s，,。.!！?？]{2,64})/i,
   /\binstall\s+([a-z0-9._-]{2,64})\s+skill\b/i,
 ];
-const ONBOARDING_BOOTSTRAP_MARKER = '你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。';
+const ONBOARDING_BOOTSTRAP_MARKER =
+  "你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。";
+const CHAT_ABORT_MESSAGE = "已暂停这次任务";
+const CHAT_ABORT_GUIDANCE =
+  "你可以补充说明后继续，也可以重新尝试；右侧工作区里还能查看已经整理出的内容。";
+
+type ActiveChatRequest = {
+  userId: number;
+  requestId: string;
+  sessionId?: string;
+  startedAt: number;
+  abortController: AbortController;
+};
+
+const activeChatRequests = new Map<string, ActiveChatRequest>();
 
 type RuntimeConfigPreflightSummary = {
   ok: boolean;
@@ -125,28 +179,30 @@ type RuntimeConfigPreflightSummary = {
 };
 
 function isHistoryMessage(value: unknown): value is HistoryMessage {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
   return (
-    typeof entry.type === 'string' &&
-    ['user', 'assistant', 'system', 'result'].includes(entry.type) &&
-    typeof entry.timestamp === 'string'
+    typeof entry.type === "string" &&
+    ["user", "assistant", "system", "result"].includes(entry.type) &&
+    typeof entry.timestamp === "string"
   );
 }
 
 function isUserVisibleHistoryMessage(message: HistoryMessage): boolean {
-  if (message.type === 'system' && message.subtype === 'init') return false;
+  if (message.type === "system" && message.subtype === "init") return false;
   if (hasHiddenConversationMarker(message)) return false;
   return true;
 }
 
 function extractConversationTitle(message: string): string {
-  const normalized = message.replace(/\s+/g, ' ').trim();
-  if (!normalized) return '新会话';
-  const cleaned = normalized.replace(/^\/[^\s]+/, '').trim();
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized) return "新会话";
+  const cleaned = normalized.replace(/^\/[^\s]+/, "").trim();
   const source = cleaned || normalized;
   const maxLength = 40;
-  return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
+  return source.length > maxLength
+    ? `${source.slice(0, maxLength)}...`
+    : source;
 }
 
 function deriveConversationTitle(message: string): string | undefined {
@@ -159,20 +215,22 @@ function deriveConversationTitle(message: string): string | undefined {
 function normalizeInstallSkillKeyword(raw: string): string {
   return raw
     .trim()
-    .replace(/^[`"'“”‘’《》【\[]+/, '')
-    .replace(/[`"'“”‘’》】\]]+$/, '')
+    .replace(/^[`"'“”‘’《》【\[]+/, "")
+    .replace(/[`"'“”‘’》】\]]+$/, "")
     .slice(0, 64);
 }
 
 export function extractSkillInstallKeyword(message: string): string | null {
   const trimmed = message.trim();
-  if (!trimmed || trimmed.startsWith('/')) return null;
-  if (!/(安装|添加|install)/i.test(trimmed) || !/(技能|skill)/i.test(trimmed)) return null;
-  if (SKILL_INSTALL_SKIP_KEYWORDS.some((keyword) => trimmed.includes(keyword))) return null;
+  if (!trimmed || trimmed.startsWith("/")) return null;
+  if (!/(安装|添加|install)/i.test(trimmed) || !/(技能|skill)/i.test(trimmed))
+    return null;
+  if (SKILL_INSTALL_SKIP_KEYWORDS.some((keyword) => trimmed.includes(keyword)))
+    return null;
 
   for (const pattern of SKILL_INSTALL_PATTERNS) {
     const matched = trimmed.match(pattern);
-    const keyword = normalizeInstallSkillKeyword(matched?.[1] || '');
+    const keyword = normalizeInstallSkillKeyword(matched?.[1] || "");
     if (keyword) {
       return keyword;
     }
@@ -181,19 +239,22 @@ export function extractSkillInstallKeyword(message: string): string | null {
   return null;
 }
 
-export function buildSkillInstallerBootstrapMessage(keyword: string, originalMessage: string): string {
+export function buildSkillInstallerBootstrapMessage(
+  keyword: string,
+  originalMessage: string,
+): string {
   return [
-    '/skill-installer',
-    '',
+    "/skill-installer",
+    "",
     `目标技能关键词：${keyword}`,
-    '请按以下流程执行并直接安装：',
-    '1. 先搜索可安装来源（优先已配置市场，其次社区仓库）。',
-    '2. 找到最匹配项后直接安装，并确认 SKILL.md 已落到 .claude/skills/<skill-id>/。',
-    '3. 回答中给出最终 skill-id、来源地址、安装结果。',
-    '4. 如未找到精确匹配，返回前 3 个候选并说明差异。',
-    '',
+    "请按以下流程执行并直接安装：",
+    "1. 先搜索可安装来源（优先已配置市场，其次社区仓库）。",
+    "2. 找到最匹配项后直接安装，并确认 SKILL.md 已落到 .claude/skills/<skill-name>/。",
+    "3. 回答中给出最终 skill-id、Claude skill name、来源地址、安装结果。",
+    "4. 如未找到精确匹配，返回前 3 个候选并说明差异。",
+    "",
     `用户原始请求：${originalMessage}`,
-  ].join('\n');
+  ].join("\n");
 }
 
 export type OnboardingBootstrapRequest = {
@@ -202,7 +263,9 @@ export type OnboardingBootstrapRequest = {
   ownerName: string;
 };
 
-export function parseOnboardingBootstrapRequest(message: string): OnboardingBootstrapRequest | null {
+export function parseOnboardingBootstrapRequest(
+  message: string,
+): OnboardingBootstrapRequest | null {
   if (!message.includes(ONBOARDING_BOOTSTRAP_MARKER)) return null;
   const tokenMatched = message.match(/-\s*初始化票据：([^\n\r]+)/);
   const assistantMatched = message.match(/-\s*助手名称：([^\n\r]+)/);
@@ -220,14 +283,69 @@ export function parseOnboardingBootstrapRequest(message: string): OnboardingBoot
 
 function isRuntimeControlMessage(message: string): boolean {
   const normalized = message.trim().toLowerCase();
-  return normalized === 'continue' || normalized === 'accept';
+  return normalized === "continue" || normalized === "accept";
+}
+
+function resolveUserWorkspaceCwd(
+  linuxUser: string,
+  requestedWorkingDirectory?: string,
+): string {
+  const safeLinuxUser = sanitizeLinuxUsername(linuxUser);
+  const workspaceRoot = path.posix.join("/home", safeLinuxUser, "workspace");
+  const rawDirectory = requestedWorkingDirectory?.trim();
+
+  if (!rawDirectory) {
+    return workspaceRoot;
+  }
+  if (rawDirectory.includes("\0")) {
+    throw new Error("Invalid working directory");
+  }
+
+  const normalizedInput = rawDirectory.replace(/\\/g, "/");
+  if (normalizedInput === "~" || normalizedInput === "~/workspace") {
+    return workspaceRoot;
+  }
+  if (normalizedInput.startsWith("~/workspace/")) {
+    const aliasCandidate = path.posix.normalize(
+      path.posix.join(workspaceRoot, normalizedInput.slice("~/workspace/".length)),
+    );
+    if (
+      aliasCandidate !== workspaceRoot &&
+      !aliasCandidate.startsWith(`${workspaceRoot}/`)
+    ) {
+      throw new Error("Invalid working directory");
+    }
+    return aliasCandidate;
+  }
+  const candidate = normalizedInput.startsWith("/home/")
+    ? path.posix.normalize(normalizedInput)
+    : path.posix.normalize(
+        path.posix.join(workspaceRoot, normalizedInput.replace(/^\/+/, "")),
+      );
+
+  if (candidate !== workspaceRoot && !candidate.startsWith(`${workspaceRoot}/`)) {
+    throw new Error("Invalid working directory");
+  }
+
+  return candidate;
 }
 
 function buildClaudeHistoryProjectDir(workspaceDir: string): string {
-  const normalizedWorkspace = path.posix.normalize(workspaceDir).replace(/\/$/, '');
+  const normalizedWorkspace = path.posix
+    .normalize(workspaceDir)
+    .replace(/\/$/, "");
   const homeDir = path.posix.dirname(normalizedWorkspace);
-  const projectSegment = normalizedWorkspace.replace(/_/g, '-').replace(/\//g, '-');
+  const projectSegment = normalizedWorkspace
+    .replace(/_/g, "-")
+    .replace(/\//g, "-");
   return `${homeDir}/.claude/projects/${projectSegment}`;
+}
+
+function resolveClaudeHomeDirFromWorkspace(workspaceDir: string): string {
+  const normalizedWorkspace = path.posix
+    .normalize(workspaceDir)
+    .replace(/\/$/, "");
+  return `${path.posix.dirname(normalizedWorkspace)}/.claude`;
 }
 
 function buildHistoryReadCommand(historyPath: string, limit: number): string {
@@ -237,7 +355,7 @@ function buildHistoryReadCommand(historyPath: string, limit: number): string {
 
 function parseHistoryMessages(stdout: string): HistoryMessage[] {
   return stdout
-    .split('\n')
+    .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
@@ -251,7 +369,9 @@ function parseHistoryMessages(stdout: string): HistoryMessage[] {
     .filter(isUserVisibleHistoryMessage);
 }
 
-function conversationSnapshotToHistoryMessage(snapshot: ConversationMessageSnapshot): HistoryMessage {
+function conversationSnapshotToHistoryMessage(
+  snapshot: ConversationMessageSnapshot,
+): HistoryMessage {
   return {
     type: snapshot.role,
     timestamp: snapshot.createdAt.toISOString(),
@@ -259,7 +379,7 @@ function conversationSnapshotToHistoryMessage(snapshot: ConversationMessageSnaps
       role: snapshot.role,
       content: [
         {
-          type: 'text',
+          type: "text",
           text: snapshot.content,
         },
       ],
@@ -268,22 +388,62 @@ function conversationSnapshotToHistoryMessage(snapshot: ConversationMessageSnaps
 }
 
 function extractAssistantText(event: Record<string, unknown>): string {
-  if (event.type !== 'assistant') return '';
+  if (event.type !== "assistant") return "";
   const message = event.message;
-  if (!message || typeof message !== 'object') return '';
+  if (!message || typeof message !== "object") return "";
   const content = (message as { content?: unknown }).content;
-  if (!Array.isArray(content)) return '';
+  if (!Array.isArray(content)) return "";
 
   return content
     .map((item) => {
-      if (!item || typeof item !== 'object') return '';
+      if (!item || typeof item !== "object") return "";
       const contentItem = item as { type?: unknown; text?: unknown };
-      if (contentItem.type !== 'text' || typeof contentItem.text !== 'string') {
-        return '';
+      if (contentItem.type !== "text" || typeof contentItem.text !== "string") {
+        return "";
       }
       return contentItem.text;
     })
-    .join('');
+    .join("");
+}
+
+function isAgentBrowserWorkbenchToolUse(
+  event: Record<string, unknown>,
+): boolean {
+  if (event.type !== "assistant") return false;
+  const message = event.message;
+  if (!message || typeof message !== "object") return false;
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return false;
+
+  return content.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const contentItem = item as {
+      type?: unknown;
+      name?: unknown;
+      input?: unknown;
+    };
+    if (contentItem.type !== "tool_use") return false;
+    if (contentItem.name === "Skill") {
+      return isBrowserWorkbenchSkillUse(contentItem.input);
+    }
+    if (typeof contentItem.name === "string" && contentItem.name !== "Bash")
+      return false;
+    const command = extractToolUseCommand(contentItem.input);
+    return DESKTOP_BROWSER_TOOL_COMMAND_PATTERN.test(command);
+  });
+}
+
+function extractToolUseCommand(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const command = (input as { command?: unknown }).command;
+  return typeof command === "string" ? command : "";
+}
+
+function isBrowserWorkbenchSkillUse(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const skill = (input as { skill?: unknown }).skill;
+  if (typeof skill !== "string") return false;
+  return /^(browser-use|browser)$/i.test(skill.trim());
 }
 
 function shouldPersistUserMessage(message: string): boolean {
@@ -304,7 +464,9 @@ async function loadSessionHistoryMessages(params: {
 
   if (shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
     let sshPool: ReturnType<typeof getSSHPool> | null = null;
-    let connection: Awaited<ReturnType<ReturnType<typeof getSSHPool>['acquire']>> | null = null;
+    let connection: Awaited<
+      ReturnType<ReturnType<typeof getSSHPool>["acquire"]>
+    > | null = null;
 
     try {
       sshPool = getSSHPool();
@@ -330,12 +492,17 @@ async function loadSessionHistoryMessages(params: {
     }
   }
 
-  const plan = buildE2bCodeServerSessionPlan({
-    userId: params.userId,
-    linuxUser: safeLinuxUser,
-    workspaceDir,
-  }, params.options.env);
-  const session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+  const plan = buildE2bCodeServerSessionPlan(
+    {
+      userId: params.userId,
+      linuxUser: safeLinuxUser,
+      workspaceDir,
+    },
+    params.options.env,
+  );
+  const session = await params.options.ideSessionStore.findReusableByUser(
+    params.userId,
+  );
   if (!session) {
     return [];
   }
@@ -360,7 +527,10 @@ async function loadSessionHistoryMessages(params: {
   } catch (error) {
     if (isLikelyStaleE2bSessionError(error)) {
       try {
-        await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
+        await params.options.ideSessionStore.set({
+          ...session,
+          status: "stopped",
+        });
       } catch {
         // History loading should never block opening an old conversation.
       }
@@ -407,44 +577,44 @@ function buildOnboardingWorkspaceVerificationScript(params: {
     `const aboutMeDir=${JSON.stringify(params.aboutMeDir)};`,
     `const expectedAssistant=${JSON.stringify(params.assistantName)};`,
     `const expectedOwner=${JSON.stringify(params.ownerName)};`,
-    'const checks=[',
-    '  `${aboutMeDir}/README.md`,',
-    '  `${aboutMeDir}/IDENTITY.md`,',
-    '  `${aboutMeDir}/USER.md`,',
-    '  `${aboutMeDir}/MEMORY.md`,',
-    '  `${aboutMeDir}/SOUL.md`,',
-    '  `${aboutMeDir}/TOOLS.md`,',
-    '  `${aboutMeDir}/HEARTBEAT.md`,',
-    '  `${aboutMeDir}/../memory`,',
-    '];',
-    'for(const p of checks){',
-    '  if(!fs.existsSync(p)){',
-    '    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));',
-    '    process.exit(0);',
-    '  }',
-    '}',
+    "const checks=[",
+    "  `${aboutMeDir}/README.md`,",
+    "  `${aboutMeDir}/IDENTITY.md`,",
+    "  `${aboutMeDir}/USER.md`,",
+    "  `${aboutMeDir}/MEMORY.md`,",
+    "  `${aboutMeDir}/SOUL.md`,",
+    "  `${aboutMeDir}/TOOLS.md`,",
+    "  `${aboutMeDir}/HEARTBEAT.md`,",
+    "  `${aboutMeDir}/../memory`,",
+    "];",
+    "for(const p of checks){",
+    "  if(!fs.existsSync(p)){",
+    "    process.stdout.write(JSON.stringify({ok:false,reason:`missing:${p}`}));",
+    "    process.exit(0);",
+    "  }",
+    "}",
     'const identity=fs.readFileSync(`${aboutMeDir}/IDENTITY.md`,"utf8");',
     'const user=fs.readFileSync(`${aboutMeDir}/USER.md`,"utf8");',
     'const memory=fs.readFileSync(`${aboutMeDir}/MEMORY.md`,"utf8");',
-    'if(!identity.includes(expectedAssistant)){',
+    "if(!identity.includes(expectedAssistant)){",
     '  process.stdout.write(JSON.stringify({ok:false,reason:"identity_missing_assistant_name"}));',
-    '  process.exit(0);',
-    '}',
-    'if(!user.includes(expectedOwner)){',
+    "  process.exit(0);",
+    "}",
+    "if(!user.includes(expectedOwner)){",
     '  process.stdout.write(JSON.stringify({ok:false,reason:"user_missing_owner_name"}));',
-    '  process.exit(0);',
-    '}',
-    'if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){',
+    "  process.exit(0);",
+    "}",
+    "if(!memory.includes(expectedAssistant) || !memory.includes(expectedOwner)){",
     '  process.stdout.write(JSON.stringify({ok:false,reason:"memory_missing_identity_fields"}));',
-    '  process.exit(0);',
-    '}',
-    'const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;',
-    'if(fs.existsSync(bootstrapPath)){',
-    '  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));',
-    '  process.exit(0);',
-    '}',
-    'process.stdout.write(JSON.stringify({ok:true}));',
-  ].join('');
+    "  process.exit(0);",
+    "}",
+    "const bootstrapPath=`${aboutMeDir}/BOOTSTRAP.md`;",
+    "if(fs.existsSync(bootstrapPath)){",
+    "  process.stdout.write(JSON.stringify({ok:false,reason:`bootstrap_not_archived:${bootstrapPath}`}));",
+    "  process.exit(0);",
+    "}",
+    "process.stdout.write(JSON.stringify({ok:true}));",
+  ].join("");
 }
 
 async function verifyOnboardingWorkspaceStateFromRemote(params: {
@@ -456,7 +626,7 @@ async function verifyOnboardingWorkspaceStateFromRemote(params: {
   const sshPool = getSSHPool();
   const connection = await sshPool.acquire();
   try {
-    const aboutMeDir = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+    const aboutMeDir = `${resolveClaudeHomeDirFromWorkspace(params.workspaceDir)}/${OPENCLAW_ABOUT_ME_DIR}`;
     const script = buildOnboardingWorkspaceVerificationScript({
       aboutMeDir,
       assistantName: params.assistantName,
@@ -466,15 +636,21 @@ async function verifyOnboardingWorkspaceStateFromRemote(params: {
     const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
     const result = await sshPool.exec(connection, cmd);
     if (result.exitCode !== 0) {
-      return { ok: false, reason: result.stderr || 'verify_failed' };
+      return { ok: false, reason: result.stderr || "verify_failed" };
     }
-    const parsed = JSON.parse(result.stdout || '{}') as { ok?: boolean; reason?: string };
+    const parsed = JSON.parse(result.stdout || "{}") as {
+      ok?: boolean;
+      reason?: string;
+    };
     return {
       ok: Boolean(parsed.ok),
       reason: parsed.reason,
     };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
   } finally {
     sshPool.release(connection);
   }
@@ -489,15 +665,20 @@ async function verifyOnboardingWorkspaceStateFromE2b(params: {
   options: Required<ChatProjectContextOptions>;
 }): Promise<{ ok: boolean; reason?: string }> {
   try {
-    const plan = buildE2bCodeServerSessionPlan({
-      userId: params.userId,
-      linuxUser: params.linuxUser,
-      workspaceDir: params.workspaceDir,
-    }, params.options.env);
-    let session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+    const plan = buildE2bCodeServerSessionPlan(
+      {
+        userId: params.userId,
+        linuxUser: params.linuxUser,
+        workspaceDir: params.workspaceDir,
+      },
+      params.options.env,
+    );
+    let session = await params.options.ideSessionStore.findReusableByUser(
+      params.userId,
+    );
     if (!session) {
       if (!params.options.e2bProvider.startCodeServer) {
-        return { ok: false, reason: 'e2b_session_missing' };
+        return { ok: false, reason: "e2b_session_missing" };
       }
       session = await ensureE2bIdeSession({
         userId: params.userId,
@@ -506,12 +687,13 @@ async function verifyOnboardingWorkspaceStateFromE2b(params: {
         sessionStore: params.options.ideSessionStore,
         e2bProvider: params.options.e2bProvider,
         env: params.options.env,
-        missingStartCodeServerMessage: 'E2B onboarding verification provider cannot create IDE sessions',
+        missingStartCodeServerMessage:
+          "E2B onboarding verification provider cannot create IDE sessions",
       });
     }
 
     const script = buildOnboardingWorkspaceVerificationScript({
-      aboutMeDir: `${plan.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`,
+      aboutMeDir: `${resolveClaudeHomeDirFromWorkspace(plan.workspaceDir)}/${OPENCLAW_ABOUT_ME_DIR}`,
       assistantName: params.assistantName,
       ownerName: params.ownerName,
     });
@@ -524,21 +706,35 @@ async function verifyOnboardingWorkspaceStateFromE2b(params: {
       },
     );
     if (result.exitCode !== 0) {
-      return { ok: false, reason: result.stderr || result.error || 'e2b_verify_failed' };
+      return {
+        ok: false,
+        reason: result.stderr || result.error || "e2b_verify_failed",
+      };
     }
-    const parsed = JSON.parse(result.stdout || '{}') as { ok?: boolean; reason?: string };
+    const parsed = JSON.parse(result.stdout || "{}") as {
+      ok?: boolean;
+      reason?: string;
+    };
     return {
       ok: Boolean(parsed.ok),
       reason: parsed.reason,
     };
   } catch (err) {
     if (isLikelyStaleE2bSessionError(err)) {
-      const reusable = await params.options.ideSessionStore.findReusableByUser(params.userId);
+      const reusable = await params.options.ideSessionStore.findReusableByUser(
+        params.userId,
+      );
       if (reusable) {
-        await params.options.ideSessionStore.set({ ...reusable, status: 'stopped' });
+        await params.options.ideSessionStore.set({
+          ...reusable,
+          status: "stopped",
+        });
       }
     }
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -554,12 +750,15 @@ async function loadWorkspaceBootstrapFilesFromRemote(params: {
     const cmd = `sudo -n -u ${escapeShellArg(params.linuxUser)} node -e '${script}'`;
     const result = await sshPool.exec(connection, cmd);
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr || '读取 bootstrap 文件失败');
+      throw new Error(result.stderr || "读取 bootstrap 文件失败");
     }
 
     const parsed = JSON.parse(result.stdout) as WorkspaceBootstrapFile[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item) => item && typeof item.path === 'string' && typeof item.name === 'string');
+    return parsed.filter(
+      (item) =>
+        item && typeof item.path === "string" && typeof item.name === "string",
+    );
   } finally {
     sshPool.release(connection);
   }
@@ -579,16 +778,22 @@ export async function loadWorkspaceBootstrapFilesFromE2b(params: {
     },
   );
   if (result.exitCode !== 0) {
-    throw new Error(result.stderr || result.error || '读取 E2B bootstrap 文件失败');
+    throw new Error(
+      result.stderr || result.error || "读取 E2B bootstrap 文件失败",
+    );
   }
 
   const parsed = JSON.parse(result.stdout) as WorkspaceBootstrapFile[];
   if (!Array.isArray(parsed)) return [];
-  return parsed.filter((item) => item && typeof item.path === 'string' && typeof item.name === 'string');
+  return parsed.filter(
+    (item) =>
+      item && typeof item.path === "string" && typeof item.name === "string",
+  );
 }
 
 function buildBootstrapFilesReaderScript(workspaceDir: string): string {
-  const bootstrapRoot = `${workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+  const claudeHomeDir = resolveClaudeHomeDirFromWorkspace(workspaceDir);
+  const bootstrapRoot = `${claudeHomeDir}/${OPENCLAW_ABOUT_ME_DIR}`;
   const entries = [
     ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
       name,
@@ -605,21 +810,21 @@ function buildBootstrapFilesReaderScript(workspaceDir: string): string {
   return [
     'const fs=require("fs");',
     `const entries=${JSON.stringify(entries)};`,
-    'const out=[];',
-    'for(const e of entries){',
-    '  try{',
-    '    if(fs.existsSync(e.path)){',
+    "const out=[];",
+    "for(const e of entries){",
+    "  try{",
+    "    if(fs.existsSync(e.path)){",
     '      const content=fs.readFileSync(e.path,"utf8");',
-    '      out.push({name:e.name,path:e.path,content,missing:false});',
-    '    }else if(e.required){',
-    '      out.push({name:e.name,path:e.path,missing:true});',
-    '    }',
-    '  }catch(_err){',
-    '    if(e.required){ out.push({name:e.name,path:e.path,missing:true}); }',
-    '  }',
-    '}',
-    'process.stdout.write(JSON.stringify(out));',
-  ].join('');
+    "      out.push({name:e.name,path:e.path,content,missing:false});",
+    "    }else if(e.required){",
+    "      out.push({name:e.name,path:e.path,missing:true});",
+    "    }",
+    "  }catch(_err){",
+    "    if(e.required){ out.push({name:e.name,path:e.path,missing:true}); }",
+    "  }",
+    "}",
+    "process.stdout.write(JSON.stringify(out));",
+  ].join("");
 }
 
 function nowMs(): number {
@@ -652,7 +857,10 @@ function pruneExpiredSessionInjectionMarks(currentTime: number): void {
   }
 }
 
-function getContextPromptCacheKey(userId: number, workspaceDir: string): string {
+function getContextPromptCacheKey(
+  userId: number,
+  workspaceDir: string,
+): string {
   return `${userId}:${workspaceDir}`;
 }
 
@@ -660,7 +868,10 @@ function getSessionInjectionKey(userId: number, sessionId: string): string {
   return `${userId}:${sessionId}`;
 }
 
-function hasInjectedProjectContextForSession(userId: number, sessionId?: string): boolean {
+function hasInjectedProjectContextForSession(
+  userId: number,
+  sessionId?: string,
+): boolean {
   if (!sessionId) return false;
   const key = getSessionInjectionKey(userId, sessionId);
   const expiresAt = sessionInjectionMarks.get(key);
@@ -672,12 +883,16 @@ function hasInjectedProjectContextForSession(userId: number, sessionId?: string)
   return true;
 }
 
-export function shouldLoadProjectContextFromVpsWorkspace(env: NodeJS.ProcessEnv = process.env): boolean {
-  const runtime = (env.MYCC_AGENT_RUNTIME || 'remote-claude').trim();
-  return runtime !== 'e2b-claude-cli' && runtime !== 'e2b-claude-agent-sdk';
+export function shouldLoadProjectContextFromVpsWorkspace(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const runtime = (env.MYCC_AGENT_RUNTIME || "remote-claude").trim();
+  return runtime !== "e2b-claude-cli" && runtime !== "e2b-claude-agent-sdk";
 }
 
-export function hasUsableBootstrapContent(files: WorkspaceBootstrapFile[]): boolean {
+export function hasUsableBootstrapContent(
+  files: WorkspaceBootstrapFile[],
+): boolean {
   return files.some((file) => !file.missing && Boolean(file.content?.trim()));
 }
 
@@ -690,19 +905,25 @@ async function resolveProjectContextSource(params: {
   if (shouldLoadProjectContextFromVpsWorkspace(params.options.env)) {
     return {
       cacheKey: `ssh:${params.userId}:${params.vpsWorkspaceDir}`,
-      loadFiles: () => loadWorkspaceBootstrapFilesFromRemote({
-        linuxUser: params.linuxUser,
-        workspaceDir: params.vpsWorkspaceDir,
-      }),
+      loadFiles: () =>
+        loadWorkspaceBootstrapFilesFromRemote({
+          linuxUser: params.linuxUser,
+          workspaceDir: params.vpsWorkspaceDir,
+        }),
     };
   }
 
-  const plan = buildE2bCodeServerSessionPlan({
-    userId: params.userId,
-    linuxUser: params.linuxUser,
-    workspaceDir: params.vpsWorkspaceDir,
-  }, params.options.env);
-  let session = await params.options.ideSessionStore.findReusableByUser(params.userId);
+  const plan = buildE2bCodeServerSessionPlan(
+    {
+      userId: params.userId,
+      linuxUser: params.linuxUser,
+      workspaceDir: params.vpsWorkspaceDir,
+    },
+    params.options.env,
+  );
+  let session = await params.options.ideSessionStore.findReusableByUser(
+    params.userId,
+  );
   if (!session) {
     if (!params.options.e2bProvider.startCodeServer) {
       return null;
@@ -714,7 +935,8 @@ async function resolveProjectContextSource(params: {
       sessionStore: params.options.ideSessionStore,
       e2bProvider: params.options.e2bProvider,
       env: params.options.env,
-      missingStartCodeServerMessage: 'E2B chat context provider cannot create IDE sessions',
+      missingStartCodeServerMessage:
+        "E2B chat context provider cannot create IDE sessions",
     });
   }
 
@@ -729,7 +951,10 @@ async function resolveProjectContextSource(params: {
         });
       } catch (error) {
         if (isLikelyStaleE2bSessionError(error)) {
-          await params.options.ideSessionStore.set({ ...session, status: 'stopped' });
+          await params.options.ideSessionStore.set({
+            ...session,
+            status: "stopped",
+          });
         }
         throw error;
       }
@@ -737,7 +962,10 @@ async function resolveProjectContextSource(params: {
   };
 }
 
-function markProjectContextInjectedForSession(userId: number, sessionId: string): void {
+function markProjectContextInjectedForSession(
+  userId: number,
+  sessionId: string,
+): void {
   const currentTime = nowMs();
   pruneExpiredSessionInjectionMarks(currentTime);
   const key = getSessionInjectionKey(userId, sessionId);
@@ -748,6 +976,78 @@ function markProjectContextInjectedForSession(userId: number, sessionId: string)
       Math.max(1, sessionInjectionMarks.size - MAX_SESSION_INJECTION_MARKS),
     );
   }
+}
+
+function getActiveChatRequestKey(userId: number, requestId: string): string {
+  return `${userId}:${requestId}`;
+}
+
+function registerActiveChatRequest(request: ActiveChatRequest): void {
+  const key = getActiveChatRequestKey(request.userId, request.requestId);
+  activeChatRequests.get(key)?.abortController.abort();
+  activeChatRequests.set(key, request);
+}
+
+function updateActiveChatRequestSession(
+  userId: number,
+  requestId: string | undefined,
+  sessionId: string,
+): void {
+  if (!requestId) return;
+  const key = getActiveChatRequestKey(userId, requestId);
+  const activeRequest = activeChatRequests.get(key);
+  if (activeRequest) {
+    activeRequest.sessionId = sessionId;
+  }
+}
+
+function unregisterActiveChatRequest(userId: number, requestId?: string): void {
+  if (!requestId) return;
+  activeChatRequests.delete(getActiveChatRequestKey(userId, requestId));
+}
+
+function abortActiveChatRequest(userId: number, requestId: string): boolean {
+  const key = getActiveChatRequestKey(userId, requestId);
+  const activeRequest = activeChatRequests.get(key);
+  if (!activeRequest) return false;
+  activeRequest.abortController.abort();
+  return true;
+}
+
+function listActiveChatRequests(
+  userId: number,
+  filters: { sessionId?: string; requestId?: string },
+): Array<{
+  requestId: string;
+  sessionId?: string;
+  startedAt: string;
+  durationMs: number;
+}> {
+  const currentTime = Date.now();
+  return Array.from(activeChatRequests.values())
+    .filter((request) => request.userId === userId)
+    .filter((request) =>
+      filters.sessionId ? request.sessionId === filters.sessionId : true,
+    )
+    .filter((request) =>
+      filters.requestId ? request.requestId === filters.requestId : true,
+    )
+    .map((request) => ({
+      requestId: request.requestId,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      startedAt: new Date(request.startedAt).toISOString(),
+      durationMs: Math.max(0, currentTime - request.startedAt),
+    }));
+}
+
+function writeChatAbortEvent(raw: { write: (chunk: string) => unknown }): void {
+  raw.write(
+    `data: ${JSON.stringify({
+      type: "aborted",
+      message: CHAT_ABORT_MESSAGE,
+      guidance: CHAT_ABORT_GUIDANCE,
+    })}\n\n`,
+  );
 }
 
 async function getProjectContextPromptCached(params: {
@@ -763,7 +1063,7 @@ async function getProjectContextPromptCached(params: {
     options: params.options,
   });
   if (!source) {
-    return '';
+    return "";
   }
 
   const currentTime = nowMs();
@@ -776,7 +1076,7 @@ async function getProjectContextPromptCached(params: {
 
   const bootstrapFiles = await source.loadFiles();
   if (!hasUsableBootstrapContent(bootstrapFiles)) {
-    return '';
+    return "";
   }
   const contextFiles = buildBootstrapContextFiles(bootstrapFiles);
   const prompt = buildProjectContextPrompt(contextFiles);
@@ -793,415 +1093,592 @@ async function getProjectContextPromptCached(params: {
   return prompt;
 }
 
-export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectContextOptions = {}) {
+export async function chatRoutes(
+  fastify: FastifyInstance,
+  options: ChatProjectContextOptions = {},
+) {
   const projectContextOptions: Required<ChatProjectContextOptions> = {
     env: options.env ?? process.env,
     e2bProvider: options.e2bProvider ?? new E2bSandboxProvider(),
     ideSessionStore: options.ideSessionStore ?? new PostgresIdeSessionStore(),
   };
 
-  fastify.get('/api/chat/runtime/config', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
+  fastify.get(
+    "/api/chat/runtime/config",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
+      }
 
-    const e2bAgentPreflight = summarizeE2bAgentPreflight(
-      await buildE2bAgentPreflightReport({ env: projectContextOptions.env }),
-    );
+      const e2bAgentPreflight = summarizeE2bAgentPreflight(
+        await buildE2bAgentPreflightReport({ env: projectContextOptions.env }),
+      );
 
-    return {
-      success: true,
-      data: {
-        ...describeAgentRuntimeConfig(projectContextOptions.env),
-        e2bAgentPreflight,
-      },
-    };
-  });
+      return {
+        success: true,
+        data: {
+          ...describeAgentRuntimeConfig(projectContextOptions.env),
+          e2bAgentPreflight,
+        },
+      };
+    },
+  );
 
   // POST /api/chat - 发送消息（SSE 流式响应）
-  fastify.post('/api/chat', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
+  fastify.post(
+    "/api/chat",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
+      }
 
-    try {
-      const body = chatSchema.parse(request.body);
-      const userId = request.user.userId;
-      const linuxUser = request.user.linuxUser;
+      try {
+        const body = chatSchema.parse(request.body);
+        const userId = request.user.userId;
+        const linuxUser = request.user.linuxUser;
 
-      if (body.sessionId) {
-        const ownsSession = await userOwnsConversation(userId, body.sessionId);
-        if (!ownsSession) {
+        // 验证 linuxUser 格式
+        if (!validateLinuxUsername(linuxUser)) {
+          return reply.status(400).send({ error: "Invalid user format" });
+        }
+
+        let cwd: string;
+        try {
+          cwd = resolveUserWorkspaceCwd(linuxUser, body.workingDirectory);
+        } catch {
+          return reply.status(400).send({
+            success: false,
+            error: "Invalid working directory",
+          });
+        }
+
+        if (body.sessionId) {
+          const ownsSession = await userOwnsConversation(
+            userId,
+            body.sessionId,
+          );
+          if (!ownsSession) {
+            return reply.status(403).send({
+              success: false,
+              error: "无权访问该会话",
+            });
+          }
+        }
+
+        // 检查额度
+        const quota = await checkQuota(userId);
+        if (!quota.allowed) {
           return reply.status(403).send({
             success: false,
-            error: '无权访问该会话',
+            error: "额度已用完",
+            remaining: 0,
           });
         }
-      }
 
-      // 检查额度
-      const quota = await checkQuota(userId);
-      if (!quota.allowed) {
-        return reply.status(403).send({
-          success: false,
-          error: '额度已用完',
-          remaining: 0,
-        });
-      }
+        // 获取并发许可
+        await concurrencyLimiter.acquire(userId);
 
-      // 获取并发许可
-      await concurrencyLimiter.acquire(userId);
+        // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace[/project]）
+        let enhancedMessage = body.message;
+        const onboardingBootstrapRequest = parseOnboardingBootstrapRequest(
+          body.message,
+        );
+        const installSkillKeyword = extractSkillInstallKeyword(body.message);
+        if (installSkillKeyword) {
+          try {
+            await skillsService.ensureBuiltinSkills({ userId, linuxUser });
+          } catch (seedErr) {
+            console.warn(
+              `[Chat] ensure builtin skills skipped userId=${userId}:`,
+              seedErr,
+            );
+          }
+          enhancedMessage = buildSkillInstallerBootstrapMessage(
+            installSkillKeyword,
+            body.message,
+          );
+        }
 
-      // 验证 linuxUser 格式
-      if (!validateLinuxUsername(linuxUser)) {
-        return reply.status(400).send({ error: 'Invalid user format' });
-      }
-
-      // 获取用户工作目录（VPS 上统一使用 /home/{linuxUser}/workspace）
-      const cwd = path.join('/home', linuxUser, 'workspace');
-      let enhancedMessage = body.message;
-      const onboardingBootstrapRequest = parseOnboardingBootstrapRequest(body.message);
-      const installSkillKeyword = extractSkillInstallKeyword(body.message);
-      if (installSkillKeyword) {
+        let didInjectProjectContext = false;
         try {
-          await skillsService.ensureBuiltinSkills({ userId, linuxUser });
-        } catch (seedErr) {
-          console.warn(`[Chat] ensure builtin skills skipped userId=${userId}:`, seedErr);
+          const shouldInjectProjectContext =
+            !onboardingBootstrapRequest &&
+            !hasInjectedProjectContextForSession(userId, body.sessionId);
+          if (shouldInjectProjectContext) {
+            const projectContextPrompt = await getProjectContextPromptCached({
+              userId,
+              linuxUser,
+              workspaceDir: cwd,
+              options: projectContextOptions,
+            });
+            const mergedMessage = injectProjectContextPrompt(
+              enhancedMessage,
+              projectContextPrompt,
+            );
+            didInjectProjectContext = mergedMessage !== enhancedMessage;
+            enhancedMessage = mergedMessage;
+          }
+        } catch (bootstrapErr) {
+          console.warn(
+            `[Chat] workspace context injection skipped userId=${userId}:`,
+            bootstrapErr,
+          );
         }
-        enhancedMessage = buildSkillInstallerBootstrapMessage(installSkillKeyword, body.message);
-      }
+        if (
+          !onboardingBootstrapRequest &&
+          !didInjectProjectContext &&
+          !isRuntimeControlMessage(enhancedMessage)
+        ) {
+          enhancedMessage = injectWorkspaceOperatingPrompt(enhancedMessage);
+        }
 
-      let didInjectProjectContext = false;
-      try {
-        const shouldInjectProjectContext = !onboardingBootstrapRequest
-          && !hasInjectedProjectContextForSession(userId, body.sessionId);
-        if (shouldInjectProjectContext) {
-          const projectContextPrompt = await getProjectContextPromptCached({
+        // 验证路径安全性
+        if (!validatePathPrefix(cwd, "/home/")) {
+          return reply.status(400).send({ error: "Invalid path" });
+        }
+
+        const runtime = createAgentRuntime();
+        const requestId = body.requestId;
+        const abortController = new AbortController();
+        if (requestId) {
+          registerActiveChatRequest({
             userId,
+            requestId,
+            sessionId: body.sessionId,
+            startedAt: Date.now(),
+            abortController,
+          });
+        }
+
+        // 设置 SSE 响应头
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+
+        let currentSessionId = body.sessionId;
+        let totalInputTokens = 0;
+        let totalOutputTokens = 0;
+        let model =
+          process.env.VPS_CLAUDE_MODEL ||
+          process.env.CLAUDE_MODEL ||
+          DEFAULT_CLAUDE_MODEL;
+        let streamHasError = false;
+        let streamResultHasError = false;
+        let lastStreamError: string | null = null;
+        let streamAborted = false;
+        let abortEventWritten = false;
+        let emittedWorkbenchBrowserSignal = false;
+        const turnStartedAt = new Date();
+        const assistantTextParts: string[] = [];
+
+        try {
+          console.log(
+            `[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`,
+          );
+
+          // 流式处理响应
+          for await (const event of runtime.chat({
+            userId,
+            requestId,
+            message: enhancedMessage,
+            sessionId: body.sessionId,
+            cwd,
             linuxUser,
-            workspaceDir: cwd,
-            options: projectContextOptions,
-          });
-          const mergedMessage = injectProjectContextPrompt(enhancedMessage, projectContextPrompt);
-          didInjectProjectContext = mergedMessage !== enhancedMessage;
-          enhancedMessage = mergedMessage;
-        }
-      } catch (bootstrapErr) {
-        console.warn(`[Chat] workspace context injection skipped userId=${userId}:`, bootstrapErr);
-      }
-      if (
-        !onboardingBootstrapRequest
-        && !didInjectProjectContext
-        && !isRuntimeControlMessage(enhancedMessage)
-      ) {
-        enhancedMessage = injectWorkspaceOperatingPrompt(enhancedMessage);
-      }
-
-      // 验证路径安全性
-      if (!validatePathPrefix(cwd, '/home/')) {
-        return reply.status(400).send({ error: 'Invalid path' });
-      }
-
-      const runtime = createAgentRuntime();
-
-      // 设置 SSE 响应头
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      });
-
-      let currentSessionId = body.sessionId;
-      let totalInputTokens = 0;
-      let totalOutputTokens = 0;
-      let model = process.env.VPS_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-      let streamHasError = false;
-      let streamResultHasError = false;
-      let lastStreamError: string | null = null;
-      const turnStartedAt = new Date();
-      const assistantTextParts: string[] = [];
-
-      try {
-        console.log(`[Chat] 用户 ${userId} 发送消息: ${body.message.substring(0, 50)}...`);
-
-        // 流式处理响应
-        for await (const event of runtime.chat({
-          userId,
-          message: enhancedMessage,
-          sessionId: body.sessionId,
-          cwd,
-          linuxUser,
-          permissionMode: body.permissionMode,
-          images: body.images,
-        })) {
-          // 提取 session_id
-          const sessionId = extractSessionId(event);
-          if (sessionId) {
-            currentSessionId = sessionId;
-          }
-
-          // 提取 usage 信息
-          const usage = extractUsage(event);
-          if (usage) {
-            totalInputTokens += usage.inputTokens;
-            totalOutputTokens += usage.outputTokens;
-          }
-
-          // 提取 model 信息
-          const modelName = extractModel(event);
-          if (modelName) {
-            model = modelName;
-          }
-
-          if (event.type === 'error') {
-            streamHasError = true;
-            if (typeof event.error === 'string' && event.error.trim()) {
-              lastStreamError = event.error;
+            permissionMode: body.permissionMode,
+            images: body.images,
+            abortController,
+            signal: abortController.signal,
+          })) {
+            if (abortController.signal.aborted) {
+              streamAborted = true;
+              if (!abortEventWritten) {
+                writeChatAbortEvent(reply.raw);
+                abortEventWritten = true;
+              }
+              break;
             }
-          }
-          if (event.type === 'result' && event.is_error === true) {
-            streamResultHasError = true;
-            if (typeof event.result === 'string' && event.result.trim()) {
-              lastStreamError = event.result;
+
+            // 提取 session_id
+            const sessionId = extractSessionId(event);
+            if (sessionId) {
+              if (!body.sessionId) {
+                currentSessionId = sessionId;
+              }
+              updateActiveChatRequestSession(userId, requestId, sessionId);
             }
-          }
 
-          const assistantText = extractAssistantText(event);
-          if (assistantText) {
-            assistantTextParts.push(assistantText);
-          }
-
-          // 发送事件
-          reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-        }
-
-        // 确保会话元数据存在（首次消息会创建并自动提取标题，会话续聊仅刷新 updated_at）
-        if (currentSessionId) {
-          const derivedTitle = body.sessionId ? undefined : deriveConversationTitle(body.message);
-          const upserted = await upsertConversation({
-            userId,
-            sessionId: currentSessionId,
-            title: derivedTitle,
-          });
-          if (!upserted) {
-            throw new Error('会话归属校验失败');
-          }
-          if (didInjectProjectContext) {
-            markProjectContextInjectedForSession(userId, currentSessionId);
-          }
-
-          if (!streamHasError && !streamResultHasError) {
-            const persistedMessages: PersistedConversationMessage[] = [];
-            if (shouldPersistUserMessage(body.message)) {
-              persistedMessages.push({
-                role: 'user',
-                content: body.message,
-                createdAt: turnStartedAt,
-              });
+            // 提取 usage 信息
+            const usage = extractUsage(event);
+            if (usage) {
+              totalInputTokens += usage.inputTokens;
+              totalOutputTokens += usage.outputTokens;
             }
-            const assistantContent = assistantTextParts.join('').trim();
-            if (assistantContent) {
-              persistedMessages.push({
-                role: 'assistant',
-                content: assistantContent,
-                createdAt: new Date(),
-              });
+
+            // 提取 model 信息
+            const modelName = extractModel(event);
+            if (modelName) {
+              model = modelName;
             }
-            if (persistedMessages.length > 0) {
-              try {
-                await appendConversationMessages({
-                  userId,
-                  sessionId: currentSessionId,
-                  messages: persistedMessages,
+
+            if (event.type === "error") {
+              streamHasError = true;
+              if (typeof event.error === "string" && event.error.trim()) {
+                lastStreamError = event.error;
+              }
+            }
+            if (event.type === "result" && event.is_error === true) {
+              streamResultHasError = true;
+              if (typeof event.result === "string" && event.result.trim()) {
+                lastStreamError = event.result;
+              }
+            }
+
+            const assistantText = extractAssistantText(event);
+            if (assistantText) {
+              assistantTextParts.push(assistantText);
+            }
+
+            if (
+              !emittedWorkbenchBrowserSignal &&
+              isAgentBrowserWorkbenchToolUse(event)
+            ) {
+              emittedWorkbenchBrowserSignal = true;
+              reply.raw.write(
+                `data: ${JSON.stringify({
+                  type: "workbench",
+                  tab: "browser",
+                  source: "agent-browser",
+                })}\n\n`,
+              );
+            }
+
+            // 发送事件
+            reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+          }
+
+          if (abortController.signal.aborted && !abortEventWritten) {
+            streamAborted = true;
+            writeChatAbortEvent(reply.raw);
+            abortEventWritten = true;
+          }
+
+          // 确保会话元数据存在（首次消息会创建并自动提取标题，会话续聊仅刷新 updated_at）
+          if (currentSessionId) {
+            const derivedTitle = body.sessionId
+              ? undefined
+              : deriveConversationTitle(body.message);
+            const upserted = await upsertConversation({
+              userId,
+              sessionId: currentSessionId,
+              title: derivedTitle,
+            });
+            if (!upserted) {
+              throw new Error("会话归属校验失败");
+            }
+            if (didInjectProjectContext) {
+              markProjectContextInjectedForSession(userId, currentSessionId);
+            }
+
+            if (!streamHasError && !streamResultHasError && !streamAborted) {
+              const persistedMessages: PersistedConversationMessage[] = [];
+              if (shouldPersistUserMessage(body.message)) {
+                persistedMessages.push({
+                  role: "user",
+                  content: body.message,
+                  createdAt: turnStartedAt,
                 });
-              } catch (snapshotErr) {
-                console.warn(`[Chat] conversation message snapshot skipped userId=${userId}:`, snapshotErr);
+              }
+              const assistantContent = assistantTextParts.join("").trim();
+              if (assistantContent) {
+                persistedMessages.push({
+                  role: "assistant",
+                  content: assistantContent,
+                  createdAt: new Date(),
+                });
+              }
+              if (persistedMessages.length > 0) {
+                try {
+                  await appendConversationMessages({
+                    userId,
+                    sessionId: currentSessionId,
+                    messages: persistedMessages,
+                  });
+                } catch (snapshotErr) {
+                  console.warn(
+                    `[Chat] conversation message snapshot skipped userId=${userId}:`,
+                    snapshotErr,
+                  );
+                }
               }
             }
           }
-        }
 
-        if (onboardingBootstrapRequest) {
-          if (!streamHasError && !streamResultHasError) {
-            const ticketValidation = consumeOnboardingBootstrapTicket({
-              userId,
-              token: onboardingBootstrapRequest.bootstrapToken,
-              assistantName: onboardingBootstrapRequest.assistantName,
-              ownerName: onboardingBootstrapRequest.ownerName,
-            });
-            if (!ticketValidation.ok) {
-              streamHasError = true;
-              reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: `初始化票据无效：${ticketValidation.reason}` })}\n\n`);
-            }
-
-            if (!streamHasError) {
-              const verification = await verifyOnboardingWorkspaceState({
+          if (onboardingBootstrapRequest) {
+            if (!streamHasError && !streamResultHasError) {
+              const ticketValidation = consumeOnboardingBootstrapTicket({
                 userId,
-                linuxUser,
-                workspaceDir: cwd,
+                token: onboardingBootstrapRequest.bootstrapToken,
                 assistantName: onboardingBootstrapRequest.assistantName,
                 ownerName: onboardingBootstrapRequest.ownerName,
-                options: projectContextOptions,
               });
-              if (verification.ok) {
-                await markUserInitialized({
-                  userId,
-                  assistantName: onboardingBootstrapRequest.assistantName,
-                });
-              } else {
+              if (!ticketValidation.ok) {
                 streamHasError = true;
-                const message = `初始化尚未完成：${verification.reason || '关键文件缺失或 BOOTSTRAP 未归档'}`;
-                reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+                reply.raw.write(
+                  `data: ${JSON.stringify({ type: "error", error: `初始化票据无效：${ticketValidation.reason}` })}\n\n`,
+                );
               }
+
+              if (!streamHasError) {
+                const verification = await verifyOnboardingWorkspaceState({
+                  userId,
+                  linuxUser,
+                  workspaceDir: cwd,
+                  assistantName: onboardingBootstrapRequest.assistantName,
+                  ownerName: onboardingBootstrapRequest.ownerName,
+                  options: projectContextOptions,
+                });
+                if (verification.ok) {
+                  await markUserInitialized({
+                    userId,
+                    assistantName: onboardingBootstrapRequest.assistantName,
+                  });
+                } else {
+                  streamHasError = true;
+                  const message = `初始化尚未完成：${verification.reason || "关键文件缺失或 BOOTSTRAP 未归档"}`;
+                  reply.raw.write(
+                    `data: ${JSON.stringify({ type: "error", error: message })}\n\n`,
+                  );
+                }
+              }
+            } else {
+              streamHasError = true;
+              const normalized = (lastStreamError || "")
+                .replace(/\s+/g, " ")
+                .trim();
+              const detail = normalized.includes("No available accounts")
+                ? "上游账号池暂无可用账号，请稍后重试或联系管理员补充账号池。"
+                : normalized.slice(0, 200);
+              const message = detail
+                ? `初始化流程执行失败：${detail}`
+                : "初始化流程执行失败，请重试 onboarding。";
+              reply.raw.write(
+                `data: ${JSON.stringify({ type: "error", error: message })}\n\n`,
+              );
             }
-          } else {
-            streamHasError = true;
-            const normalized = (lastStreamError || '').replace(/\s+/g, ' ').trim();
-            const detail = normalized.includes('No available accounts')
-              ? '上游账号池暂无可用账号，请稍后重试或联系管理员补充账号池。'
-              : normalized.slice(0, 200);
-            const message = detail
-              ? `初始化流程执行失败：${detail}`
-              : '初始化流程执行失败，请重试 onboarding。';
-            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
           }
-        }
 
-        // 记录使用量
-        if (currentSessionId && (totalInputTokens > 0 || totalOutputTokens > 0)) {
-          const costUsd = calculateCost(model, totalInputTokens, totalOutputTokens);
+          // 记录使用量
+          if (
+            currentSessionId &&
+            (totalInputTokens > 0 || totalOutputTokens > 0)
+          ) {
+            const costUsd = calculateCost(
+              model,
+              totalInputTokens,
+              totalOutputTokens,
+            );
 
-          await logUsage({
-            userId,
-            sessionId: currentSessionId,
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-            model,
-            costUsd,
-          });
+            await logUsage({
+              userId,
+              sessionId: currentSessionId,
+              inputTokens: totalInputTokens,
+              outputTokens: totalOutputTokens,
+              model,
+              costUsd,
+            });
 
-          // 更新会话统计
-          await updateConversationStats(currentSessionId, totalInputTokens + totalOutputTokens);
+            // 更新会话统计
+            await updateConversationStats(
+              currentSessionId,
+              totalInputTokens + totalOutputTokens,
+            );
 
-          console.log(`[Chat] 用户 ${userId} 使用 ${totalInputTokens + totalOutputTokens} tokens (成本: $${costUsd.toFixed(4)})`);
-        }
+            console.log(
+              `[Chat] 用户 ${userId} 使用 ${totalInputTokens + totalOutputTokens} tokens (成本: $${costUsd.toFixed(4)})`,
+            );
+          }
 
-        // 发送完成事件（出现错误时不再发送 done，避免前端误判成功）
-        if (!streamHasError) {
-          reply.raw.write(`data: ${JSON.stringify({
-            type: 'done',
-            sessionId: currentSessionId,
-            usage: {
-              input_tokens: totalInputTokens,
-              output_tokens: totalOutputTokens,
-              total_tokens: totalInputTokens + totalOutputTokens,
+          // 发送完成事件（出现错误时不再发送 done，避免前端误判成功）
+          if (!streamHasError && !streamAborted) {
+            reply.raw.write(
+              `data: ${JSON.stringify({
+                type: "done",
+                sessionId: currentSessionId,
+                usage: {
+                  input_tokens: totalInputTokens,
+                  output_tokens: totalOutputTokens,
+                  total_tokens: totalInputTokens + totalOutputTokens,
+                },
+              })}\n\n`,
+            );
+          }
+          reply.raw.end();
+        } catch (error) {
+          if (abortController.signal.aborted) {
+            if (!abortEventWritten) {
+              writeChatAbortEvent(reply.raw);
             }
-          })}\n\n`);
+            reply.raw.end();
+            return;
+          }
+          const errMsg = error instanceof Error ? error.message : String(error);
+          reply.raw.write(
+            `data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`,
+          );
+          reply.raw.end();
+          console.error(`[Chat] 错误:`, error);
+        } finally {
+          unregisterActiveChatRequest(userId, requestId);
+          // 释放并发许可
+          concurrencyLimiter.release(userId);
         }
-        reply.raw.end();
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return reply.status(400).send({
+            success: false,
+            error: "请求参数错误",
+            details: err.issues,
+          });
+        }
 
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: errMsg })}\n\n`);
-        reply.raw.end();
-        console.error(`[Chat] 错误:`, error);
-      } finally {
-        // 释放并发许可
-        concurrencyLimiter.release(userId);
-      }
-
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return reply.status(400).send({
+        return reply.status(500).send({
           success: false,
-          error: '请求参数错误',
-          details: err.issues,
+          error: err instanceof Error ? err.message : "发送消息失败",
         });
       }
+    },
+  );
 
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '发送消息失败',
-      });
-    }
-  });
-
-  // GET /api/chat/sessions - 获取会话列表
-  fastify.get('/api/chat/sessions', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const { limit = '20', offset = '0' } = request.query as { limit?: string; offset?: string };
-
-      // 验证分页参数
-      const limitNum = parseInt(limit);
-      const offsetNum = parseInt(offset);
-      if (isNaN(limitNum) || isNaN(offsetNum) || limitNum < 0 || offsetNum < 0 || limitNum > 100) {
-        return reply.status(400).send({ error: 'Invalid pagination parameters' });
+  // GET /api/chat/requests/active - 诊断当前用户是否还有正在执行的请求
+  fastify.get(
+    "/api/chat/requests/active",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
       }
 
-      const { getUserConversations } = await import('../db/client.js');
-
-      const conversations = await getUserConversations(
-        request.user.userId,
-        limitNum,
-        offsetNum
-      );
-      const visibleConversations = conversations.filter(isUserVisibleConversation);
+      const { sessionId, requestId } = request.query as {
+        sessionId?: string;
+        requestId?: string;
+      };
+      const requests = listActiveChatRequests(request.user.userId, {
+        sessionId,
+        requestId,
+      });
 
       return reply.send({
         success: true,
         data: {
-          conversations: visibleConversations,
-          total: visibleConversations.length,
-          hasMore: conversations.length === limitNum,
+          active: requests.length > 0,
+          requests,
         },
       });
-    } catch (err) {
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '获取会话列表失败',
-      });
-    }
-  });
+    },
+  );
+
+  // GET /api/chat/sessions - 获取会话列表
+  fastify.get(
+    "/api/chat/sessions",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
+      }
+
+      try {
+        const { limit = "20", offset = "0" } = request.query as {
+          limit?: string;
+          offset?: string;
+        };
+
+        // 验证分页参数
+        const limitNum = parseInt(limit);
+        const offsetNum = parseInt(offset);
+        if (
+          isNaN(limitNum) ||
+          isNaN(offsetNum) ||
+          limitNum < 0 ||
+          offsetNum < 0 ||
+          limitNum > 100
+        ) {
+          return reply
+            .status(400)
+            .send({ error: "Invalid pagination parameters" });
+        }
+
+        const { getUserConversations } = await import("../db/client.js");
+
+        const conversations = await getUserConversations(
+          request.user.userId,
+          limitNum,
+          offsetNum,
+        );
+        const visibleConversations = conversations.filter(
+          isUserVisibleConversation,
+        );
+
+        return reply.send({
+          success: true,
+          data: {
+            conversations: visibleConversations,
+            total: visibleConversations.length,
+            hasMore: conversations.length === limitNum,
+          },
+        });
+      } catch (err) {
+        return reply.status(500).send({
+          success: false,
+          error: err instanceof Error ? err.message : "获取会话列表失败",
+        });
+      }
+    },
+  );
 
   // POST/PUT /api/chat/sessions/:sessionId/rename - 重命名会话
   const renameSessionHandler = async (request: any, reply: any) => {
     if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
+      return reply.status(401).send({ error: "未认证" });
     }
 
     try {
       const { sessionId } = request.params as { sessionId: string };
-      const body = (request.body || {}) as { newTitle?: string; title?: string };
+      const body = (request.body || {}) as {
+        newTitle?: string;
+        title?: string;
+      };
       const rawTitle = body.newTitle ?? body.title;
-      const newTitle = typeof rawTitle === 'string' ? rawTitle.trim() : '';
+      const newTitle = typeof rawTitle === "string" ? rawTitle.trim() : "";
 
       if (newTitle.length === 0 || newTitle.length > 200) {
         return reply.status(400).send({
           success: false,
-          error: 'title/newTitle 必须是 1-200 字符的字符串',
+          error: "title/newTitle 必须是 1-200 字符的字符串",
         });
       }
 
       const updated = await renameConversation(
         request.user.userId,
         sessionId,
-        newTitle
+        newTitle,
       );
 
       if (!updated) {
         return reply.status(404).send({
           success: false,
-          error: '会话不存在或无权限',
+          error: "会话不存在或无权限",
         });
       }
 
@@ -1211,113 +1688,148 @@ export async function chatRoutes(fastify: FastifyInstance, options: ChatProjectC
     } catch (err) {
       return reply.status(500).send({
         success: false,
-        error: err instanceof Error ? err.message : '重命名失败',
+        error: err instanceof Error ? err.message : "重命名失败",
       });
     }
   };
 
-  fastify.post('/api/chat/sessions/:sessionId/rename', {
-    preHandler: jwtAuthMiddleware,
-  }, renameSessionHandler);
-  fastify.put('/api/chat/sessions/:sessionId/rename', {
-    preHandler: jwtAuthMiddleware,
-  }, renameSessionHandler);
+  fastify.post(
+    "/api/chat/sessions/:sessionId/rename",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    renameSessionHandler,
+  );
+  fastify.put(
+    "/api/chat/sessions/:sessionId/rename",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    renameSessionHandler,
+  );
 
   // GET /api/chat/sessions/:sessionId/messages - 获取会话历史消息
-  fastify.get('/api/chat/sessions/:sessionId/messages', {
-    preHandler: jwtAuthMiddleware,
-  }, async (request, reply) => {
-    if (!request.user) {
-      return reply.status(401).send({ error: '未认证' });
-    }
-
-    try {
-      const { sessionId } = request.params as { sessionId: string };
-      const { limit = '200' } = request.query as { limit?: string };
-
-      const limitNum = parseInt(limit, 10);
-      if (isNaN(limitNum) || limitNum <= 0 || limitNum > 1000) {
-        return reply.status(400).send({
-          success: false,
-          error: 'limit 必须是 1-1000 的整数',
-        });
+  fastify.get(
+    "/api/chat/sessions/:sessionId/messages",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
       }
 
-      const ownsSession = await userOwnsConversation(request.user.userId, sessionId);
-      if (!ownsSession) {
-        return reply.status(403).send({
-          success: false,
-          error: '无权访问该会话',
-        });
-      }
-
-      const user = await findUserById(request.user.userId);
-      if (!user) {
-        return reply.status(404).send({
-          success: false,
-          error: '用户不存在',
-        });
-      }
-
-      let messages: HistoryMessage[] = [];
       try {
-        messages = await loadSessionHistoryMessages({
-          userId: request.user.userId,
-          linuxUser: user.linux_user,
-          sessionId,
-          limit: limitNum,
-          options: projectContextOptions,
-        });
-      } catch {
-        // Opening an old conversation should never be blocked by an expired
-        // or temporarily unavailable workspace history store.
-        messages = [];
-      }
+        const { sessionId } = request.params as { sessionId: string };
+        const { limit = "200" } = request.query as { limit?: string };
 
-      if (messages.length === 0) {
+        const limitNum = parseInt(limit, 10);
+        if (isNaN(limitNum) || limitNum <= 0 || limitNum > 1000) {
+          return reply.status(400).send({
+            success: false,
+            error: "limit 必须是 1-1000 的整数",
+          });
+        }
+
+        const ownsSession = await userOwnsConversation(
+          request.user.userId,
+          sessionId,
+        );
+        if (!ownsSession) {
+          return reply.status(403).send({
+            success: false,
+            error: "无权访问该会话",
+          });
+        }
+
+        const user = await findUserById(request.user.userId);
+        if (!user) {
+          return reply.status(404).send({
+            success: false,
+            error: "用户不存在",
+          });
+        }
+
+        let messages: HistoryMessage[] = [];
         try {
-          messages = await loadProductSideHistoryMessages({
+          messages = await loadSessionHistoryMessages({
             userId: request.user.userId,
+            linuxUser: user.linux_user,
             sessionId,
             limit: limitNum,
+            options: projectContextOptions,
           });
         } catch {
+          // Opening an old conversation should never be blocked by an expired
+          // or temporarily unavailable workspace history store.
           messages = [];
         }
+
+        if (messages.length === 0) {
+          try {
+            messages = await loadProductSideHistoryMessages({
+              userId: request.user.userId,
+              sessionId,
+              limit: limitNum,
+            });
+          } catch {
+            messages = [];
+          }
+        }
+
+        return reply.send({
+          success: true,
+          data: {
+            sessionId,
+            messages,
+            total: messages.length,
+          },
+        });
+      } catch (err) {
+        return reply.status(500).send({
+          success: false,
+          error: err instanceof Error ? err.message : "获取会话历史失败",
+        });
       }
+    },
+  );
+
+  // POST /api/abort/:requestId - 暂停当前用户正在执行的会话请求
+  fastify.post(
+    "/api/abort/:requestId",
+    {
+      preHandler: jwtAuthMiddleware,
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.status(401).send({ error: "未认证" });
+      }
+
+      const { requestId } = request.params as { requestId: string };
+      const active = abortActiveChatRequest(request.user.userId, requestId);
 
       return reply.send({
         success: true,
-        data: {
-          sessionId,
-          messages,
-          total: messages.length,
-        },
+        type: "aborted",
+        active,
+        message: active ? CHAT_ABORT_MESSAGE : "这次任务已经结束",
       });
-    } catch (err) {
-      return reply.status(500).send({
-        success: false,
-        error: err instanceof Error ? err.message : '获取会话历史失败',
-      });
-    }
-  });
-
-  // POST /api/abort/:requestId - 前端兼容接口（当前远程执行暂不支持真实中断）
-  fastify.post('/api/abort/:requestId', {
-    preHandler: jwtAuthMiddleware,
-  }, async (_request, reply) => {
-    return reply.send({
-      success: true,
-      type: 'aborted',
-      message: 'Abort 接口已接收（当前版本为兼容实现）',
-    });
-  });
+    },
+  );
 }
 
-function summarizeE2bAgentPreflight(report: E2bPreflightReport): RuntimeConfigPreflightSummary {
-  const errorCount = report.checks.filter((check) => check.status === 'error').length;
-  const warnCount = report.checks.filter((check) => check.status === 'warn').length;
-  const skipCount = report.checks.filter((check) => check.status === 'skip').length;
+function summarizeE2bAgentPreflight(
+  report: E2bPreflightReport,
+): RuntimeConfigPreflightSummary {
+  const errorCount = report.checks.filter(
+    (check) => check.status === "error",
+  ).length;
+  const warnCount = report.checks.filter(
+    (check) => check.status === "warn",
+  ).length;
+  const skipCount = report.checks.filter(
+    (check) => check.status === "skip",
+  ).length;
   return {
     ok: report.ok && warnCount === 0 && skipCount === 0,
     errorCount,
@@ -1331,17 +1843,21 @@ function summarizeE2bAgentPreflight(report: E2bPreflightReport): RuntimeConfigPr
  * 计算 API 成本
  * 基于 Anthropic 定价（2026-02）
  */
-function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+function calculateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): number {
   // 价格单位: USD per million tokens
   const pricing: Record<string, { input: number; output: number }> = {
-    'claude-opus-4': { input: 15, output: 75 },
-    'claude-sonnet-4-6': { input: 3, output: 15 },
-    'claude-sonnet-4-5': { input: 3, output: 15 },
-    'claude-haiku-4-5': { input: 0.8, output: 4 },
+    "claude-opus-4": { input: 15, output: 75 },
+    "claude-sonnet-4-6": { input: 3, output: 15 },
+    "claude-sonnet-4-5": { input: 3, output: 15 },
+    "claude-haiku-4-5": { input: 0.8, output: 4 },
   };
 
   // 匹配模型（支持部分匹配）
-  let modelPricing = pricing['claude-sonnet-4-6']; // 默认
+  let modelPricing = pricing["claude-opus-4"]; // 默认按当前产品模型兜底
   for (const [key, value] of Object.entries(pricing)) {
     if (model.includes(key)) {
       modelPricing = value;

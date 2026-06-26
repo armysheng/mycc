@@ -17,11 +17,11 @@ describe('E2B workspace smoke scripts', () => {
 
     expect(output).toContain('E2B Agent preflight: needs attention');
     expect(output).toContain('[error] E2B API key: Missing MYCC_E2B_API_KEY or E2B_API_KEY.');
-    expect(output).toContain('[error] Claude/CCR credential: No Claude credential is configured.');
+    expect(output).toContain('[error] Claude provider credential: No Claude credential is configured.');
     expect(output).toContain('[skip] E2B template: Skipped remote template check for mycc-assistant-sandbox-dev');
     expect(output).toContain('fix the preflight checklist above');
     expect(output).not.toContain('openai-secret-should-not-leak');
-  });
+  }, 20_000);
 
   it('keeps IDE smoke pinned to MyCC proxy-only E2B access', () => {
     const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-ide.ts'), 'utf8');
@@ -31,6 +31,14 @@ describe('E2B workspace smoke scripts', () => {
     expect(source).toContain('Direct E2B host accepted unauthenticated traffic');
     expect(source).toContain('waitForProxyHealth');
     expect(source).toContain("headers: { cookie }");
+  });
+
+  it('keeps agent workspace smoke polling code-server health after command failures', () => {
+    const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-agent-workspace.ts'), 'utf8');
+
+    expect(source).toContain('assertCodeServerLocalHealth');
+    expect(source).toContain('lastError = error instanceof Error ? error.message : String(error)');
+    expect(source).toContain('code-server health check timed out');
   });
 
   it('keeps desktop smoke pinned to MyCC proxy-only E2B access', () => {

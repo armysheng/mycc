@@ -2,8 +2,95 @@
 set -euo pipefail
 
 MYCC_DESKTOP_DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}"
+MYCC_DESKTOP_VNC_PORT="${MYCC_DESKTOP_VNC_PORT:-15900}"
 MYCC_DESKTOP_NOVNC_PORT="${MYCC_DESKTOP_NOVNC_PORT:-16080}"
 
 DISPLAY="$MYCC_DESKTOP_DISPLAY" xdpyinfo >/dev/null
 curl -fsS "http://127.0.0.1:${MYCC_DESKTOP_NOVNC_PORT}/vnc.html" >/dev/null
+
+MYCC_DESKTOP_VNC_PORT="$MYCC_DESKTOP_VNC_PORT" \
+MYCC_DESKTOP_NOVNC_PORT="$MYCC_DESKTOP_NOVNC_PORT" \
+python3 <<'PY'
+import base64
+import os
+import socket
+
+host = "127.0.0.1"
+port = int(os.environ.get("MYCC_DESKTOP_NOVNC_PORT", "16080"))
+key = base64.b64encode(b"mycc-health-check").decode("ascii")
+request = (
+    "GET /websockify HTTP/1.1\r\n"
+    f"Host: {host}:{port}\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    f"Sec-WebSocket-Key: {key}\r\n"
+    "Sec-WebSocket-Version: 13\r\n"
+    "\r\n"
+)
+
+
+def recv_exact(sock, size):
+    data = b""
+    while len(data) < size:
+        chunk = sock.recv(size - len(data))
+        if not chunk:
+            raise RuntimeError("websocket closed before VNC banner")
+        data += chunk
+    return data
+
+
+with socket.create_connection((host, port), timeout=3) as sock:
+    sock.settimeout(3)
+    sock.sendall(request.encode("ascii"))
+
+    response = b""
+    while b"\r\n\r\n" not in response and len(response) < 8192:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        response += chunk
+
+    header, _, rest = response.partition(b"\r\n\r\n")
+    status_line = header.split(b"\r\n", 1)[0]
+    if b" 101 " not in status_line:
+        raise RuntimeError(f"websockify did not upgrade: {status_line!r}")
+
+    frame = rest
+    while len(frame) < 2:
+        frame += sock.recv(2 - len(frame))
+
+    first, second = frame[0], frame[1]
+    length = second & 0x7F
+    offset = 2
+    if length == 126:
+        while len(frame) < offset + 2:
+            frame += sock.recv(offset + 2 - len(frame))
+        length = int.from_bytes(frame[offset:offset + 2], "big")
+        offset += 2
+    elif length == 127:
+        while len(frame) < offset + 8:
+            frame += sock.recv(offset + 8 - len(frame))
+        length = int.from_bytes(frame[offset:offset + 8], "big")
+        offset += 8
+
+    masked = bool(second & 0x80)
+    mask = b""
+    if masked:
+        while len(frame) < offset + 4:
+            frame += sock.recv(offset + 4 - len(frame))
+        mask = frame[offset:offset + 4]
+        offset += 4
+
+    while len(frame) < offset + length:
+        frame += sock.recv(offset + length - len(frame))
+
+    payload = frame[offset:offset + length]
+    if masked:
+        payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+
+    opcode = first & 0x0F
+    if opcode not in (1, 2) or not payload.startswith(b"RFB "):
+        raise RuntimeError("websockify did not expose a ready VNC server")
+PY
+
 echo "mycc-desktop-ok"

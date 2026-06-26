@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { createExitPlanModeToolResult } from "../../utils/mockResponseGenerator";
 
 // Mock the message converter
 vi.mock("../useMessageConverter", () => ({
@@ -15,6 +14,26 @@ vi.mock("../useMessageConverter", () => ({
     })),
   }),
 }));
+
+function createExitPlanModeToolResult(sessionId: string, toolUseId: string) {
+  return {
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: "Exit plan mode?",
+          is_error: true,
+        },
+      ],
+    },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    uuid: expect.any(String),
+  };
+}
 
 // Create a simple hook for testing plan rejection workflow
 function usePlanRejectionWorkflow() {
