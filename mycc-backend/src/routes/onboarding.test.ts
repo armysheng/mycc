@@ -2,12 +2,10 @@ import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  buildBootstrapPrompt,
   onboardingRoutes,
   shouldPrepareOnboardingWorkspaceWithSsh,
 } from './onboarding.js';
 import { InMemoryIdeSessionStore } from '../ide/session-store.js';
-import { __resetOnboardingBootstrapTicketStoreForTests } from '../onboarding/bootstrap-ticket-store.js';
 
 const mocks = vi.hoisted(() => ({
   findUserById: vi.fn(),
@@ -36,9 +34,8 @@ function authHeader(overrides: Partial<{ userId: number; linuxUser: string }> = 
   return `Bearer ${token}`;
 }
 
-describe('onboarding bootstrap prompt', () => {
+describe('onboarding initialize', () => {
   beforeEach(() => {
-    __resetOnboardingBootstrapTicketStoreForTests();
     mocks.findUserById.mockReset();
     mocks.getSSHPool.mockReset();
     mocks.markUserInitialized.mockReset();
@@ -49,29 +46,6 @@ describe('onboarding bootstrap prompt', () => {
     vi.restoreAllMocks();
   });
 
-  it('embeds assistant and owner names into first-turn bootstrap message', () => {
-    const prompt = buildBootstrapPrompt({
-      assistantName: '  cc  ',
-      ownerName: '  婷妈  ',
-      linuxUser: 'mycc_u2',
-      bootstrapToken: 'ticket-123',
-    });
-
-    expect(prompt).toContain('助手名称：cc');
-    expect(prompt).toContain('用户称呼：婷妈');
-    expect(prompt).toContain('~/.claude/about-me/BOOTSTRAP.md');
-    expect(prompt).toContain('/home/mycc_u2/workspace/CLAUDE.md');
-    expect(prompt).toContain('/home/mycc_u2/.claude/CLAUDE.md');
-    expect(prompt).toContain('/home/mycc_u2/.claude/projects/-home-mycc-u2-workspace/memory/MEMORY.md');
-    expect(prompt).toContain('以 `~/.claude/about-me/` 作为唯一身份真相源');
-    expect(prompt).toContain('确保存在 ~/.claude/memory/ 目录');
-    expect(prompt).toContain('初始化票据：ticket-123');
-    expect(prompt).toContain('已完成初始化');
-    expect(prompt).toContain('<!-- MYCC_BOOTSTRAP_REQUIRED -->');
-    expect(prompt).toContain('初始化成功后删除这一行');
-    expect(prompt).not.toContain('更新 0-System/about-me');
-  });
-
   it('uses SSH workspace preparation unless E2B workspace mode is explicitly enabled', () => {
     expect(shouldPrepareOnboardingWorkspaceWithSsh({})).toBe(true);
     expect(shouldPrepareOnboardingWorkspaceWithSsh({
@@ -79,6 +53,72 @@ describe('onboarding bootstrap prompt', () => {
       MYCC_IDE_PROVIDER: 'e2b',
       MYCC_WORKSPACE_PROVIDER: 'e2b',
     })).toBe(false);
+  });
+
+  it('seeds Claude home and workspace over SSH, then returns ready without a bootstrap prompt', async () => {
+    mocks.findUserById.mockResolvedValue({
+      id: 42,
+      email: 'new@example.test',
+      password_hash: 'hash',
+      linux_user: 'mycc_u42',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date('2026-05-30T00:00:00Z'),
+      updated_at: new Date('2026-05-30T00:00:00Z'),
+    });
+    mocks.markUserInitialized.mockResolvedValue(true);
+
+    const connection = { id: 'ssh-1' };
+    const exec = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: 'ok',
+      stderr: '',
+    });
+    const release = vi.fn();
+    mocks.getSSHPool.mockReturnValue({
+      acquire: vi.fn().mockResolvedValue(connection),
+      exec,
+      release,
+    });
+
+    const app = Fastify({ logger: false });
+    await app.register(onboardingRoutes, {
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'ssh',
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding/initialize',
+      headers: { authorization: authHeader() },
+      payload: {
+        assistantName: '道友 AI',
+        ownerName: '测试用户',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        status: 'ready',
+      },
+    });
+    expect(response.body).not.toContain('bootstrapPrompt');
+    expect(response.body).not.toMatch(/linux_user|linuxUser|mycc_u42|用户不存在/i);
+    const commands = exec.mock.calls.map((call) => call[1] as string);
+    expect(commands.some((command) => command.includes('MYCC_CLAUDE_HOME_TEMPLATE_SEED'))).toBe(true);
+    expect(commands.some((command) => command.includes('MYCC_WORKSPACE_TEMPLATE_SEED'))).toBe(true);
+    expect(commands.some((command) => command.includes('MYCC_WORKSPACE_LEGACY_IDENTITY_CLEANUP'))).toBe(true);
+    expect(commands.join('\n')).not.toContain('/workspace/0-System/about-me');
+    expect(mocks.markUserInitialized).toHaveBeenCalledWith({
+      userId: 42,
+      assistantName: '道友 AI',
+    });
+    expect(release).toHaveBeenCalledWith(connection);
+    await app.close();
   });
 
   it('initializes E2B onboarding without touching the SSH pool', async () => {
@@ -141,32 +181,63 @@ describe('onboarding bootstrap prompt', () => {
     expect(response.json()).toEqual({
       success: true,
       data: {
-        bootstrapPrompt: expect.stringContaining('助手名称：小满'),
+        status: 'ready',
       },
     });
-    expect(response.body).toContain('用户称呼：大辉');
-    expect(response.body).toContain('初始化票据：');
+    expect(response.body).not.toContain('bootstrapPrompt');
+    expect(response.body).not.toMatch(/linux_user|linuxUser|mycc_u42|用户不存在/i);
     expect(startCodeServer).toHaveBeenCalledOnce();
     expect(runCommandInSession).toHaveBeenCalledWith(
       expect.objectContaining({ sandboxId: 'sbx_onboarding', userId: 42 }),
       expect.stringContaining('MYCC_CLAUDE_HOME_TEMPLATE_SEED'),
       {
-        cwd: '/home/mycc/.claude',
+        cwd: '/home/mycc',
         timeoutMs: 30000,
       },
     );
     const seedCommands = runCommandInSession.mock.calls.map((call) => call[1] as string);
     expect(seedCommands.some((command) => command.includes('MYCC_CLAUDE_HOME_TEMPLATE_SEED'))).toBe(true);
     expect(seedCommands.some((command) => command.includes('MYCC_WORKSPACE_TEMPLATE_SEED'))).toBe(true);
+    expect(seedCommands.some((command) => command.includes('MYCC_WORKSPACE_LEGACY_IDENTITY_CLEANUP'))).toBe(true);
     expect(seedCommands.some((command) => command.includes('MYCC_E2B_ONBOARDING_SEED'))).toBe(false);
     const claudeHomeSeedCommand = seedCommands.find((command) => command.includes('MYCC_CLAUDE_HOME_TEMPLATE_SEED'))!;
     const workspaceSeedCommand = seedCommands.find((command) => command.includes('MYCC_WORKSPACE_TEMPLATE_SEED'))!;
-    expect(claudeHomeSeedCommand).toContain('about-me/BOOTSTRAP.md');
+    expect(claudeHomeSeedCommand).toContain('const claudeHomeDir="/home/mycc/.claude";');
+    expect(claudeHomeSeedCommand).not.toContain('about-me/BOOTSTRAP.md');
     expect(claudeHomeSeedCommand).toContain('CLAUDE.md');
     expect(workspaceSeedCommand).toContain('CLAUDE.md');
     expect(workspaceSeedCommand).not.toContain('0-System/about-me');
     expect(mocks.getSSHPool).not.toHaveBeenCalled();
-    expect(mocks.markUserInitialized).not.toHaveBeenCalled();
+    expect(mocks.markUserInitialized).toHaveBeenCalledWith({
+      userId: 42,
+      assistantName: '小满',
+    });
+    await app.close();
+  });
+
+  it('keeps missing-user responses generic and free of internal details', async () => {
+    mocks.findUserById.mockResolvedValue(null);
+
+    const app = Fastify({ logger: false });
+    await app.register(onboardingRoutes, {
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding/initialize',
+      headers: { authorization: authHeader({ linuxUser: 'mycc_u18' }) },
+      payload: {
+        assistantName: '道友 AI',
+        ownerName: '测试用户',
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      error: '账号不可用，请重新登录',
+    });
+    expect(response.body).not.toMatch(/linux_user|linuxUser|mycc_u18|用户不存在/i);
     await app.close();
   });
 

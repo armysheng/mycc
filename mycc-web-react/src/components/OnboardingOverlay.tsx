@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { initializeOnboarding } from '../api/auth';
 
@@ -14,7 +13,6 @@ interface DialogMessage {
 
 export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
   const { token } = useAuth();
-  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [messages, setMessages] = useState<DialogMessage[]>([]);
   const [input, setInput] = useState('');
@@ -32,7 +30,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const defaultOwnerName = '用户';
-  const defaultAssistantName = 'cc';
+  const defaultAssistantName = '道友 AI';
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -182,14 +180,6 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
       });
       if (res.success) {
         await onComplete();
-        if (res.data?.bootstrapPrompt) {
-          navigate('/', {
-            replace: true,
-            state: { onboardingBootstrapPrompt: res.data.bootstrapPrompt },
-          });
-        } else {
-          navigate('/', { replace: true });
-        }
       } else {
         setError(res.error || '初始化失败，请重试');
       }
@@ -214,14 +204,6 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
       });
       if (res.success) {
         await onComplete();
-        if (res.data?.bootstrapPrompt) {
-          navigate('/', {
-            replace: true,
-            state: { onboardingBootstrapPrompt: res.data.bootstrapPrompt },
-          });
-        } else {
-          navigate('/', { replace: true });
-        }
       } else {
         setError(res.error || '初始化失败，请重试');
       }
@@ -265,16 +247,16 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                 background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)',
               }}
             >
-              cc
+              AI
             </div>
             <div>
               <div
                 className="text-base font-semibold text-[var(--text-primary)]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                初始化助手
+                道友 AI
               </div>
-              <div className="text-xs text-[var(--text-muted)]">只需几步，定制你的专属助手</div>
+              <div className="text-xs text-[var(--text-muted)]">只需几步，初始化道友 AI</div>
             </div>
           </div>
 
@@ -322,7 +304,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={step === 0 ? '比如 cc、小助手、jarvis...' : '比如 大辉哥、老板、主人...'}
+                placeholder={step === 0 ? '比如 道友 AI、工作助手、灵感助手...' : '比如 小林、张老师、项目负责人...'}
                 className="flex-1 rounded-xl border bg-[var(--bg-input)] px-3.5 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:outline-none focus:ring-2"
                 style={{ borderColor: 'var(--surface-border)' }}
                 disabled={isSubmitting}
