@@ -31,6 +31,7 @@ type HarnessTarget = {
   command?: string;
   args?: string[];
   cwd?: string;
+  env?: Record<string, string | undefined>;
   group?: HarnessTargetId[];
   expensive?: boolean;
 };
@@ -50,6 +51,32 @@ type HarnessResult = {
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const outputRoot = path.join(repoRoot, 'output', 'harness');
+
+const backendTestEnv: Record<string, string | undefined> = {
+  NODE_ENV: 'test',
+  ANTHROPIC_API_KEY: undefined,
+  E2B_API_KEY: undefined,
+  MYCC_AGENT_RUNTIME: undefined,
+  MYCC_AGENT_SDK_ALLOWED_TOOLS: undefined,
+  MYCC_AGENT_SDK_MODEL: undefined,
+  MYCC_AGENT_SDK_PERMISSION_MODE: undefined,
+  MYCC_CCR_AUTH_TOKEN: undefined,
+  MYCC_CCR_BASE_URL: undefined,
+  MYCC_CLAUDE_API_KEY: undefined,
+  MYCC_CLAUDE_AUTH_TOKEN: undefined,
+  MYCC_E2B_ALLOW_PUBLIC_TRAFFIC: undefined,
+  MYCC_E2B_API_KEY: undefined,
+  MYCC_E2B_DESKTOP_ENABLED: undefined,
+  MYCC_E2B_DESKTOP_PORT: undefined,
+  MYCC_E2B_LINUX_USER: undefined,
+  MYCC_E2B_TEMPLATE: undefined,
+  MYCC_E2B_WORKSPACE_DIR: undefined,
+  MYCC_IDE_PROVIDER: undefined,
+  MYCC_IDE_SESSION_TTL_SECONDS: undefined,
+  MYCC_WORKSPACE_PROVIDER: undefined,
+  VPS_ANTHROPIC_AUTH_TOKEN: undefined,
+  VPS_ANTHROPIC_BASE_URL: undefined,
+};
 
 const targets: HarnessTarget[] = [
   {
@@ -75,6 +102,7 @@ const targets: HarnessTarget[] = [
     command: 'npm',
     args: ['test', '--', '--run'],
     cwd: backendRoot,
+    env: backendTestEnv,
   },
   {
     id: 'frontend-product-tests',
@@ -359,7 +387,7 @@ function runTarget(target: HarnessTarget): HarnessResult {
     const result = spawnSync(target.command, target.args ?? [], {
       cwd: target.cwd ?? backendRoot,
       encoding: 'utf8',
-      env: process.env,
+      env: buildTargetEnv(target),
     });
     const ok = result.status === 0;
     const durationMs = Date.now() - startedAt;
@@ -388,6 +416,21 @@ function runTarget(target: HarnessTarget): HarnessResult {
   } finally {
     span.end();
   }
+}
+
+function buildTargetEnv(target: HarnessTarget): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  if (!target.env) return env;
+
+  for (const [key, value] of Object.entries(target.env)) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
+  }
+
+  return env;
 }
 
 function formatMarkdownReport(report: {
