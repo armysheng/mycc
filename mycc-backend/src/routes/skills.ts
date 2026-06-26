@@ -101,6 +101,39 @@ export async function skillsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.get('/api/skills/:skillId/detail', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { skillId } = request.params as { skillId: string };
+      const user = await withUser(request.user.userId);
+      const data = await skillsService.getSkillDetail({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      }, skillId);
+
+      return reply.send({
+        success: true,
+        data,
+      });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({
+          success: false,
+          error: err.message,
+        });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '获取技能详情失败',
+      });
+    }
+  });
+
   fastify.post('/api/skills/:skillId/install', {
     preHandler: jwtAuthMiddleware,
   }, async (request, reply) => {
@@ -131,6 +164,40 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: err instanceof Error ? err.message : '安装技能失败',
+      });
+    }
+  });
+
+  fastify.post('/api/skills/:skillId/subscribe', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: '未认证' });
+    }
+
+    try {
+      const { skillId } = request.params as { skillId: string };
+      const user = await withUser(request.user.userId);
+
+      const data = await skillsService.subscribeSkill({
+        userId: request.user.userId,
+        linuxUser: user.linux_user,
+      }, skillId);
+
+      return reply.send({
+        success: true,
+        data,
+      });
+    } catch (err) {
+      if (err instanceof SkillsError) {
+        return reply.status(err.statusCode).send({
+          success: false,
+          error: err.message,
+        });
+      }
+      return reply.status(500).send({
+        success: false,
+        error: err instanceof Error ? err.message : '订阅技能失败',
       });
     }
   });
@@ -286,6 +353,8 @@ export async function skillsRoutes(fastify: FastifyInstance) {
       });
       const installedCount = list.skills.filter((skill) => skill.installed).length;
       const upgradableCount = list.skills.filter((skill) => skill.upgradable).length;
+      const imagePreloadCount = list.skills.filter((skill) => skill.preloadInImage).length;
+      const imageRequiredCount = list.skills.filter((skill) => skill.imageRequired).length;
 
       return reply.send({
         success: true,
@@ -295,9 +364,12 @@ export async function skillsRoutes(fastify: FastifyInstance) {
           installedCount,
           availableCount: list.total - installedCount,
           upgradableCount,
+          imagePreloadCount,
+          imageRequiredCount,
           skills: list.skills.map((skill) => ({
             id: skill.id,
             name: skill.name,
+            triggers: skill.triggers,
             source: skill.source,
             status: skill.status,
             installed: skill.installed,
@@ -306,6 +378,8 @@ export async function skillsRoutes(fastify: FastifyInstance) {
             installedVersion: skill.installedVersion,
             latestVersion: skill.latestVersion,
             upgradable: skill.upgradable,
+            preloadInImage: skill.preloadInImage,
+            imageRequired: skill.imageRequired,
             stats: skill.stats,
           })),
         },

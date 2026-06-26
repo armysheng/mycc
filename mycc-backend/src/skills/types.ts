@@ -1,8 +1,10 @@
 export interface SkillInfo {
   id: string;
+  assistantSkillName?: string;
   name: string;
   description: string;
   trigger: string;
+  triggers?: string[];
   icon: string;
   status: 'installed' | 'available' | 'disabled';
   installed: boolean;
@@ -13,6 +15,10 @@ export interface SkillInfo {
   legacy: boolean;
   enabled: boolean;
   upgradable: boolean;
+  category?: SkillCategory;
+  owner?: string;
+  preloadInImage?: boolean;
+  imageRequired?: boolean;
   stats?: SkillStats;
 }
 
@@ -20,6 +26,30 @@ export interface SkillsListResult {
   skills: SkillInfo[];
   total: number;
   catalogAvailable: boolean;
+  installRootPath?: string;
+}
+
+export interface SkillDetailResult {
+  skill: SkillInfo;
+  installTargetPath: string;
+  definition?: {
+    builtin: boolean;
+    readiness: ReadinessLevel;
+    riskLevel: RiskLevel;
+    deps: string[];
+    defaultEnabled: boolean;
+    mdPath: string;
+    sourceUrl: string;
+    originType: OriginType;
+    validationNote: string;
+    lastVerifiedAt: string;
+  };
+  contentPreview: {
+    source: 'catalog' | 'generated';
+    path: string;
+    content: string;
+    truncated: boolean;
+  };
 }
 
 export interface InstallSkillResult {
@@ -86,9 +116,12 @@ export interface SkillDefinition {
   description: string;
   version?: string;
   trigger: string;
+  triggers?: string[];
   icon: string;
   category: SkillCategory;
   builtin: boolean;
+  preloadInImage?: boolean;
+  imageRequired?: boolean;
   readiness: ReadinessLevel;
   deps: string[];
   riskLevel: RiskLevel;

@@ -6,10 +6,25 @@ import { escapeShellArg } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import type { SkillInfo, SkillInstallMetadata } from './types.js';
 import { ClawHubAdapter } from './clawhub-adapter.js';
-import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuiltinSkills, getVersionForSkill } from './skill-registry.js';
+import { SKILL_REGISTRY, getSkillById, getIconForSkill, getMarketSkills, getBuiltinSkills, getVersionForSkill, getTriggersForSkill, getAssistantSkillNameForSkill, getSkillByAssistantSkillName } from './skill-registry.js';
 
 type ExecFn = (command: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
 type CatalogCacheEntry = { path: string; expiresAt: number };
+type InstalledSkillEntry = {
+  filePath: string;
+  dirName: string;
+  skillId: string;
+  assistantSkillName: string;
+};
+export type SkillRuntimeContext = { userId?: number; linuxUser: string };
+export type SkillCommandRunner = {
+  linuxUser: string;
+  run: ExecFn;
+  runAsUser: ExecFn;
+  autoSeedOnList?: boolean;
+  release?: () => void | Promise<void>;
+};
+export type SkillCommandRunnerFactory = (context: SkillRuntimeContext) => Promise<SkillCommandRunner>;
 
 function shouldIncludeClawHubInList(): boolean {
   const raw = process.env.SKILLS_INCLUDE_CLAWHUB_IN_LIST?.trim().toLowerCase();
@@ -18,6 +33,24 @@ function shouldIncludeClawHubInList(): boolean {
 
 function isValidSkillId(skillId: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(skillId);
+}
+
+function isValidAssistantSkillName(skillName: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(skillName);
+}
+
+function getParsedAssistantSkillName(parsedData: Record<string, unknown>): string | null {
+  const rawName = parsedData.name;
+  if (typeof rawName !== 'string') {
+    return null;
+  }
+  const skillName = rawName.trim();
+  return isValidAssistantSkillName(skillName) ? skillName : null;
+}
+
+function getAssistantSkillName(skillId: string, parsedData?: Record<string, unknown>): string {
+  const parsedName = parsedData ? getParsedAssistantSkillName(parsedData) : null;
+  return parsedName || getAssistantSkillNameForSkill(skillId) || skillId;
 }
 
 function normalizeVersion(input: unknown): { version: string; legacy: boolean } {
@@ -51,12 +84,15 @@ function toSkillInfo(
   const latestVersion = versionMeta.version;
   const currentVersion = status === 'installed' ? (installedVersion || latestVersion) : latestVersion;
   const registryEntry = getSkillById(skillId);
+  const assistantSkillName = getAssistantSkillName(skillId, parsed.data);
 
   return {
     id: skillId,
+    assistantSkillName,
     name: registryEntry?.name || (parsed.data.name as string) || skillId,
     description: registryEntry?.description || (parsed.data.description as string) || '',
     trigger: registryEntry?.trigger || `/${skillId}`,
+    triggers: getTriggersForSkill(skillId, parsed.data.trigger as string | undefined, parsed.data.triggers),
     icon: getIconForSkill(skillId),
     status,
     installed: status === 'installed',
@@ -67,6 +103,8 @@ function toSkillInfo(
     legacy: versionMeta.legacy,
     enabled: status !== 'disabled',
     upgradable: false,
+    category: registryEntry?.category,
+    owner: registryEntry?.owner || (typeof parsed.data.owner === 'string' ? parsed.data.owner : undefined),
   };
 }
 
@@ -84,9 +122,11 @@ function toRegistrySkillInfo(
   }
   return {
     id: skillId,
+    assistantSkillName: getAssistantSkillNameForSkill(skillId),
     name: registryEntry.name,
     description: registryEntry.description,
     trigger: registryEntry.trigger,
+    triggers: getTriggersForSkill(skillId),
     icon: registryEntry.icon,
     status,
     installed,
@@ -97,23 +137,25 @@ function toRegistrySkillInfo(
     legacy: false,
     enabled,
     upgradable: false,
+    category: registryEntry.category,
+    owner: registryEntry.owner,
   };
 }
 
 function skillsManifestPath(linuxUser: string): string {
-  return `/home/${linuxUser}/workspace/.claude/skills/.mycc-manifest.json`;
+  return `/home/${linuxUser}/.claude/skills/.mycc-manifest.json`;
 }
 
 function skillsLockPath(linuxUser: string): string {
-  return `/home/${linuxUser}/workspace/.claude/skills/.mycc-lock.json`;
+  return `/home/${linuxUser}/.claude/skills/.mycc-lock.json`;
 }
 
 function userSkillsDir(linuxUser: string): string {
-  return `/home/${linuxUser}/workspace/.claude/skills`;
+  return `/home/${linuxUser}/.claude/skills`;
 }
 
 function userCatalogSeedDir(linuxUser: string): string {
-  return `/home/${linuxUser}/workspace/.claude/skills-catalog`;
+  return `/home/${linuxUser}/.claude/skills-catalog`;
 }
 
 function runAsLinuxUserCommand(linuxUser: string, command: string): string {
@@ -121,6 +163,21 @@ function runAsLinuxUserCommand(linuxUser: string, command: string): string {
 }
 
 const runtimeCatalogDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'catalog');
+
+async function createSshSkillCommandRunner(context: SkillRuntimeContext): Promise<SkillCommandRunner> {
+  const sshPool = getSSHPool();
+  const connection = await sshPool.acquire();
+  const run: ExecFn = (command) => sshPool.exec(connection, command);
+  const runAsUser: ExecFn = (command) =>
+    sshPool.exec(connection, runAsLinuxUserCommand(context.linuxUser, command));
+
+  return {
+    linuxUser: context.linuxUser,
+    run,
+    runAsUser,
+    release: () => sshPool.release(connection),
+  };
+}
 
 function extractSkillIdFromPath(skillMdPath: string): string | null {
   const parts = skillMdPath.split('/').filter(Boolean);
@@ -132,29 +189,18 @@ export class RemoteSkillStore {
   private static catalogCache = new Map<string, CatalogCacheEntry>();
   private clawhubAdapter = new ClawHubAdapter();
 
-  async ensureBuiltinSkills(linuxUser: string): Promise<number> {
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
+  constructor(private readonly runnerFactory: SkillCommandRunnerFactory = createSshSkillCommandRunner) {}
 
-    try {
-      const run: ExecFn = (command) => sshPool.exec(connection, command);
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+  async ensureBuiltinSkills(context: string | SkillRuntimeContext): Promise<number> {
+    return this.withRunner(context, async ({ run, runAsUser, linuxUser }) => {
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       return this.seedBuiltinSkills(run, runAsUser, linuxUser, catalogDir);
-    } finally {
-      sshPool.release(connection);
-    }
+    });
   }
 
-  async listSkillInfos(linuxUser: string): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
-
-    try {
-      const run: ExecFn = (command) => sshPool.exec(connection, command);
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+  async listSkillInfos(context: string | SkillRuntimeContext): Promise<{ skills: SkillInfo[]; catalogAvailable: boolean }> {
+    return this.withRunner(context, async (runner) => {
+      const { run, runAsUser, linuxUser } = runner;
       const installedDir = userSkillsDir(linuxUser);
       const catalogDir = await this.resolveCatalogDir(run, runAsUser, linuxUser);
       let manifest = await this.readManifest(runAsUser, linuxUser);
@@ -174,33 +220,29 @@ export class RemoteSkillStore {
 
       // 首次访问（无 manifest 且无已安装技能）时，自动补齐内置技能。
       // 同时兼容老账号：若检测到缺失内置技能，也执行一次补齐。
-      let installedIds = new Set(
-        installedPaths
-          .map((p) => extractSkillIdFromPath(p))
-          .filter((id): id is string => Boolean(id))
-      );
+      let installedEntries = await this.resolveInstalledSkillEntries(runAsUser, installedPaths);
+      let installedIds = new Set(installedEntries.map((entry) => entry.skillId));
       const availablePathById = new Map<string, string>();
       for (const filePath of availablePaths) {
-        const skillId = extractSkillIdFromPath(filePath);
+        const dirName = extractSkillIdFromPath(filePath);
+        const skillId = dirName ? this.resolveRegistrySkillIdFromDirName(dirName) : null;
         if (!skillId || !isValidSkillId(skillId) || availablePathById.has(skillId)) {
           continue;
         }
         availablePathById.set(skillId, filePath);
       }
       const hasMissingBuiltin = getBuiltinSkills().some((skill) => !installedIds.has(skill.id));
+      const shouldAutoSeedOnList = runner.autoSeedOnList !== false;
 
-      if ((!manifest && installedPaths.length === 0) || (installedPaths.length > 0 && hasMissingBuiltin)) {
+      if (shouldAutoSeedOnList && ((!manifest && installedPaths.length === 0) || (installedPaths.length > 0 && hasMissingBuiltin))) {
         const seeded = await this.seedBuiltinSkills(run, runAsUser, linuxUser, catalogDir);
         if (seeded > 0) {
           const refreshedInstalled = await runAsUser(
             `find ${escapeShellArg(installedDir)} -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null || true`
           );
           installedPaths = refreshedInstalled.stdout.trim().split('\n').filter(Boolean);
-          installedIds = new Set(
-            installedPaths
-              .map((p) => extractSkillIdFromPath(p))
-              .filter((id): id is string => Boolean(id))
-          );
+          installedEntries = await this.resolveInstalledSkillEntries(runAsUser, installedPaths);
+          installedIds = new Set(installedEntries.map((entry) => entry.skillId));
           manifest = await this.readManifest(runAsUser, linuxUser);
         }
       }
@@ -210,7 +252,7 @@ export class RemoteSkillStore {
         const shouldParseSkillFile = installedIds.has(skillId) || !registrySkill;
 
         if (shouldParseSkillFile) {
-          const skill = await this.readSkillInfo(run, filePath, 'catalog', 'available');
+          const skill = await this.readSkillInfo(run, filePath, 'catalog', 'available', skillId);
           if (skill) {
             map.set(skill.id, skill);
           }
@@ -223,8 +265,8 @@ export class RemoteSkillStore {
         }
       }
 
-      for (const path of installedPaths) {
-        const skillId = extractSkillIdFromPath(path);
+      for (const installedEntry of installedEntries) {
+        const { filePath, skillId, assistantSkillName } = installedEntry;
         if (!skillId || !isValidSkillId(skillId)) {
           continue;
         }
@@ -247,6 +289,7 @@ export class RemoteSkillStore {
           const latestVersion = existed.latestVersion || installedVersion;
           map.set(skillId, {
             ...existed,
+            assistantSkillName,
             status,
             installed: true,
             installedVersion,
@@ -271,7 +314,7 @@ export class RemoteSkillStore {
           continue;
         }
 
-        const parsedInstalled = await this.readSkillInfo(runAsUser, path, 'user', 'installed');
+        const parsedInstalled = await this.readSkillInfo(runAsUser, filePath, 'user', 'installed', skillId);
         if (!parsedInstalled) {
           continue;
         }
@@ -305,9 +348,11 @@ export class RemoteSkillStore {
         if (!map.has(def.id)) {
           map.set(def.id, {
             id: def.id,
+            assistantSkillName: getAssistantSkillNameForSkill(def.id),
             name: def.name,
             description: def.description,
             trigger: def.trigger,
+            triggers: getTriggersForSkill(def.id),
             icon: def.icon,
             status: 'available',
             installed: false,
@@ -331,9 +376,7 @@ export class RemoteSkillStore {
         skills,
         catalogAvailable: Boolean(catalogDir),
       };
-    } finally {
-      sshPool.release(connection);
-    }
+    });
   }
 
   async searchSkills(linuxUser: string, query: string): Promise<SkillInfo[]> {
@@ -350,13 +393,15 @@ export class RemoteSkillStore {
         s.id.includes(q) ||
         s.name.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
-        s.trigger.includes(q)
+        getTriggersForSkill(s.id).some((trigger) => trigger.toLowerCase().includes(q))
       )
       .map(def => ({
         id: def.id,
+        assistantSkillName: getAssistantSkillNameForSkill(def.id),
         name: def.name,
         description: def.description,
         trigger: def.trigger,
+        triggers: getTriggersForSkill(def.id),
         icon: def.icon,
         status: 'available' as const,
         installed: false,
@@ -367,31 +412,28 @@ export class RemoteSkillStore {
         legacy: false,
         enabled: false,
         upgradable: false,
+        category: def.category,
+        owner: def.owner,
       }));
 
     return registryResults;
   }
 
-  async installSkill(linuxUser: string, skillId: string): Promise<SkillInstallMetadata> {
+  async installSkill(context: string | SkillRuntimeContext, skillId: string): Promise<SkillInstallMetadata> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
 
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
-
-    try {
-      const run: ExecFn = (command) => sshPool.exec(connection, command);
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
-
-      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
+    return this.withRunner(context, async ({ run, runAsUser, linuxUser }) => {
       const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
       if (!sourceDir) {
         throw new SkillsError(404, '技能不存在于目录中');
       }
+      const assistantSkillName = await this.resolveAssistantSkillNameFromSource(run, runAsUser, sourceDir, skillId);
+      const { targetDir, legacyTargetDir } = this.buildInstallTargetPaths(linuxUser, skillId, assistantSkillName);
 
       await runAsUser(`mkdir -p ${escapeShellArg(userSkillsDir(linuxUser))}`);
+      await this.migrateLegacyInstallDir(runAsUser, legacyTargetDir, targetDir);
       const copy = await runAsUser(
         `[ -d ${escapeShellArg(targetDir)} ] || cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}`
       );
@@ -413,36 +455,29 @@ export class RemoteSkillStore {
       });
 
       return { version, source: 'catalog', targetPath: targetDir };
-    } finally {
-      sshPool.release(connection);
-    }
+    });
   }
 
-  async upgradeSkill(linuxUser: string, skillId: string): Promise<SkillInstallMetadata> {
+  async upgradeSkill(context: string | SkillRuntimeContext, skillId: string): Promise<SkillInstallMetadata> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
 
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
-    try {
-      const run: ExecFn = (command) => sshPool.exec(connection, command);
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
+    return this.withRunner(context, async ({ run, runAsUser, linuxUser }) => {
+      const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
+      if (!sourceDir) {
+        throw new SkillsError(404, '技能不存在于目录中');
+      }
+      const assistantSkillName = await this.resolveAssistantSkillNameFromSource(run, runAsUser, sourceDir, skillId);
+      const { targetDir, legacyTargetDir } = this.buildInstallTargetPaths(linuxUser, skillId, assistantSkillName);
+      await this.migrateLegacyInstallDir(runAsUser, legacyTargetDir, targetDir);
 
-      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
       const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
-
       if (!targetCheck.stdout.trim()) {
         throw new SkillsError(404, '技能未安装，无法升级');
       }
 
       const manifest = await this.readManifest(runAsUser, linuxUser);
-
-      const sourceDir = await this.resolveSkillSourceDir(run, runAsUser, linuxUser, skillId);
-      if (!sourceDir) {
-        throw new SkillsError(404, '技能不存在于目录中');
-      }
 
       if (sourceDir === targetDir) {
         const currentSkill = await runAsUser(`cat ${escapeShellArg(`${targetDir}/SKILL.md`)} 2>/dev/null || true`);
@@ -454,8 +489,11 @@ export class RemoteSkillStore {
         };
       }
 
+      const cleanupLegacy = legacyTargetDir === targetDir
+        ? ''
+        : ` && rm -rf ${escapeShellArg(legacyTargetDir)}`;
       const upgrade = await runAsUser(
-        `rm -rf ${escapeShellArg(targetDir)} && cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}`
+        `rm -rf ${escapeShellArg(targetDir)} && cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}${cleanupLegacy}`
       );
       if (upgrade.exitCode !== 0) {
         throw new SkillsError(500, upgrade.stderr || '升级技能失败');
@@ -475,21 +513,16 @@ export class RemoteSkillStore {
       });
 
       return { version, source: 'catalog', targetPath: targetDir };
-    } finally {
-      sshPool.release(connection);
-    }
+    });
   }
 
-  async setSkillEnabled(linuxUser: string, skillId: string, enabled: boolean): Promise<void> {
+  async setSkillEnabled(context: string | SkillRuntimeContext, skillId: string, enabled: boolean): Promise<void> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
-    try {
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
-      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
+    await this.withRunner(context, async ({ runAsUser, linuxUser }) => {
+      const { targetDir, legacyTargetDir } = this.buildInstallTargetPaths(linuxUser, skillId);
+      await this.migrateLegacyInstallDir(runAsUser, legacyTargetDir, targetDir);
       const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
       if (!targetCheck.stdout.trim()) {
         throw new SkillsError(404, '技能未安装');
@@ -515,33 +548,39 @@ export class RemoteSkillStore {
         installedPath: targetDir,
         disabled: !enabled,
       });
-    } finally {
-      sshPool.release(connection);
-    }
+    });
   }
 
-  async uninstallSkill(linuxUser: string, skillId: string): Promise<void> {
+  async uninstallSkill(context: string | SkillRuntimeContext, skillId: string): Promise<void> {
     if (!isValidSkillId(skillId)) {
       throw new SkillsError(400, '无效的 skillId');
     }
 
-    const sshPool = getSSHPool();
-    const connection = await sshPool.acquire();
+    await this.withRunner(context, async ({ runAsUser, linuxUser }) => {
+      const { targetDir, legacyTargetDir } = this.buildInstallTargetPaths(linuxUser, skillId);
 
-    try {
-      const runAsUser: ExecFn = (command) =>
-        sshPool.exec(connection, runAsLinuxUserCommand(linuxUser, command));
-
-      const targetDir = `${userSkillsDir(linuxUser)}/${skillId}`;
-
-      // Delete skill directory (idempotent)
-      await runAsUser(`rm -rf ${escapeShellArg(targetDir)}`);
+      // Delete both canonical and legacy id directories for backward compatibility.
+      await runAsUser(`rm -rf ${escapeShellArg(targetDir)} ${escapeShellArg(legacyTargetDir)}`);
 
       // Remove from manifest and lock
       await this.removeFromManifestAndLock(runAsUser, linuxUser, skillId);
+    });
+  }
+
+  private async withRunner<T>(
+    context: string | SkillRuntimeContext,
+    operation: (runner: SkillCommandRunner) => Promise<T>
+  ): Promise<T> {
+    const runner = await this.runnerFactory(this.normalizeRuntimeContext(context));
+    try {
+      return await operation(runner);
     } finally {
-      sshPool.release(connection);
+      await runner.release?.();
     }
+  }
+
+  private normalizeRuntimeContext(context: string | SkillRuntimeContext): SkillRuntimeContext {
+    return typeof context === 'string' ? { linuxUser: context } : context;
   }
 
   private async seedBuiltinSkills(
@@ -562,13 +601,15 @@ export class RemoteSkillStore {
     let seededCount = 0;
     for (const skill of builtinSkills) {
       const sourceDir = `${sourceRoot}/${skill.id}`;
-      const targetDir = `${userDir}/${skill.id}`;
+      const assistantSkillName = getAssistantSkillNameForSkill(skill.id);
+      const { targetDir, legacyTargetDir } = this.buildInstallTargetPaths(linuxUser, skill.id, assistantSkillName);
 
       const sourceCheck = await runAsUser(`[ -d ${escapeShellArg(sourceDir)} ] && echo ok || true`);
       if (!sourceCheck.stdout.trim()) {
         continue;
       }
 
+      await this.migrateLegacyInstallDir(runAsUser, legacyTargetDir, targetDir);
       const targetCheck = await runAsUser(`[ -d ${escapeShellArg(targetDir)} ] && echo ok || true`);
       if (!targetCheck.stdout.trim()) {
         const copy = await runAsUser(`cp -a ${escapeShellArg(sourceDir)} ${escapeShellArg(targetDir)}`);
@@ -599,16 +640,96 @@ export class RemoteSkillStore {
     exec: ExecFn,
     skillFilePath: string,
     source: string,
-    status: SkillInfo['status']
+    status: SkillInfo['status'],
+    skillIdOverride?: string
   ): Promise<SkillInfo | null> {
     try {
       const catResult = await exec(`cat ${escapeShellArg(skillFilePath)}`);
       if (catResult.exitCode !== 0) return null;
-      const skillId = skillFilePath.split('/').slice(-2, -1)[0];
+      const skillId = skillIdOverride || skillFilePath.split('/').slice(-2, -1)[0];
       if (!isValidSkillId(skillId)) return null;
       return toSkillInfo(skillId, catResult.stdout, source, status);
     } catch {
       return null;
+    }
+  }
+
+  private async resolveInstalledSkillEntries(exec: ExecFn, skillFilePaths: string[]): Promise<InstalledSkillEntry[]> {
+    const entries: InstalledSkillEntry[] = [];
+    for (const filePath of skillFilePaths) {
+      const dirName = extractSkillIdFromPath(filePath);
+      if (!dirName || !isValidAssistantSkillName(dirName)) {
+        continue;
+      }
+
+      const registrySkill = getSkillById(dirName) || getSkillByAssistantSkillName(dirName);
+      if (registrySkill) {
+        entries.push({
+          filePath,
+          dirName,
+          skillId: registrySkill.id,
+          assistantSkillName: getAssistantSkillNameForSkill(registrySkill.id),
+        });
+        continue;
+      }
+
+      const catResult = await exec(`cat ${escapeShellArg(filePath)} 2>/dev/null || true`);
+      const parsed = matter(catResult.stdout || '');
+      const assistantSkillName = getAssistantSkillName(dirName, parsed.data);
+      const matchedRegistrySkill = getSkillByAssistantSkillName(assistantSkillName);
+      entries.push({
+        filePath,
+        dirName,
+        skillId: matchedRegistrySkill?.id || dirName,
+        assistantSkillName,
+      });
+    }
+    return entries;
+  }
+
+  private resolveRegistrySkillIdFromDirName(dirName: string): string | null {
+    if (!isValidAssistantSkillName(dirName)) {
+      return null;
+    }
+    return getSkillById(dirName)?.id || getSkillByAssistantSkillName(dirName)?.id || dirName;
+  }
+
+  private async resolveAssistantSkillNameFromSource(
+    exec: ExecFn,
+    execAsUser: ExecFn,
+    sourceDir: string,
+    skillId: string
+  ): Promise<string> {
+    const skillFile = `${sourceDir}/SKILL.md`;
+    let catResult = await exec(`cat ${escapeShellArg(skillFile)} 2>/dev/null || true`);
+    if (!catResult.stdout.trim()) {
+      catResult = await execAsUser(`cat ${escapeShellArg(skillFile)} 2>/dev/null || true`);
+    }
+    const parsed = matter(catResult.stdout || '');
+    return getAssistantSkillName(skillId, parsed.data);
+  }
+
+  private buildInstallTargetPaths(
+    linuxUser: string,
+    skillId: string,
+    assistantSkillName = getAssistantSkillNameForSkill(skillId)
+  ): { targetDir: string; legacyTargetDir: string } {
+    const userDir = userSkillsDir(linuxUser);
+    return {
+      targetDir: `${userDir}/${assistantSkillName}`,
+      legacyTargetDir: `${userDir}/${skillId}`,
+    };
+  }
+
+  private async migrateLegacyInstallDir(exec: ExecFn, legacyTargetDir: string, targetDir: string): Promise<void> {
+    if (legacyTargetDir === targetDir) {
+      return;
+    }
+    const migrate = await exec(
+      `[ -d ${escapeShellArg(legacyTargetDir)} ] && [ ! -d ${escapeShellArg(targetDir)} ] && mv ${escapeShellArg(legacyTargetDir)} ${escapeShellArg(targetDir)} || true`
+    );
+    if (migrate.exitCode !== 0) {
+      throw new SkillsError(500, migrate.stderr || '迁移旧技能目录失败');
     }
   }
 

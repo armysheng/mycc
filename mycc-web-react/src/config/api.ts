@@ -60,6 +60,10 @@ export const getSkillInstallUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${skillId}/install`;
 };
 
+export const getSkillSubscribeUrl = (skillId: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/subscribe`;
+};
+
 export const getSkillUpgradeUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${skillId}/upgrade`;
 };
@@ -78,6 +82,10 @@ export const getSkillUninstallUrl = (skillId: string) => {
 
 export const getSkillUseUrl = (skillId: string) => {
   return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/use`;
+};
+
+export const getSkillDetailUrl = (skillId: string) => {
+  return `${API_CONFIG.ENDPOINTS.SKILLS}/${encodeURIComponent(skillId)}/detail`;
 };
 
 export const getSkillsDebugUrl = () => {

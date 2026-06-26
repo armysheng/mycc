@@ -53,7 +53,7 @@ describe('SkillsService list cache', () => {
       installSkill: vi.fn().mockResolvedValue({
         version: '1.0.0',
         source: 'catalog',
-        targetPath: '/home/qa/workspace/.claude/skills/deep-research',
+        targetPath: '/home/qa/.claude/skills/deep-research',
       }),
       upgradeSkill: vi.fn(),
       setSkillEnabled: vi.fn(),
@@ -92,6 +92,49 @@ describe('SkillsService list cache', () => {
       installed: false,
       source: 'registry',
     }));
+  });
+
+  it('E2B 暂停沙盒丢失时列表仍降级展示 registry 技能', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockRejectedValue(new Error('Paused sandbox i50bf0ntmrblapeehwmuo not found')),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+
+    const result = await service.listSkills(context);
+
+    expect(result.catalogAvailable).toBe(false);
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.skills[0]).toMatchObject({
+      status: 'available',
+      installed: false,
+      source: 'registry',
+    });
+  });
+
+  it('E2B 暂停沙盒丢失时安装返回运行环境未就绪口径', async () => {
+    const store = {
+      listSkillInfos: vi.fn(),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn().mockRejectedValue(new Error('Paused sandbox i50bf0ntmrblapeehwmuo not found')),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+
+    await expect(service.installSkill(context, 'deep-research')).rejects.toMatchObject({
+      statusCode: 503,
+      message: '技能运行环境尚未就绪，请稍后重试',
+    });
   });
 
   it('listSkills 合并技能下载量和使用量统计', async () => {
@@ -140,6 +183,118 @@ describe('SkillsService list cache', () => {
     });
   });
 
+  it('listSkills 补齐 registry 的镜像预置信息', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockResolvedValue({
+        catalogAvailable: true,
+        skills: [
+          {
+            id: 'browser-use',
+            name: '可见浏览器自动化',
+            description: '',
+            trigger: '/browser-use',
+            icon: '🌐',
+            status: 'installed',
+            installed: true,
+            version: '1.0.0',
+            installedVersion: '1.0.0',
+            latestVersion: '1.0.0',
+            source: 'catalog',
+            legacy: false,
+            enabled: true,
+            upgradable: false,
+          },
+        ],
+      }),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+    const result = await service.listSkills(context);
+
+    expect(result.skills[0]).toMatchObject({
+      id: 'browser-use',
+      preloadInImage: true,
+      imageRequired: true,
+    });
+  });
+
+  it('getSkillDetail 返回安装目标路径、注册表元数据和内容预览', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockRejectedValue(new Error('SSH 连接池未初始化，请先调用 initSSHPool()')),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+    const detail = await service.getSkillDetail(context, 'browser-use');
+
+    expect(detail.skill).toMatchObject({
+      id: 'browser-use',
+      name: '可见浏览器自动化',
+      preloadInImage: true,
+      imageRequired: true,
+    });
+    expect(detail.installTargetPath).toBe('/home/qa/.claude/skills/browser-use');
+    expect(detail.definition).toMatchObject({
+      mdPath: 'browser-use/SKILL.md',
+      readiness: 'L1',
+      riskLevel: 'low',
+    });
+    expect(detail.contentPreview.path).toBe('browser-use/SKILL.md');
+    expect(detail.contentPreview.content).toContain('Visible browser');
+  });
+
+  it('getSkillDetail 支持覆盖真实安装用户用于 E2B 模板目录', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockRejectedValue(new Error('SSH 连接池未初始化，请先调用 initSSHPool()')),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store, {
+      resolveInstallLinuxUser: () => 'mycc',
+    });
+    const detail = await service.getSkillDetail(context, 'pdf');
+
+    expect(detail.installTargetPath).toBe('/home/mycc/.claude/skills/pdf');
+  });
+
+  it('getSkillDetail 使用 Claude skill name 而不是市场 id 生成安装路径', async () => {
+    const store = {
+      listSkillInfos: vi.fn().mockRejectedValue(new Error('SSH 连接池未初始化，请先调用 initSSHPool()')),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn(),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+    const detail = await service.getSkillDetail(context, 'browser');
+
+    expect(detail.skill).toMatchObject({
+      id: 'browser',
+      assistantSkillName: 'webapp-testing',
+      name: '浏览器',
+    });
+    expect(detail.installTargetPath).toBe('/home/qa/.claude/skills/webapp-testing');
+  });
+
   it('installSkill 记录 download 和 install 事件', async () => {
     const store = {
       listSkillInfos: vi.fn(),
@@ -148,7 +303,7 @@ describe('SkillsService list cache', () => {
       installSkill: vi.fn().mockResolvedValue({
         version: '1.0.0',
         source: 'catalog',
-        targetPath: '/home/qa/workspace/.claude/skills/deep-research',
+        targetPath: '/home/qa/.claude/skills/deep-research',
       }),
       upgradeSkill: vi.fn(),
       setSkillEnabled: vi.fn(),
@@ -169,8 +324,36 @@ describe('SkillsService list cache', () => {
       eventType: 'install',
       version: '1.0.0',
       source: 'catalog',
-      targetPath: '/home/qa/workspace/.claude/skills/deep-research',
+      targetPath: '/home/qa/.claude/skills/deep-research',
     }));
+  });
+
+  it('subscribeSkill 复用 catalog 安装并返回订阅目标路径', async () => {
+    const store = {
+      listSkillInfos: vi.fn(),
+      ensureBuiltinSkills: vi.fn(),
+      searchSkills: vi.fn(),
+      installSkill: vi.fn().mockResolvedValue({
+        version: '1.0.0',
+        source: 'catalog',
+        targetPath: '/home/qa/.claude/skills/browser-use',
+      }),
+      upgradeSkill: vi.fn(),
+      setSkillEnabled: vi.fn(),
+      uninstallSkill: vi.fn(),
+    } as any;
+
+    const service = new SkillsService(store);
+    const result = await service.subscribeSkill(context, 'browser-use');
+
+    expect(result).toEqual({
+      skillId: 'browser-use',
+      installed: true,
+      version: '1.0.0',
+      source: 'catalog',
+      targetPath: '/home/qa/.claude/skills/browser-use',
+    });
+    expect(store.installSkill).toHaveBeenCalledWith(context, 'browser-use');
   });
 
   it('upgradeSkill 记录 update 事件', async () => {
@@ -182,7 +365,7 @@ describe('SkillsService list cache', () => {
       upgradeSkill: vi.fn().mockResolvedValue({
         version: '1.1.0',
         source: 'catalog',
-        targetPath: '/home/qa/workspace/.claude/skills/deep-research',
+        targetPath: '/home/qa/.claude/skills/deep-research',
       }),
       setSkillEnabled: vi.fn(),
       uninstallSkill: vi.fn(),

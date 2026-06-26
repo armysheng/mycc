@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "source": "mycc-backend/src/skills/skill-registry.ts#getImagePreloadSkills",
+  "skills": [
+    { "id": "browser-use", "source": "sandbox" },
+    { "id": "browser", "source": "catalog" },
+    { "id": "pdf", "source": "catalog" },
+    { "id": "docx", "source": "catalog" },
+    { "id": "xlsx", "source": "catalog" },
+    { "id": "pptx", "source": "catalog" },
+    { "id": "data-analysis", "source": "catalog" },
+    { "id": "deep-research", "source": "catalog" },
+    { "id": "skill-installer", "source": "catalog" },
+    { "id": "skill-creator", "source": "catalog" }
+  ]
+}

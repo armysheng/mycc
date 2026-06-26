@@ -54,7 +54,7 @@ describe('remote-skill-store regression', () => {
     };
 
     sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
-      if (hasDirCheck(command, '/home/qa/workspace/.claude/skills/tell-me')) {
+      if (hasDirCheck(command, '/home/qa/.claude/skills/tell-me')) {
         return ok('');
       }
       if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills'")) {
@@ -69,14 +69,14 @@ describe('remote-skill-store regression', () => {
       if (
         command.includes('cp -a') &&
         command.includes('/opt/mycc/mycc/.claude/skills/tell-me') &&
-        command.includes('/home/qa/workspace/.claude/skills/tell-me')
+        command.includes('/home/qa/.claude/skills/tell-me')
       ) {
         return ok('');
       }
-      if (hasCat(command, '/home/qa/workspace/.claude/skills/tell-me/SKILL.md')) {
+      if (hasCat(command, '/home/qa/.claude/skills/tell-me/SKILL.md')) {
         return ok(skillMd('1.2.3'));
       }
-      if (command.includes("MANIFEST='/home/qa/workspace/.claude/skills/.mycc-manifest.json'")) {
+      if (command.includes("MANIFEST='/home/qa/.claude/skills/.mycc-manifest.json'")) {
         return ok('');
       }
       return ok('');
@@ -87,12 +87,60 @@ describe('remote-skill-store regression', () => {
     expect(result).toEqual({
       version: '1.2.3',
       source: 'catalog',
-      targetPath: '/home/qa/workspace/.claude/skills/tell-me',
+      targetPath: '/home/qa/.claude/skills/tell-me',
     });
     expect(installSkill).not.toHaveBeenCalled();
     expect(
       sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
         command.includes('cp -a') && command.includes('/opt/mycc/mycc/.claude/skills/tell-me')
+      )
+    ).toBe(true);
+  });
+
+  it('installSkill: 市场 id 与 Claude skill name 不同时使用 SKILL.md name 作为安装目录', async () => {
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo ok || true")) return ok('ok\n');
+      if (hasDirCheck(command, '/catalog/browser')) return ok('ok\n');
+      if (hasCat(command, '/catalog/browser/SKILL.md')) {
+        return ok('---\nname: webapp-testing\nversion: 2.0.0\n---\n');
+      }
+      if (hasDirCheck(command, '/home/qa/.claude/skills/webapp-testing')) return ok('');
+      if (hasDirCheck(command, '/home/qa/.claude/skills/browser')) return ok('');
+      if (
+        command.includes('cp -a') &&
+        command.includes('/catalog/browser') &&
+        command.includes('/home/qa/.claude/skills/webapp-testing')
+      ) {
+        return ok('');
+      }
+      if (hasCat(command, '/home/qa/.claude/skills/webapp-testing/SKILL.md')) {
+        return ok('---\nname: webapp-testing\nversion: 2.0.0\n---\n');
+      }
+      if (command.includes("MANIFEST='/home/qa/.claude/skills/.mycc-manifest.json'")) {
+        return ok('');
+      }
+      return ok('');
+    });
+
+    const result = await store.installSkill(linuxUser, 'browser');
+
+    expect(result).toEqual({
+      version: '2.0.0',
+      source: 'catalog',
+      targetPath: '/home/qa/.claude/skills/webapp-testing',
+    });
+    expect(
+      sshMocks.exec.mock.calls.some(([, command]: [unknown, string]) =>
+        command.includes('cp -a') &&
+        command.includes('/catalog/browser') &&
+        command.includes('/home/qa/.claude/skills/webapp-testing')
       )
     ).toBe(true);
   });
@@ -108,10 +156,10 @@ describe('remote-skill-store regression', () => {
     };
 
     sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
-      if (hasDirCheck(command, '/home/qa/workspace/.claude/skills/scheduler')) {
+      if (hasDirCheck(command, '/home/qa/.claude/skills/scheduler')) {
         return ok('ok\n');
       }
-      if (hasCat(command, '/home/qa/workspace/.claude/skills/.mycc-manifest.json')) {
+      if (hasCat(command, '/home/qa/.claude/skills/.mycc-manifest.json')) {
         return ok('{"skills":{"scheduler":{"source":"clawhub","disabled":true}}}');
       }
       if (command.includes("[ -d '/opt/mycc/.claude/skills' ] && echo '/opt/mycc/.claude/skills'")) {
@@ -125,15 +173,15 @@ describe('remote-skill-store regression', () => {
       }
       if (
         command.includes('rm -rf') &&
-        command.includes('/home/qa/workspace/.claude/skills/scheduler') &&
+        command.includes('/home/qa/.claude/skills/scheduler') &&
         command.includes('/opt/mycc/mycc/.claude/skills/scheduler')
       ) {
         return ok('');
       }
-      if (hasCat(command, '/home/qa/workspace/.claude/skills/scheduler/SKILL.md')) {
+      if (hasCat(command, '/home/qa/.claude/skills/scheduler/SKILL.md')) {
         return ok(skillMd('2.0.0'));
       }
-      if (command.includes("MANIFEST='/home/qa/workspace/.claude/skills/.mycc-manifest.json'")) {
+      if (command.includes("MANIFEST='/home/qa/.claude/skills/.mycc-manifest.json'")) {
         return ok('');
       }
       return ok('');
@@ -144,7 +192,7 @@ describe('remote-skill-store regression', () => {
     expect(result).toEqual({
       version: '2.0.0',
       source: 'catalog',
-      targetPath: '/home/qa/workspace/.claude/skills/scheduler',
+      targetPath: '/home/qa/.claude/skills/scheduler',
     });
     expect(upgradeSkill).not.toHaveBeenCalled();
     expect(
@@ -289,7 +337,7 @@ describe('RemoteSkillStore.listSkillInfos clawhub toggle', () => {
     sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
       if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
       if (command.includes('.mycc-manifest.json')) return ok('{}');
-      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/home/qa/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
       if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
       return ok('');
     });
@@ -337,7 +385,7 @@ describe('RemoteSkillStore.listSkillInfos clawhub toggle', () => {
     sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
       if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
       if (command.includes('.mycc-manifest.json')) return ok('{}');
-      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/home/qa/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
       if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
       return ok('');
     });
@@ -398,6 +446,18 @@ describe('RemoteSkillStore.searchSkills catalog scope', () => {
     expect(results.some((item) => item.id === 'deep-research')).toBe(true);
     expect(searchSkills).not.toHaveBeenCalled();
   });
+
+  it('支持按非斜杠触发词搜索 registry 技能', async () => {
+    const store = new RemoteSkillStore();
+
+    const results = await store.searchSkills('qa', '访问网站');
+
+    expect(results).toContainEqual(expect.objectContaining({
+      id: 'browser-use',
+      trigger: '/browser-use',
+      triggers: expect.arrayContaining(['/browser-use', '访问网站']),
+    }));
+  });
 });
 
 describe('RemoteSkillStore.listSkillInfos perf guard', () => {
@@ -422,7 +482,7 @@ describe('RemoteSkillStore.listSkillInfos perf guard', () => {
     sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
       if (command.includes("[ -d '/catalog' ] && echo '/catalog'")) return ok('/catalog\n');
       if (command.includes('.mycc-manifest.json')) return ok('{}');
-      if (command.includes("find '/home/qa/workspace/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
+      if (command.includes("find '/home/qa/.claude/skills' -mindepth 2 -maxdepth 2 -name SKILL.md")) return ok('');
       if (command.includes("find '/catalog' -mindepth 2 -maxdepth 2 -name SKILL.md")) {
         return ok('/catalog/deep-research/SKILL.md\n');
       }
@@ -451,9 +511,51 @@ describe('RemoteSkillStore.listSkillInfos perf guard', () => {
 
     expect(result).toMatchObject({
       id: 'deep-research',
+      assistantSkillName: 'deep-research',
       version: '1.0.0',
       latestVersion: '1.0.0',
       legacy: false,
+    });
+  });
+
+  it('按 Claude skill name 安装的目录仍映射回市场 id', async () => {
+    const linuxUser = 'qa';
+    const store = new RemoteSkillStore();
+
+    (RemoteSkillStore as any).catalogCache.set(linuxUser, {
+      path: '/catalog',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    sshMocks.exec.mockImplementation(async (_connection: unknown, command: string): Promise<ExecResult> => {
+      if (command.includes("[ -d '/catalog' ] && echo ok || true")) return ok('ok\n');
+      if (command.includes('.mycc-manifest.json')) {
+        return ok('{"skills":{"browser":{"version":"2.0.0","source":"catalog","disabled":false}}}');
+      }
+      if (command.includes('/home/qa/.claude/skills') && command.includes('-name SKILL.md')) {
+        return ok('/home/qa/.claude/skills/webapp-testing/SKILL.md\n');
+      }
+      if (command.includes('/catalog') && command.includes('-name SKILL.md')) {
+        return ok('/catalog/browser/SKILL.md\n');
+      }
+      if (hasCat(command, '/catalog/browser/SKILL.md')) {
+        return ok('---\nname: webapp-testing\nversion: 2.0.0\n---\n');
+      }
+      if (hasCat(command, '/home/qa/.claude/skills/webapp-testing/SKILL.md')) {
+        return ok('---\nname: webapp-testing\nversion: 2.0.0\n---\n');
+      }
+      return ok('');
+    });
+
+    const result = await store.listSkillInfos(linuxUser);
+    const browser = result.skills.find((skill) => skill.id === 'browser');
+
+    expect(browser).toMatchObject({
+      id: 'browser',
+      assistantSkillName: 'webapp-testing',
+      installed: true,
+      status: 'installed',
+      version: '2.0.0',
     });
   });
 });
@@ -487,9 +589,9 @@ describe('RemoteSkillStore.listSkillInfos auto-seed first load', () => {
           ? ok('')
           : ok('{"skills":{"browser":{"version":"1.2.3","source":"catalog","disabled":false}}}');
       }
-      if (command.includes('/home/qa/workspace/.claude/skills') && command.includes('-name SKILL.md')) {
+      if (command.includes('/home/qa/.claude/skills') && command.includes('-name SKILL.md')) {
         installedFindCount += 1;
-        return installedFindCount === 1 ? ok('') : ok('/home/qa/workspace/.claude/skills/browser/SKILL.md\n');
+        return installedFindCount === 1 ? ok('') : ok('/home/qa/.claude/skills/browser/SKILL.md\n');
       }
       if (command.includes('/catalog') && command.includes('-name SKILL.md')) {
         return ok('/catalog/browser/SKILL.md\n');
@@ -497,16 +599,16 @@ describe('RemoteSkillStore.listSkillInfos auto-seed first load', () => {
       if (hasDirCheck(command, '/catalog/browser')) {
         return ok('ok\n');
       }
-      if (hasDirCheck(command, '/home/qa/workspace/.claude/skills/browser')) {
+      if (hasDirCheck(command, '/home/qa/.claude/skills/browser')) {
         return ok('');
       }
-      if (command.includes("cp -a '/catalog/browser' '/home/qa/workspace/.claude/skills/browser'")) {
+      if (command.includes("cp -a '/catalog/browser' '/home/qa/.claude/skills/browser'")) {
         return ok('');
       }
       if (hasCat(command, '/catalog/browser/SKILL.md')) {
         return ok(skillMd('1.2.3'));
       }
-      if (command.includes("MANIFEST='/home/qa/workspace/.claude/skills/.mycc-manifest.json'")) {
+      if (command.includes("MANIFEST='/home/qa/.claude/skills/.mycc-manifest.json'")) {
         return ok('');
       }
       return ok('');
