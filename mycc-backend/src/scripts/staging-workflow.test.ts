@@ -39,4 +39,9 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('export PATH="${STAGING_NODE_BIN_DIR}:${PATH}"');
     expect(workflow).toContain('STAGING_NODE_BIN_DIR must contain executable node and npm');
   });
+
+  it('does not require legacy RSA host keys from the staging server', () => {
+    expect(workflow).toContain('ssh-keyscan -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}"');
+    expect(workflow).not.toContain('ssh-keyscan -t rsa');
+  });
 });
