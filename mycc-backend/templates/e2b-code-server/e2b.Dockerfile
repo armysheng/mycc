@@ -71,7 +71,7 @@ RUN mkdir -p /opt/mycc-agent-runtime \
 COPY agent-sdk-bridge.mjs /opt/mycc-agent-runtime/bridge.mjs
 
 RUN useradd -m -s /bin/bash mycc \
-  && mkdir -p /home/mycc/workspace /home/mycc/.mycc \
+  && mkdir -p /home/mycc/workspace /home/mycc/.claude \
   && chown -R mycc:mycc /home/mycc /opt/mycc-agent-runtime
 
 USER mycc

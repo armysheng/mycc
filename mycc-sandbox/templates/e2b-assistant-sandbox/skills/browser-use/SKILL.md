@@ -12,6 +12,8 @@ Prefer these defaults:
 - Workspace: `/home/mycc/workspace`
 - Browser agent venv: `/opt/mycc/browser-agent/venv`
 - Desktop display: `${MYCC_DESKTOP_DISPLAY:-:99}`
+- Visible browser CDP: `http://127.0.0.1:${MYCC_DESKTOP_BROWSER_CDP_PORT:-9222}`
+- Default visible browser CDP URL: `http://127.0.0.1:9222`
 - Chromium executable: `chromium`
 
 ## Required Flow
@@ -22,8 +24,10 @@ Prefer these defaults:
 3. If the display is not ready, start the desktop service with `MYCC_DESKTOP_OPEN_BROWSER=0 nohup mycc-start-desktop >/tmp/mycc-desktop/desktop-from-agent.log 2>&1 &`, then wait until `xdpyinfo -display "${MYCC_DESKTOP_DISPLAY:-:99}"` succeeds.
 4. Open the visible browser through XFCE's configured Web Browser helper, for example:
    `DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}" MYCC_DESKTOP_BROWSER_WINDOW_SIZE="${MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900}" exo-open --launch WebBrowser "https://www.baidu.com/"`
-5. For deterministic actions, use Playwright from `/opt/mycc/browser-agent/venv`.
-6. Use browser-use when the task benefits from LLM-guided browser navigation.
-7. Do not print access tokens, cookies, provider base URLs, E2B hosts, or private credentials.
+5. Treat the visible CC computer browser as the default automation target. Do not launch a hidden Chrome for Testing, headless Chromium, or a separate Playwright browser unless the user explicitly asks for an isolated test browser or the visible browser cannot be recovered.
+6. For deterministic actions, connect Playwright to the visible browser over CDP from `/opt/mycc/browser-agent/venv`:
+   `cdp_url="http://127.0.0.1:${MYCC_DESKTOP_BROWSER_CDP_PORT:-9222}"`
+7. Use browser-use when the task benefits from LLM-guided browser navigation, and configure it to connect to the same visible browser via `--cdp-url "$cdp_url"` or its equivalent CDP session option. Prefer the visible browser over browser-use's default auto-launched browser.
+8. Do not print access tokens, cookies, provider base URLs, E2B hosts, or private credentials.
 
 The MyCC web UI should not need the raw URL to wake the browser. It only mirrors the GNU desktop when it sees real browser-related tool use from the agent.

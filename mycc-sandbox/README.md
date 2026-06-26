@@ -23,7 +23,7 @@ The image is based on the Playwright Python noble image so the sandbox has Pytho
 - GNU/native toolchain: git, rg, jq, gcc, g++, make, file, lsof, tree
 - GNU desktop: Xvfb, XFCE, x11vnc, noVNC, websockify
 - MyCC service scripts for code-server, CCR, desktop, and desktop health
-- Base skills copied into Claude/MyCC skill directories: browser-use, browser, pdf, docx, xlsx, pptx, data-analysis, deep-research, skill-installer, skill-creator
+- Base skills copied into Claude/MyCC skill directories from the MyCC registry preload manifest: browser-use, browser, pdf, docx, xlsx, pptx, data-analysis, deep-research, skill-installer, skill-creator
 
 The image also exposes `uv` through `/usr/local/bin/uv` and links `/home/mycc/.cache/ms-playwright` to `/ms-playwright`. E2B command execution does not preserve every Docker `ENV` value, so these symlinks keep Python/Playwright tooling usable for agents without extra environment injection.
 
@@ -39,6 +39,8 @@ npm run doctor:template
 npm run template:create
 npm run smoke:e2b-template
 ```
+
+`npm run skills:sync` reads `../mycc-backend/src/skills/image-preload-skills.json`, mirrors those catalog skills into the template `skills/` directory, and writes `skills/.mycc-preload-skills.json` for the Docker contract.
 
 Useful overrides:
 
@@ -104,14 +106,24 @@ mycc-backend/db/migrations/004-add-ide-desktop-service.sql
 
 The first frontend slice opens code-server and the GNU desktop in new tabs through `/api/ide` MyCC proxy routes. A later migration can split `ide_sessions` into `sandbox_sessions` and `sandbox_services`, but this template is already structured as one sandbox with multiple services.
 
-## CCR Env Injection
+## Claude Provider Env Injection
 
-`mycc-start-ccr` writes a config with environment references, not literal secrets. MyCC should inject values into the CCR process environment, for example:
+When Zhuji exposes Claude-compatible models directly, MyCC should prefer direct provider envs and does not need to start CCR:
+
+```text
+MYCC_CLAUDE_BASE_URL
+MYCC_CLAUDE_AUTH_TOKEN
+MYCC_E2B_AGENT_SDK_MODEL
+MYCC_E2B_CLAUDE_MODEL
+```
+
+`mycc-start-ccr` remains available as an optional routing layer. If CCR is intentionally enabled, it writes a config with environment references, not literal secrets. The default CCR route is provider `zhuji` with model `claude-opus-4-7`. MyCC can inject values into the CCR process environment, for example:
 
 ```text
 MYCC_PROVIDER_BASE_URL
 MYCC_PROVIDER_API_KEY
 MYCC_CCR_AUTH_TOKEN
+MYCC_CCR_PROVIDER_NAME
 MYCC_CCR_MODEL
 ```
 

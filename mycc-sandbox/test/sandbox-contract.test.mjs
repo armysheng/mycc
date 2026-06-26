@@ -7,21 +7,22 @@ import path from 'node:path';
 import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
-const baseSkillIds = [
-  'browser-use',
-  'browser',
-  'pdf',
-  'docx',
-  'xlsx',
-  'pptx',
-  'data-analysis',
-  'deep-research',
-  'skill-installer',
-  'skill-creator',
-];
 
 function read(relativePath) {
   return readFileSync(path.join(root, relativePath), 'utf8');
+}
+
+function readJson(relativePath) {
+  return JSON.parse(read(relativePath));
+}
+
+function imagePreloadSkillIds() {
+  return imagePreloadSkills().map((skill) => skill.id);
+}
+
+function imagePreloadSkills() {
+  const manifest = readJson('../mycc-backend/src/skills/image-preload-skills.json');
+  return manifest.skills;
 }
 
 test('assistant sandbox module exposes the expected file contract', () => {
@@ -96,6 +97,8 @@ test('template ready command runs the sandbox contract inside the user image', (
 test('Agent SDK bridge loads Claude native skills from user and project sources', () => {
   const bridge = read('templates/e2b-assistant-sandbox/scripts/agent-sdk-bridge.mjs');
 
+  assert.match(bridge, /const DEFAULT_MODEL = 'claude-opus-4-7'/);
+  assert.match(bridge, /'claude-opus-4\.7': 'claude-opus-4-7'/);
   assert.match(bridge, /MYCC_AGENT_SDK_SETTING_SOURCES \|\| 'user,project'/);
   assert.match(bridge, /MYCC_AGENT_SDK_SKILLS \|\| 'all'/);
   assert.match(bridge, /settingSources,\s+skills,/);
@@ -157,23 +160,64 @@ test('template contract covers runtime, browser automation, desktop, and service
   assert.doesNotMatch(contract, /mycc-open-browser/);
   assert.match(contract, /mycc-register-deliverable/);
   assert.match(contract, /deliverables\.json/);
+  assert.match(contract, /\.mycc-preload-skills\.json/);
+  assert.match(contract, /jq -r '\.skills\[\]\.id/);
+  assert.doesNotMatch(contract, /for skill in browser-use browser pdf/);
 });
 
 test('assistant sandbox includes the MyCC base skill set', () => {
-  for (const skillId of baseSkillIds) {
+  for (const skillId of imagePreloadSkillIds()) {
     const skillPath = path.join(root, 'templates/e2b-assistant-sandbox/skills', skillId, 'SKILL.md');
     assert.ok(existsSync(skillPath), `${skillId} should be available in the assistant sandbox`);
   }
 });
 
-test('base skill sync script mirrors existing MyCC catalog skills', () => {
+test('base skill sync script mirrors registry image preload skills', () => {
   const syncScript = read('scripts/sync-base-skills.mjs');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mycc-skill-sync-'));
+  const catalogRoot = path.join(tempDir, 'catalog');
+  const targetRoot = path.join(tempDir, 'sandbox-skills');
+  const preloadSkills = imagePreloadSkills();
+  const preloadIds = preloadSkills.map((skill) => skill.id);
 
-  for (const skillId of baseSkillIds.filter((id) => id !== 'browser-use')) {
-    assert.match(syncScript, new RegExp(`'${skillId}'`));
+  assert.match(syncScript, /image-preload-skills\.json/);
+  assert.match(syncScript, /\.mycc-preload-skills\.json/);
+  assert.match(syncScript, /Missing sandbox skill/);
+  assert.doesNotMatch(syncScript, /const baseSkillIds = \[/);
+
+  for (const { id: skillId, source } of preloadSkills) {
+    if (source === 'sandbox') {
+      const targetDir = path.join(targetRoot, skillId);
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.writeFileSync(path.join(targetDir, 'SKILL.md'), `# ${skillId}\n`);
+      continue;
+    }
+    const sourceDir = path.join(catalogRoot, skillId);
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), `# ${skillId}\n`);
   }
-  assert.match(syncScript, /mycc-backend\/src\/skills\/catalog/);
-  assert.match(syncScript, /templates\/e2b-assistant-sandbox\/skills/);
+
+  execFileSync('node', ['scripts/sync-base-skills.mjs'], {
+    cwd: root,
+    env: {
+      ...process.env,
+      MYCC_SKILL_CATALOG_ROOT: catalogRoot,
+      MYCC_SANDBOX_SKILLS_ROOT: targetRoot,
+    },
+    stdio: 'pipe',
+  });
+
+  const generatedManifest = JSON.parse(
+    fs.readFileSync(path.join(targetRoot, '.mycc-preload-skills.json'), 'utf8')
+  );
+  assert.deepEqual(generatedManifest.skills, preloadSkills);
+
+  for (const skillId of preloadIds) {
+    assert.ok(
+      existsSync(path.join(targetRoot, skillId, 'SKILL.md')),
+      `${skillId} should be copied from the catalog`
+    );
+  }
 });
 
 test('template contract exits after fast ready checks', () => {
@@ -193,9 +237,15 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   const browserWrapper = read('templates/e2b-assistant-sandbox/bin/mycc-browser');
   const browserUseSkill = read('templates/e2b-assistant-sandbox/skills/browser-use/SKILL.md');
   const registerDeliverable = read('templates/e2b-assistant-sandbox/bin/mycc-register-deliverable');
+  const workspaceClaude = read('../mycc-backend/templates/user-workspace/CLAUDE.md');
 
   assert.match(startCcr, /MYCC_CCR_PORT/);
   assert.match(startCcr, /MYCC_CCR_CONFIG_DIR/);
+  assert.match(startCcr, /MYCC_CCR_PROVIDER_NAME="\$\{MYCC_CCR_PROVIDER_NAME:-zhuji\}"/);
+  assert.match(startCcr, /MYCC_CCR_MODEL="\$\{MYCC_CCR_MODEL:-claude-opus-4-7\}"/);
+  assert.match(startCcr, /const providerName = process\.env\.MYCC_CCR_PROVIDER_NAME \|\| 'zhuji'/);
+  assert.match(startCcr, /'claude-opus-4\.7': 'claude-opus-4-7'/);
+  assert.match(startCcr, /const rawModel = process\.env\.MYCC_CCR_MODEL \|\| 'claude-opus-4-7'/);
   assert.doesNotMatch(startCcr, /echo .*TOKEN/i);
   assert.doesNotMatch(startCcr, /echo .*KEY/i);
 
@@ -235,15 +285,26 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   assert.match(browserWrapper, /--disable-dev-shm-usage/);
   assert.match(browserWrapper, /--password-store=basic/);
   assert.match(browserWrapper, /--start-maximized/);
+  assert.match(browserWrapper, /MYCC_DESKTOP_BROWSER_CDP_HOST="\$\{MYCC_DESKTOP_BROWSER_CDP_HOST:-127\.0\.0\.1\}"/);
+  assert.match(browserWrapper, /MYCC_DESKTOP_BROWSER_CDP_PORT="\$\{MYCC_DESKTOP_BROWSER_CDP_PORT:-9222\}"/);
+  assert.match(browserWrapper, /--remote-debugging-address="\$MYCC_DESKTOP_BROWSER_CDP_HOST"/);
+  assert.match(browserWrapper, /--remote-debugging-port="\$MYCC_DESKTOP_BROWSER_CDP_PORT"/);
   assert.match(browserWrapper, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE="\$\{MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900\}"/);
   assert.match(browserWrapper, /MYCC_DESKTOP_CHROMIUM_PROFILE/);
 
   assert.match(browserUseSkill, /`baidu` or `百度`/);
   assert.match(browserUseSkill, /https:\/\/www\.baidu\.com\//);
   assert.match(browserUseSkill, /exo-open --launch WebBrowser/);
+  assert.match(browserUseSkill, /visible CC computer browser/i);
+  assert.match(browserUseSkill, /127\.0\.0\.1:9222/);
+  assert.match(browserUseSkill, /do not launch a hidden Chrome for Testing/i);
   assert.match(browserUseSkill, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900/);
   assert.doesNotMatch(browserUseSkill, /chromium --no-sandbox/);
   assert.doesNotMatch(browserUseSkill, /mycc-open-browser/);
+
+  assert.match(workspaceClaude, /CC 的电脑/);
+  assert.match(workspaceClaude, /可见浏览器/);
+  assert.match(workspaceClaude, /不要.*隐藏.*浏览器/);
 
   assert.match(registerDeliverable, /deliverables\.json/);
   assert.match(registerDeliverable, /allowedKinds/);
@@ -320,13 +381,18 @@ test('E2B smoke checks runtime services without exposing raw sandbox access', ()
   assert.match(smoke, /mycc-health-desktop/);
   assert.match(smoke, /desktop-browser-only-mode/);
   assert.match(smoke, /pgrep -af "\[x\]fwm4"/);
-  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic"/);
+  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic\.\*--remote-debugging-address=127\.0\.0\.1\.\*--remote-debugging-port=9222"/);
   assert.match(smoke, /pgrep -af "\[x\]fce4-panel"/);
   assert.match(smoke, /DISPLAY=:99/);
   assert.match(smoke, /MYCC_DESKTOP_CHROMIUM_PROFILE=\/tmp\/mycc-desktop\/chromium-profile-smoke/);
   assert.match(smoke, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE=1360,820/);
+  assert.match(smoke, /MYCC_DESKTOP_BROWSER_CDP_PORT=9233/);
   assert.match(smoke, /exo-open --launch WebBrowser about:blank/);
-  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic\.\*chromium-profile-smoke"/);
+  assert.match(smoke, /pgrep -af "\[c\]hromium\.\*--password-store=basic\.\*--remote-debugging-port=9233\.\*chromium-profile-smoke"/);
+  assert.match(smoke, /--remote-debugging-address=127\.0\.0\.1/);
+  assert.match(smoke, /--remote-debugging-port=9222/);
+  assert.match(smoke, /127\.0\.0\.1:9222\/json\/version/);
+  assert.match(smoke, /127\.0\.0\.1:9233\/json\/version/);
   assert.doesNotMatch(smoke, /chromium-smoke\.log 2>&1 &'/);
   assert.doesNotMatch(smoke, /&;\s*for/);
   assert.match(smoke, /playwright/);

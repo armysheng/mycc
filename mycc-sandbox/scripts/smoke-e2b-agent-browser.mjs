@@ -102,13 +102,17 @@ async function runAgentBrowserTask() {
       MYCC_AGENT_SDK_SETTING_SOURCES: 'user,project',
       MYCC_AGENT_SDK_SKILLS: 'all',
       MYCC_AGENT_WORKSPACE_CWD: '/home/mycc/workspace',
-      MYCC_E2B_AGENT_SDK_MODEL: process.env.MYCC_E2B_AGENT_SDK_MODEL
+      MYCC_E2B_AGENT_SDK_MODEL: normalizeClaudeModelId(process.env.MYCC_E2B_AGENT_SDK_MODEL
         || process.env.MYCC_AGENT_SDK_MODEL
         || process.env.VPS_CLAUDE_MODEL
         || process.env.CLAUDE_MODEL
-        || 'claude-sonnet-4-6',
+        || 'claude-opus-4-7'),
     },
   });
+}
+
+function normalizeClaudeModelId(model) {
+  return model === 'claude-opus-4.7' ? 'claude-opus-4-7' : model;
 }
 
 async function runForeground(command, options = {}) {

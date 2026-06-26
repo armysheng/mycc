@@ -100,7 +100,7 @@ COPY bin/mycc-register-deliverable /usr/local/bin/mycc-register-deliverable
 COPY skills /opt/mycc/skills
 
 RUN useradd -m -s /bin/bash mycc \
-  && mkdir -p /home/mycc/workspace /home/mycc/.mycc/claude /home/mycc/.mycc/home/.claude /home/mycc/.claude /home/mycc/.cache /home/mycc/.config/xfce4 /usr/share/xfce4/helpers /opt/mycc/bin \
+  && mkdir -p /home/mycc/workspace /home/mycc/.claude /home/mycc/.cache /home/mycc/.config/xfce4 /usr/share/xfce4/helpers /opt/mycc/bin \
   && printf '%s\\n' \
     '[Desktop Entry]' \
     'Type=Application' \
@@ -134,10 +134,7 @@ RUN useradd -m -s /bin/bash mycc \
   && update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/local/bin/mycc-browser 100 \
   && update-alternatives --set x-www-browser /usr/local/bin/mycc-browser \
   && ln -sfn /ms-playwright /home/mycc/.cache/ms-playwright \
-  && cp -R /opt/mycc/skills /home/mycc/.mycc/skills \
   && cp -R /opt/mycc/skills /home/mycc/.claude/skills \
-  && cp -R /opt/mycc/skills /home/mycc/.mycc/claude/skills \
-  && ln -sfn /home/mycc/.mycc/claude/skills /home/mycc/.mycc/home/.claude/skills \
   && chmod +x \
     /opt/mycc/contracts/template-contract.sh \
     /usr/local/bin/mycc-start-code-server \
