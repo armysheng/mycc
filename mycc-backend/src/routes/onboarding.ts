@@ -107,7 +107,7 @@ export function buildBootstrapPrompt(params: {
     `   - 若 ${workspaceDir}/CLAUDE.md 中仍存在 ${CLAUDE_BOOTSTRAP_SENTINEL}，初始化成功后删除这一行；若未完成则保留。`,
     `   - 若 ${claudeHomeDir}/CLAUDE.md 中仍存在 ${CLAUDE_BOOTSTRAP_SENTINEL}，初始化成功后删除这一行；若未完成则保留。`,
     `   - 若 ${legacyGlobalMemoryPath} 存在：将“助手名称/对用户称呼/交互角色设定”同步为与 ~/.claude/about-me 一致。`,
-    '   - 清理别名或旧称呼（如“小花”“大辉哥”等）带来的同字段多真值。',
+    '   - 清理别名或旧称呼（如“旧助手名”“旧昵称”等）带来的同字段多真值。',
     '5. 初始化完成后，把 ~/.claude/about-me/BOOTSTRAP.md 归档到 ~/.claude/archive/bootstrap/，不要保留在原位置。',
     '',
     '输出要求：最后用简洁中文汇报“已完成初始化”，并列出你实际修改的文件路径与“冲突对齐结果”。',
