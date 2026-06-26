@@ -28,6 +28,14 @@ const BASE_URL_ENV_KEYS = [
   'VPS_ANTHROPIC_BASE_URL',
 ];
 
+const AGENT_SDK_BASE_URL_ENV_KEYS = [
+  'MYCC_AGENT_SDK_BASE_URL',
+  'MYCC_CLAUDE_BASE_URL',
+  'MYCC_CCR_BASE_URL',
+  'ANTHROPIC_BASE_URL',
+  'VPS_ANTHROPIC_BASE_URL',
+];
+
 const CREDENTIAL_ENV_KEYS: ClaudeCredentialEnv[] = [
   { source: 'MYCC_CLAUDE_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
   { source: 'MYCC_CLAUDE_API_KEY', target: 'ANTHROPIC_API_KEY' },
@@ -35,6 +43,18 @@ const CREDENTIAL_ENV_KEYS: ClaudeCredentialEnv[] = [
   { source: 'MYCC_CCR_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'MYCC_AGENT_SDK_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
   { source: 'MYCC_AGENT_SDK_API_KEY', target: 'ANTHROPIC_API_KEY' },
+  { source: 'ANTHROPIC_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+  { source: 'ANTHROPIC_API_KEY', target: 'ANTHROPIC_API_KEY' },
+  { source: 'VPS_ANTHROPIC_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+];
+
+const AGENT_SDK_CREDENTIAL_ENV_KEYS: ClaudeCredentialEnv[] = [
+  { source: 'MYCC_AGENT_SDK_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+  { source: 'MYCC_AGENT_SDK_API_KEY', target: 'ANTHROPIC_API_KEY' },
+  { source: 'MYCC_CLAUDE_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+  { source: 'MYCC_CLAUDE_API_KEY', target: 'ANTHROPIC_API_KEY' },
+  { source: 'MYCC_CCR_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
+  { source: 'MYCC_CCR_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'ANTHROPIC_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
   { source: 'ANTHROPIC_API_KEY', target: 'ANTHROPIC_API_KEY' },
   { source: 'VPS_ANTHROPIC_AUTH_TOKEN', target: 'ANTHROPIC_AUTH_TOKEN' },
@@ -53,6 +73,16 @@ export function resolveClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): 
 
   return {
     ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl.value } : {}),
+    ...(credential ? { [credential.target]: credential.value } : {}),
+  };
+}
+
+export function resolveAgentSdkClaudeProviderEnv(env: NodeJS.ProcessEnv = process.env): ClaudeProviderEnv {
+  const baseUrl = pickFirstEnvEntry(env, AGENT_SDK_BASE_URL_ENV_KEYS);
+  const credential = pickFirstCredentialEnv(env, AGENT_SDK_CREDENTIAL_ENV_KEYS);
+
+  return {
+    ...(baseUrl ? { ANTHROPIC_BASE_URL: normalizeAgentSdkBaseUrl(baseUrl.value) } : {}),
     ...(credential ? { [credential.target]: credential.value } : {}),
   };
 }
@@ -95,14 +125,19 @@ function pickFirstEnvEntry(
 
 function pickFirstCredentialEnv(
   env: NodeJS.ProcessEnv,
+  credentials: ClaudeCredentialEnv[] = CREDENTIAL_ENV_KEYS,
 ): { source: string; target: ClaudeCredentialEnv['target']; value: string } | undefined {
-  for (const credential of CREDENTIAL_ENV_KEYS) {
+  for (const credential of credentials) {
     const value = env[credential.source]?.trim();
     if (value) {
       return { source: credential.source, target: credential.target, value };
     }
   }
   return undefined;
+}
+
+function normalizeAgentSdkBaseUrl(value: string): string {
+  return value.replace(/\/v1\/?$/i, '');
 }
 
 function classifyProvider(

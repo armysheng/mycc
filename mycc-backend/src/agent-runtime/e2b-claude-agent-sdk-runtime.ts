@@ -7,7 +7,7 @@ import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } 
 import { sanitizeLinuxUsername } from '../utils/validation.js';
 import { parseAgentRunnerEventLine } from './agent-runner-events.js';
 import { buildClaudeAgentRunnerRequest, parseCommaSeparatedList } from './agent-runner-request.js';
-import { resolveClaudeProviderEnv } from './claude-env.js';
+import { resolveAgentSdkClaudeProviderEnv } from './claude-env.js';
 import { DEFAULT_CLAUDE_MODEL, normalizeClaudeModelId } from './claude-model.js';
 import { resolveSandboxTaskCwd, resolveSandboxWorkspaceRoot } from './e2b-workspace-paths.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
@@ -165,15 +165,16 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         await this.markSessionStoppedIfStale(session, error);
         pushEvent({
           type: 'error',
-          error,
+          error: toPublicAgentSdkError(error),
         });
       }
     }).catch(async (error) => {
       if (params.signal?.aborted) return;
       await this.markSessionStoppedIfStale(session, error);
+      const message = error instanceof Error ? error.message : String(error);
       pushEvent({
         type: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        error: toPublicAgentSdkError(message),
       });
     }).finally(() => {
       finished = true;
@@ -334,7 +335,7 @@ function buildAgentSdkBridgeEnv(
     MYCC_AGENT_REQUEST_FILE: requestFile,
     XDG_CONFIG_HOME: `${home}/.config`,
     XDG_DATA_HOME: `${home}/.local/share`,
-    ...resolveClaudeProviderEnv(),
+    ...resolveAgentSdkClaudeProviderEnv(),
   };
 }
 
@@ -385,4 +386,15 @@ function resolveCommandTimeoutMs(): number {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function toPublicAgentSdkError(error: string): string {
+  if (isLowLevelAgentSdkError(error)) {
+    return '这次操作没有跑通。可以直接重试，或让我换个方式继续。';
+  }
+  return error;
+}
+
+function isLowLevelAgentSdkError(error: string): boolean {
+  return /Agent SDK bridge failed|selected model|may not exist|no access|--model|ANTHROPIC_BASE_URL|\/v1\/messages|bridge\.mjs|\/opt\/mycc-agent-runtime|exit code \d+/i.test(error);
 }
