@@ -2,15 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
-  BeakerIcon,
   BoltIcon,
   ChartBarIcon,
   CheckCircleIcon,
-  ClipboardDocumentIcon,
   CloudArrowDownIcon,
   CodeBracketIcon,
   DocumentTextIcon,
-  FolderIcon,
   MagnifyingGlassIcon,
   PlayIcon,
   PuzzlePieceIcon,
@@ -47,7 +44,6 @@ const CATEGORY_OPTIONS = [
   { key: "document", label: "文档", icon: DocumentTextIcon },
   { key: "data", label: "数据", icon: ChartBarIcon },
   { key: "develop", label: "开发", icon: CodeBracketIcon },
-  { key: "debug", label: "调试", icon: BeakerIcon },
 ] as const;
 
 type CategoryKey = (typeof CATEGORY_OPTIONS)[number]["key"];
@@ -64,13 +60,12 @@ const DETAIL_TABS: Array<{ key: DetailTabKey; label: string }> = [
   { key: "usage", label: "使用指引" },
   { key: "examples", label: "示例场景" },
   { key: "prompts", label: "快捷提示词" },
-  { key: "content", label: "技能内容" },
-  { key: "permissions", label: "权限管理" },
+  { key: "content", label: "能力说明" },
+  { key: "permissions", label: "使用要求" },
   { key: "versions", label: "版本信息" },
 ];
 
-const SHOW_SKILLS_DEBUG =
-  import.meta.env.DEV || import.meta.env.VITE_MYCC_SHOW_SKILLS_DEBUG === "true";
+const SHOW_SKILLS_DEBUG = import.meta.env.DEV;
 
 type SkillActionMessage = {
   text: string;
@@ -121,9 +116,8 @@ function skillCategory(skill: SkillItem): CategoryKey {
     return "document";
   if (/(data|csv|table|sheet|chart|数据|表格|可视化|分析)/i.test(text))
     return "data";
-  if (/(code|dev|cli|api|开发|代码|运行|解释器|creator|installer)/i.test(text))
+  if (/(code|dev|cli|api|debug|test|qa|开发|代码|运行|解释器|检查|诊断|creator|installer)/i.test(text))
     return "develop";
-  if (/(debug|test|qa|调试|测试|诊断)/i.test(text)) return "debug";
   return "all";
 }
 
@@ -197,16 +191,28 @@ function formatDate(value: string | undefined) {
   return date.toISOString().slice(0, 10);
 }
 
-function formatRisk(value: "low" | "medium" | "high" | undefined) {
-  if (value === "high") return "高";
-  if (value === "medium") return "中";
-  return "低";
-}
-
 function skillRuntimeLabel(skill: SkillItem) {
-  if (skill.preloadInImage) return "镜像预置";
+  if (skill.preloadInImage) return "已预置";
   if (skill.imageRequired) return "专用环境";
   return "标准技能";
+}
+
+function skillDependencyLabel(skill: SkillItem, detail: SkillDetailResult | null) {
+  if (skill.imageRequired) return "需要专用能力支持";
+  if (detail?.definition?.deps?.length) return "已内置所需工具";
+  return "无需额外准备";
+}
+
+function skillScopeLabel(riskLevel: "low" | "medium" | "high" | undefined) {
+  if (riskLevel === "high") return "包含高影响操作";
+  if (riskLevel === "medium") return "可能操作项目文件或网页";
+  return "常规辅助任务";
+}
+
+function skillValidationLabel(detail: SkillDetailResult | null) {
+  const verifiedAt = formatDate(detail?.definition?.lastVerifiedAt);
+  if (verifiedAt !== "-") return `${verifiedAt} 已完成检查`;
+  return "已完成基础检查";
 }
 
 function skillLibraryRoot() {
@@ -248,19 +254,6 @@ function skillLabels(skill: SkillItem) {
   ].filter(Boolean) as string[];
 }
 
-function skillFileTree(detail: SkillDetailResult | null, skill: SkillItem) {
-  const rawPath =
-    detail?.contentPreview.path || `${skill.assistantSkillName || skill.id}/SKILL.md`;
-  const marker = "/.claude/skills/";
-  const markerIndex = rawPath.indexOf(marker);
-  const path =
-    markerIndex >= 0 ? rawPath.slice(markerIndex + marker.length) : rawPath;
-  const parts = path.split("/").filter(Boolean);
-  const root = parts[0] || skill.assistantSkillName || skill.id;
-  const file = parts[parts.length - 1] || "SKILL.md";
-  return { path, root, file };
-}
-
 function skillUsageExamples(skill: SkillItem) {
   const description = skillDisplayDescription(skill) || skillDisplayName(skill);
   return visibleTriggers(skill)
@@ -290,7 +283,7 @@ function skillOutcome(skill: SkillItem) {
     return "分析表格数据，生成摘要、图表和趋势判断";
   }
   if (category === "develop") {
-    return "处理开发、调试、脚本和工具配置任务";
+    return "处理开发、检查、脚本和工具配置任务";
   }
   return skillDisplayDescription(skill) || `调用 ${displayName} 处理专项任务`;
 }
@@ -815,53 +808,37 @@ function SkillDetailTabContent({
 }) {
   const triggers = visibleTriggers(skill);
   const examples = skillUsageExamples(skill);
-  const tree = skillFileTree(detail, skill);
-  const content = detail?.contentPreview.content || "正在加载技能内容...";
   const description = skillDisplayDescription(skill);
 
   if (activeTab === "content") {
     return (
-      <div className="grid min-h-[420px] gap-0 lg:grid-cols-[260px_1fr]">
-        <aside className="border-b bg-[var(--bg-elevated)]/45 p-4 lg:border-b-0 lg:border-r">
-          <div className="mb-3 text-xs font-semibold text-[var(--text-muted)]">
-            技能目录
+      <div className="grid gap-4 p-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-md border bg-[var(--bg-page)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+            能力概览
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            {skillOutcome(skill)}
+          </p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            {description || "暂无更多说明"}
+          </p>
+        </section>
+        <section className="rounded-md border bg-[var(--bg-page)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+            适合场景
+          </h3>
+          <div className="mt-3 space-y-2">
+            {examples.slice(0, 3).map((example) => (
+              <p
+                key={example}
+                className="rounded-md bg-[var(--bg-elevated)] p-3 text-sm leading-6 text-[var(--text-secondary)]"
+              >
+                {example}
+              </p>
+            ))}
           </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
-              <FolderIcon className="h-4 w-4 text-amber-500" />
-              <span className="truncate">{tree.root}</span>
-            </div>
-            <div className="ml-4 flex items-center gap-2 rounded-md bg-[var(--bg-page)] px-2.5 py-2 font-medium text-[var(--accent)]">
-              <DocumentTextIcon className="h-4 w-4" />
-              <span className="truncate">{tree.file}</span>
-            </div>
-          </div>
-        </aside>
-        <div className="min-w-0">
-          <div className="flex items-center justify-between gap-3 border-b bg-[var(--bg-elevated)]/35 px-4 py-2.5 text-xs">
-            <span className="min-w-0 truncate font-medium text-[var(--text-secondary)]">
-              {tree.path}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(content);
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-            >
-              <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-              复制
-            </button>
-          </div>
-          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
-            当前预览技能源文件；添加后会进入{PRODUCT_COPY.assistantSkillLibrary}
-            。
-            {detail?.contentPreview.truncated ? " 内容较长，已截断预览。" : ""}
-          </div>
-          <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6 text-[var(--text-secondary)]">
-            {content}
-          </pre>
-        </div>
+        </section>
       </div>
     );
   }
@@ -982,29 +959,25 @@ function SkillDetailTabContent({
     return (
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <DetailMetaItem
-          label="运行依赖"
-          value={
-            detail?.definition?.deps?.length
-              ? detail.definition.deps.join(", ")
-              : "无特殊依赖"
-          }
+          label="使用条件"
+          value={skillDependencyLabel(skill, detail)}
         />
         <DetailMetaItem
-          label="风险等级"
-          value={formatRisk(detail?.definition?.riskLevel)}
+          label="操作范围"
+          value={skillScopeLabel(detail?.definition?.riskLevel)}
         />
         <DetailMetaItem
-          label="默认启用"
+          label="默认状态"
           value={detail?.definition?.defaultEnabled ? "是" : "否"}
         />
         <DetailMetaItem
-          label="运行环境"
+          label="能力准备"
           value={skillRuntimeLabel(skill)}
         />
         <DetailMetaItem label="来源" value={sourceLabel(skill.source)} />
         <DetailMetaItem
-          label="验证"
-          value={detail?.definition?.validationNote || "暂无验证说明"}
+          label="检查状态"
+          value={skillValidationLabel(detail)}
         />
       </div>
     );
@@ -1344,7 +1317,7 @@ export function SkillsPage() {
       const snapshot = await getSkillDebugSnapshot(token);
       setDebugSnapshot(snapshot);
     } catch (e) {
-      setDebugError(e instanceof Error ? e.message : "获取技能调试信息失败");
+      setDebugError(e instanceof Error ? e.message : "获取技能诊断信息失败");
     } finally {
       setDebugLoading(false);
     }
@@ -1462,7 +1435,7 @@ export function SkillsPage() {
                   className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-[var(--shadow-sm)] hover:bg-[var(--bg-hover)]"
                 >
                   <WrenchScrewdriverIcon className="h-4 w-4" />
-                  技能调试
+                  技能诊断
                 </button>
               )}
               <button
@@ -1676,7 +1649,7 @@ export function SkillsPage() {
             <section className="rounded-lg border panel-surface p-4 shadow-[var(--shadow-sm)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold">技能调试中心</h2>
+                  <h2 className="text-lg font-semibold">技能诊断</h2>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
                     查看 catalog、添加状态、版本、触发词和统计状态
                   </p>
@@ -1690,7 +1663,7 @@ export function SkillsPage() {
                   <ArrowPathIcon
                     className={`h-4 w-4 ${debugLoading ? "animate-spin" : ""}`}
                   />
-                  {debugLoading ? "刷新中..." : "刷新调试"}
+                  {debugLoading ? "刷新中..." : "刷新诊断"}
                 </button>
               </div>
 

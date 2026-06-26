@@ -1,7 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createUser, findUserByCredential, getSubscription } from '../db/client.js';
+import bcrypt from 'bcrypt';
+import {
+  createUser,
+  findUserByCredential,
+  findUserById,
+  getSubscription,
+  updateUserProfile,
+} from '../db/client.js';
 import { vpsUserManager } from '../vps/user-manager.js';
-import { register, requireSafeJwtSecret } from './service.js';
+import {
+  getCurrentUser,
+  login,
+  register,
+  requireSafeJwtSecret,
+  updateCurrentUserProfile,
+} from './service.js';
 
 vi.mock('../db/client.js', () => ({
   createUser: vi.fn(),
@@ -19,6 +32,7 @@ vi.mock('../vps/user-manager.js', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(vpsUserManager.createUser).mockResolvedValue(undefined);
   delete process.env.MYCC_AGENT_RUNTIME;
   delete process.env.MYCC_IDE_PROVIDER;
   delete process.env.MYCC_WORKSPACE_PROVIDER;
@@ -89,5 +103,88 @@ describe('register runtime side effects', () => {
     });
 
     expect(vpsUserManager.createUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('public auth responses', () => {
+  const userRecord = {
+    id: 42,
+    phone: '+8613800138000',
+    email: 'tester@example.com',
+    password_hash: '$2b$10$012345678901234567890uMT6wdtPVwV0pBYg98qgkW4tHsCPjBZK',
+    assistant_name: 'cc',
+    linux_user: 'mycc_u42',
+    status: 'active',
+    is_initialized: true,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+  const subscription = {
+    id: 1,
+    user_id: 42,
+    plan: 'free' as const,
+    tokens_limit: 300000,
+    tokens_used: 1000,
+    reset_at: new Date('2026-07-01T00:00:00.000Z'),
+    expires_at: undefined,
+    created_at: new Date(),
+  };
+
+  beforeEach(() => {
+    vi.mocked(getSubscription).mockResolvedValue(subscription);
+  });
+
+  it('does not expose linux_user after registration', async () => {
+    vi.mocked(findUserByCredential).mockResolvedValue(null);
+    vi.mocked(createUser).mockResolvedValue(userRecord);
+
+    const result = await register({
+      email: 'tester@example.com',
+      password: 'test123456',
+    });
+
+    expect(result.user).not.toHaveProperty('linux_user');
+    expect(result.user).toMatchObject({
+      id: 42,
+      email: 'tester@example.com',
+      plan: 'free',
+      is_initialized: true,
+    });
+  });
+
+  it('does not expose linux_user after login', async () => {
+    const password_hash = await bcrypt.hash('test123456', 10);
+    vi.mocked(findUserByCredential).mockResolvedValue({
+      ...userRecord,
+      password_hash,
+    });
+
+    const result = await login({
+      credential: 'tester@example.com',
+      password: 'test123456',
+    });
+
+    expect(result.user).not.toHaveProperty('linux_user');
+    expect(result.user.email).toBe('tester@example.com');
+  });
+
+  it('does not expose linux_user from current-user and profile responses', async () => {
+    vi.mocked(findUserById).mockResolvedValue(userRecord);
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...userRecord,
+      assistant_name: '小麦',
+    });
+
+    const currentUser = await getCurrentUser(42);
+    const updatedUser = await updateCurrentUserProfile(42, {
+      assistantName: '小麦',
+    });
+
+    expect(currentUser).not.toHaveProperty('linux_user');
+    expect(updatedUser).not.toHaveProperty('linux_user');
+    expect(currentUser.subscription).toMatchObject({
+      tokens_remaining: 299000,
+    });
+    expect(updatedUser.assistant_name).toBe('小麦');
   });
 });

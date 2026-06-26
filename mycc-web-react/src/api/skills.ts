@@ -246,5 +246,5 @@ export async function getSkillDebugSnapshot(
   const response = await fetch(getSkillsDebugUrl(), {
     headers: getAuthHeaders(token),
   });
-  return parseJsonOrThrow<SkillDebugSnapshot>(response, "获取技能调试信息失败");
+  return parseJsonOrThrow<SkillDebugSnapshot>(response, "获取技能诊断信息失败");
 }

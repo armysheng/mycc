@@ -36,7 +36,8 @@ vi.mock("../contexts/AuthContext", () => ({
       assistant_name: "cc",
       email: "tester@example.com",
       id: 7,
-      linux_user: "tester",
+      plan: "free",
+      is_initialized: true,
     },
   }),
 }));

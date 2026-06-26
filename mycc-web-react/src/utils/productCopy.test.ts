@@ -32,4 +32,12 @@ describe("product copy helpers", () => {
       ),
     ).toBe("技能添加器可以在 MyCC 右侧助理浏览器里添加社区技能。");
   });
+
+  it("maps low-level runtime terms out of skill copy", () => {
+    expect(
+      toUserFacingSkillCopy(
+        "E2B Sandbox uses Agent SDK, code-server, GNU desktop, traffic tokens and provider sessions.",
+      ),
+    ).not.toMatch(/E2B|Sandbox|Agent SDK|code-server|GNU|traffic|tokens|provider|sessions/i);
+  });
 });

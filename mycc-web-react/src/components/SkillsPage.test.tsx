@@ -20,7 +20,6 @@ vi.mock("../contexts/AuthContext", () => ({
     user: {
       id: 1,
       email: "admin@example.com",
-      linux_user: "qa",
       plan: "pro",
       is_initialized: true,
     },
@@ -211,7 +210,7 @@ describe("SkillsPage", () => {
     });
   });
 
-  it("opens a skill debug center from the skills page", async () => {
+  it("opens a skill diagnostics center from the skills page in development", async () => {
     render(
       <MemoryRouter>
         <SkillsPage />
@@ -222,12 +221,14 @@ describe("SkillsPage", () => {
       (await screen.findAllByText("可见浏览器自动化")).length,
     ).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "技能调试" }));
+    fireEvent.click(screen.getByRole("button", { name: "技能诊断" }));
 
     await waitFor(() =>
       expect(getSkillDebugSnapshot).toHaveBeenCalledWith("token-1"),
     );
-    expect(await screen.findByText("技能调试中心")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "技能诊断" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Catalog 可用")).toBeInTheDocument();
     expect(screen.getByText("已启用 1")).toBeInTheDocument();
     expect(screen.getByText("可更新 0")).toBeInTheDocument();
@@ -445,7 +446,7 @@ describe("SkillsPage", () => {
     await waitFor(() => expect(useSkill).toHaveBeenCalledWith("token-1", "pdf"));
   });
 
-  it("opens a reference-style skill detail page with tabs and content preview", async () => {
+  it("opens a product-facing skill detail page without raw runtime content", async () => {
     render(
       <MemoryRouter>
         <SkillsPage />
@@ -471,12 +472,16 @@ describe("SkillsPage", () => {
     expect(screen.getByText("助理技能库/browser-use")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("/home/qa");
     expect(
-      screen.getByRole("button", { name: "技能内容" }),
+      screen.getByRole("button", { name: "能力说明" }),
     ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Browser Use In MyCC Sandbox");
 
-    fireEvent.click(screen.getByRole("button", { name: "权限管理" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用要求" }));
 
-    expect(screen.getByText("运行依赖")).toBeInTheDocument();
-    expect(screen.getByText("playwright, chromium")).toBeInTheDocument();
+    expect(screen.getByText("使用条件")).toBeInTheDocument();
+    expect(screen.getByText("需要专用能力支持")).toBeInTheDocument();
+    expect(screen.getByText("检查状态")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("playwright, chromium");
+    expect(document.body.textContent).not.toContain("可见浏览器运行方式已验证");
   });
 });
