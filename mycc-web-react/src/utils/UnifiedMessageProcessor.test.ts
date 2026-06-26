@@ -4,7 +4,7 @@ import { convertConversationHistory } from "./messageConversion";
 import type { AllMessage, ChatMessage, TimestampedSDKMessage } from "../types";
 
 const verboseSkillText = [
-  "Base directory for this skill: /home/mycc/.mycc/claude/skills/browser-use",
+  "Base directory for this skill: /home/mycc/.claude/skills/browser-use",
   "",
   "# Browser Use In MyCC Sandbox",
   "",

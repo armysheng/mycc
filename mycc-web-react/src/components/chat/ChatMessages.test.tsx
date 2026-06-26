@@ -142,6 +142,23 @@ describe("ChatMessages conversation actions", () => {
     ).toBeInTheDocument();
   });
 
+  it("filters internal API retry telemetry out of the visible message list", () => {
+    const { container } = renderMessages([
+      {
+        type: "system",
+        subtype: "api_retry",
+        attempt: 2,
+        delay_ms: 1000,
+        timestamp: 1710000000100,
+      } as unknown as AllMessage,
+    ]);
+
+    expect(screen.getByText("今天要 cc 帮你做什么？")).toBeInTheDocument();
+    expect(container).not.toHaveTextContent("处理动态");
+    expect(container).not.toHaveTextContent("api_retry");
+    expect(container).not.toHaveTextContent('"type"');
+  });
+
   it("turns browser skill activity into product language", () => {
     renderMessages(
       [

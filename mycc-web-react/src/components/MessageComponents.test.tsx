@@ -46,11 +46,28 @@ describe("MessageComponents productized system copy", () => {
     expect(screen.queryByText("运行记录")).not.toBeInTheDocument();
   });
 
+  it("hides internal API retry telemetry from the chat surface", () => {
+    const message = {
+      type: "system",
+      subtype: "api_retry",
+      attempt: 2,
+      delay_ms: 1000,
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toHaveTextContent("处理动态");
+    expect(container).not.toHaveTextContent("api_retry");
+    expect(container).not.toHaveTextContent('"type"');
+  });
+
   it("collapses verbose skill runtime details until expanded", () => {
     const message = {
       type: "system",
       content: [
-        "Base directory for this skill: /home/mycc/.mycc/claude/skills/browser-use",
+        "Base directory for this skill: /home/mycc/.claude/skills/browser-use",
         "",
         "# Browser Use In MyCC Sandbox",
         "",
@@ -62,7 +79,9 @@ describe("MessageComponents productized system copy", () => {
 
     const { container } = render(<SystemMessageComponent message={message} />);
 
-    expect(screen.getByRole("button", { name: /处理动态/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /处理动态/ }),
+    ).toBeInTheDocument();
     expect(container).not.toHaveTextContent("Base directory for this skill");
     expect(container).not.toHaveTextContent("Browser Use In MyCC Sandbox");
 
@@ -159,7 +178,7 @@ describe("MessageComponents productized system copy", () => {
     expect(screen.getByText("已暂停")).toBeInTheDocument();
     expect(container).toHaveTextContent("补充说明后继续");
     expect(container).toHaveTextContent("重新尝试");
-    expect(container).toHaveTextContent("右侧工作区");
+    expect(container).toHaveTextContent("成果空间");
     expect(container).not.toHaveTextContent(forbiddenVisibleWords);
     expect(container).not.toHaveTextContent(/abort|requestId|SSE|runtime/i);
   });

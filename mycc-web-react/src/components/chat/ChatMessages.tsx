@@ -8,6 +8,7 @@ import {
   isPlanMessage,
   isThinkingMessage,
   isTodoMessage,
+  isInternalSystemTelemetryMessage,
 } from "../../types";
 import {
   ChatMessageComponent,
@@ -127,6 +128,7 @@ export function ChatMessages({
         (message) => !isToolMessage(message) && !isToolResultMessage(message),
       )).filter(
         (message) =>
+          !isInternalSystemTelemetryMessage(message) &&
           !(isLoading && (isToolMessage(message) || isToolResultMessage(message))),
       );
   const displayItems = buildDisplayItems(visibleMessages);

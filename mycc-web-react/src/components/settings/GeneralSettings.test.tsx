@@ -84,5 +84,9 @@ describe("GeneralSettings", () => {
     });
 
     expect(screen.queryByText(/\btokens?\b/i)).not.toBeInTheDocument();
+    expect(screen.getByText("tester@example.com")).toBeInTheDocument();
+    expect(screen.getByText("助手：小麦")).toBeInTheDocument();
+    expect(screen.queryByText("tester")).not.toBeInTheDocument();
+    expect(screen.queryByText("local-user")).not.toBeInTheDocument();
   });
 });

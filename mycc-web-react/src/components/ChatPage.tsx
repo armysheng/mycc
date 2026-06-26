@@ -23,6 +23,7 @@ import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { useSettings } from "../hooks/useSettings";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import {
@@ -48,10 +49,11 @@ import {
 } from "../utils/apiError";
 import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardingBootstrapState";
 import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
+import { PRODUCT_COPY, toProjectSpaceLabel } from "../utils/productCopy";
 
 const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKSPACE_REQUEST_PATH = "~/workspace";
-const DEFAULT_WORKSPACE_LABEL = "默认工作区";
+const DEFAULT_WORKSPACE_LABEL = PRODUCT_COPY.defaultProjectSpace;
 
 type ChatSendPayload = {
   content: string;
@@ -61,24 +63,51 @@ type ChatSendPayload = {
   displayMessage?: string;
   images?: ChatImageAttachment[];
   showQueueNotice?: boolean;
+  queuePreview?: string;
 };
 
-function countVisibleQueuedMessages(queue: ChatSendPayload[]): number {
-  return queue.filter((payload) => payload.showQueueNotice).length;
+function getVisibleQueuedMessagePreviews(queue: ChatSendPayload[]): string[] {
+  return queue
+    .filter(
+      (payload) => payload.showQueueNotice && payload.queuePreview?.trim(),
+    )
+    .map((payload) => payload.queuePreview as string);
 }
 
-function formatWorkspaceDisplayLabel(workspacePath?: string): string | undefined {
+function formatWorkspaceDisplayLabel(
+  workspacePath?: string,
+): string | undefined {
   if (!workspacePath) return undefined;
   const normalized = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
   const parts = normalized.split("/").filter(Boolean);
   const name = parts[parts.length - 1];
-  return name || DEFAULT_WORKSPACE_LABEL;
+  return toProjectSpaceLabel(name || DEFAULT_WORKSPACE_LABEL);
+}
+
+function useIsDesktopViewport() {
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.innerWidth >= 1024;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const update = () => setIsDesktopViewport(window.innerWidth >= 1024);
+    update();
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return isDesktopViewport;
 }
 
 export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isDesktopViewport = useIsDesktopViewport();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { sidebarDefaultOpen } = useSettings();
   // 运行时状态：用户可随时 toggle，不写回设置
@@ -87,7 +116,7 @@ export function ChatPage() {
   const [isWorkbenchDockOpen, setIsWorkbenchDockOpen] = useState(false);
   const [hasWorkbenchDockMounted, setHasWorkbenchDockMounted] = useState(false);
   const [workbenchDockTab, setWorkbenchDockTab] =
-    useState<WorkbenchTab>("activity");
+    useState<WorkbenchTab>("browser");
   const [workbenchDockRequestId, setWorkbenchDockRequestId] = useState(0);
   const [
     workbenchBrowserAutoOpenRequestId,
@@ -114,12 +143,16 @@ export function ChatPage() {
   const [assistantHomeError, setAssistantHomeError] = useState<string | null>(
     null,
   );
+  const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
   const { token, user, refreshUser } = useAuth();
   const onboardingBootstrapStartedRef = useRef(false);
 
-  const assistantDisplayName = user?.assistant_name?.trim() || "cc";
-  const assistantAvatarText = assistantDisplayName.trim().slice(0, 2) || "cc";
+  const assistantDisplayName =
+    user?.assistant_name?.trim() || PRODUCT_COPY.assistantNameFallback;
+  const assistantAvatarText =
+    assistantDisplayName.trim().slice(0, 2) ||
+    PRODUCT_COPY.assistantNameFallback;
 
   // Extract and normalize project directory from URL.
   const routeWorkingDirectory = (() => {
@@ -135,7 +168,8 @@ export function ChatPage() {
   const requestWorkingDirectory =
     routeWorkingDirectory ?? DEFAULT_WORKSPACE_REQUEST_PATH;
   const workspaceDisplayLabel =
-    formatWorkspaceDisplayLabel(routeWorkingDirectory) ?? DEFAULT_WORKSPACE_LABEL;
+    formatWorkspaceDisplayLabel(routeWorkingDirectory) ??
+    DEFAULT_WORKSPACE_LABEL;
   const workspaceHeadlineName = routeWorkingDirectory
     ? workspaceDisplayLabel
     : undefined;
@@ -186,7 +220,9 @@ export function ChatPage() {
     initialMessages: historyMessages,
     initialSessionId: loadedSessionId || undefined,
   });
-  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+  const [queuedMessagePreviews, setQueuedMessagePreviews] = useState<string[]>(
+    [],
+  );
   const queuedMessagesRef = useRef<ChatSendPayload[]>([]);
   const isRequestActiveRef = useRef(isLoading);
   const activeRequestIdRef = useRef<string | null>(currentRequestId);
@@ -245,6 +281,18 @@ export function ChatPage() {
   useEffect(() => {
     requestWorkingDirectoryRef.current = requestWorkingDirectory;
   }, [requestWorkingDirectory]);
+
+  useEffect(() => {
+    if (isWorkbenchDockOpen) {
+      setIsDesktopSidebarVisible(false);
+      setIsMobileSidebarOpen(false);
+      return;
+    }
+
+    if (hasWorkbenchDockMounted) {
+      setIsDesktopSidebarVisible(true);
+    }
+  }, [hasWorkbenchDockMounted, isWorkbenchDockOpen]);
 
   const handlePermissionError = useCallback(
     (toolName: string, patterns: string[], toolUseId: string) => {
@@ -319,8 +367,9 @@ export function ChatPage() {
   );
 
   const handleStreamWorkbenchOpen = useCallback(
-    (tab: WorkbenchTab) => {
-      openWorkbenchDock(tab, { autoStartBrowser: tab === "browser" });
+    (tab: WorkbenchTab | "preview") => {
+      const nextTab = tab === "preview" ? "files" : tab;
+      openWorkbenchDock(nextTab, { autoStartBrowser: nextTab === "browser" });
     },
     [openWorkbenchDock],
   );
@@ -526,7 +575,9 @@ export function ChatPage() {
   const drainQueuedMessage = useCallback(() => {
     if (isRequestActiveRef.current) return;
     const nextPayload = queuedMessagesRef.current.shift();
-    setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+    setQueuedMessagePreviews(
+      getVisibleQueuedMessagePreviews(queuedMessagesRef.current),
+    );
     if (!nextPayload) return;
     void runMessage(nextPayload);
   }, [runMessage]);
@@ -571,8 +622,13 @@ export function ChatPage() {
           ...payload,
           hideUserMessage: true,
           showQueueNotice: !hideUserMessage,
+          queuePreview: !hideUserMessage
+            ? displayMessage || content
+            : undefined,
         });
-        setQueuedMessageCount(countVisibleQueuedMessages(queuedMessagesRef.current));
+        setQueuedMessagePreviews(
+          getVisibleQueuedMessagePreviews(queuedMessagesRef.current),
+        );
         return;
       }
 
@@ -617,7 +673,13 @@ export function ChatPage() {
         }
       }
     })();
-  }, [abortRequest, currentRequestId, isLoading, addMessage, resetRequestState]);
+  }, [
+    abortRequest,
+    currentRequestId,
+    isLoading,
+    addMessage,
+    resetRequestState,
+  ]);
 
   // Permission request handlers
   const handlePermissionAllow = useCallback(() => {
@@ -803,14 +865,13 @@ export function ChatPage() {
     navigate({ search: "" });
   }, [navigate]);
 
-  const handleClearChat = useCallback(() => {
-    if (!window.confirm("确定清空当前会话？")) return;
+  const clearCurrentChat = useCallback(() => {
     // 先中断进行中的流式请求，防止清空后又冒出新消息
     if (isLoading && currentRequestId) {
       abortRequest(currentRequestId, isLoading, resetRequestState);
     }
     queuedMessagesRef.current = [];
-    setQueuedMessageCount(0);
+    setQueuedMessagePreviews([]);
     activeRequestIdRef.current = null;
     isRequestActiveRef.current = false;
     // 直接重置聊天 state，不依赖 URL 变化
@@ -836,6 +897,15 @@ export function ChatPage() {
     navigate,
   ]);
 
+  const handleClearChat = useCallback(() => {
+    setClearChatConfirmOpen(true);
+  }, []);
+
+  const confirmClearChat = useCallback(() => {
+    setClearChatConfirmOpen(false);
+    clearCurrentChat();
+  }, [clearCurrentChat]);
+
   const loadSlashSkills = useCallback(async () => {
     if (!token || slashSkillsFetchInFlightRef.current) {
       return;
@@ -860,6 +930,7 @@ export function ChatPage() {
             id: string;
             name: string;
             trigger?: string;
+            triggers?: string[];
             description?: string;
             installed?: boolean;
             enabled?: boolean;
@@ -870,6 +941,7 @@ export function ChatPage() {
               id: skill.id,
               name: skill.name || skill.id,
               trigger: skill.trigger || `/${skill.id}`,
+              triggers: skill.triggers,
               description: skill.description || "",
               installed: skill.installed,
               enabled: skill.enabled,
@@ -918,7 +990,7 @@ export function ChatPage() {
         slashSkillsLoaded={slashSkillsLoaded}
         slashSkillsLoading={slashSkillsLoading}
         onSlashRequestRefresh={loadSlashSkills}
-        queuedMessageCount={queuedMessageCount}
+        queuedMessages={queuedMessagePreviews}
         variant={variant}
         showPermissionModeControl={false}
         placeholder={
@@ -938,7 +1010,7 @@ export function ChatPage() {
       permissionData,
       permissionMode,
       planPermissionData,
-      queuedMessageCount,
+      queuedMessagePreviews,
       sendMessage,
       setInput,
       setPermissionMode,
@@ -1110,6 +1182,7 @@ export function ChatPage() {
     !historyLoading &&
     Boolean(historyError) &&
     historyErrorStatus !== 403;
+  const isMobileWorkbenchOverlay = isWorkbenchDockOpen && !isDesktopViewport;
 
   return (
     <div className="app-shell h-screen flex overflow-hidden">
@@ -1124,13 +1197,19 @@ export function ChatPage() {
       />
 
       <div className="flex-1 min-w-0 h-screen flex overflow-hidden">
-        <main className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col">
+        <main
+          className="flex-1 min-w-0 p-3 sm:p-6 h-screen flex flex-col"
+          aria-hidden={isMobileWorkbenchOverlay ? true : undefined}
+          data-mobile-workbench-overlay={
+            isMobileWorkbenchOverlay ? "hidden" : undefined
+          }
+        >
           {/* Header */}
           <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
             <div className="flex items-center gap-4 min-w-0">
               <button
                 onClick={() => {
-                  if (window.matchMedia("(min-width: 1024px)").matches) {
+                  if (isDesktopViewport) {
                     setIsDesktopSidebarVisible((v) => !v);
                   } else {
                     setIsMobileSidebarOpen(true);
@@ -1182,7 +1261,7 @@ export function ChatPage() {
                       className="text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-bold tracking-tight hover:text-[var(--accent)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1 truncate"
                       aria-label="Back to project selection"
                     >
-                      MyCC
+                      {PRODUCT_COPY.brandName}
                     </button>
                     {(isHistoryView || sessionId) && (
                       <>
@@ -1229,12 +1308,14 @@ export function ChatPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => openWorkbenchDock("activity")}
+                onClick={() => openWorkbenchDock("browser")}
                 className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                aria-label="打开工作台"
+                aria-label={`打开右侧${PRODUCT_COPY.resultsSpace}`}
               >
                 <ComputerDesktopIcon className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">工作台</span>
+                <span className="hidden sm:inline">
+                  {PRODUCT_COPY.resultsSpace}
+                </span>
               </button>
               {/* 移动端技能入口 */}
               <button
@@ -1367,8 +1448,9 @@ export function ChatPage() {
                     旧对话暂无可显示内容
                   </h2>
                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-6 mb-5">
-                    原记录不会被删除，只是这段旧对话的正文暂时没读出来。你可以直接继续提问，MyCC
-                    会从这里重新接上。
+                    原记录不会被删除，只是这段旧对话的正文暂时没读出来。你可以直接继续提问，
+                    {PRODUCT_COPY.brandName}
+                    会从这里接上。
                   </p>
                   <button
                     onClick={handleBackToHistory}
@@ -1418,14 +1500,22 @@ export function ChatPage() {
             isOpen={isSettingsOpen}
             onClose={handleSettingsClose}
           />
+
+          <ConfirmDialog
+            isOpen={clearChatConfirmOpen}
+            title="清空当前会话？"
+            description="当前页面里的消息、排队中的补充和正在生成的回复都会从界面中移除。"
+            confirmLabel="清空会话"
+            variant="destructive"
+            onConfirm={confirmClearChat}
+            onCancel={() => setClearChatConfirmOpen(false)}
+          />
         </main>
 
         <div
           className="shrink-0 max-lg:!w-0 lg:overflow-hidden lg:transition-[width] lg:duration-200 lg:ease-in-out"
           style={{
-            width: isWorkbenchDockOpen
-              ? "clamp(640px, 52vw, 880px)"
-              : "0px",
+            width: isWorkbenchDockOpen ? "clamp(640px, 52vw, 880px)" : "0px",
           }}
         >
           {hasWorkbenchDockMounted && (
@@ -1435,9 +1525,7 @@ export function ChatPage() {
               initialTab={workbenchDockTab}
               tabRequestId={workbenchDockRequestId}
               autoOpenBrowserRequestId={workbenchBrowserAutoOpenRequestId}
-              messages={messages}
               onClose={() => setIsWorkbenchDockOpen(false)}
-              onOpenWorkspaceFile={() => openWorkbenchDock("files")}
             />
           )}
         </div>

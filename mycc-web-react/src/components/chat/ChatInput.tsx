@@ -9,6 +9,7 @@ import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
 import { PlanPermissionInputPanel } from "./PlanPermissionInputPanel";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { ChatImageAttachment, PermissionMode } from "../../types";
 
 interface PermissionData {
@@ -65,11 +66,12 @@ interface ChatInputProps {
     id: string;
     name: string;
     trigger: string;
+    triggers?: string[];
     description?: string;
     installed?: boolean;
     enabled?: boolean;
   }>;
-  queuedMessageCount?: number;
+  queuedMessages?: string[];
   variant?: "default" | "hero";
   placeholder?: string;
   showPermissionModeControl?: boolean;
@@ -84,6 +86,15 @@ interface ComposerAttachment {
   image?: ChatImageAttachment;
   truncated?: boolean;
 }
+
+type PreparedSubmission =
+  | { type: "plain" }
+  | {
+      type: "withContext";
+      message: string;
+      displayMessage: string;
+      images?: ChatImageAttachment[];
+    };
 
 const permissionModeName: Record<PermissionMode, string> = {
   bypassPermissions: "自动执行",
@@ -111,7 +122,9 @@ function hasFileTransfer(dataTransfer: DataTransfer | null): boolean {
 }
 
 function isTextLikeFile(file: File): boolean {
-  return file.type.startsWith("text/") || TEXT_LIKE_FILE_PATTERN.test(file.name);
+  return (
+    file.type.startsWith("text/") || TEXT_LIKE_FILE_PATTERN.test(file.name)
+  );
 }
 
 function isSupportedImageFile(file: File): boolean {
@@ -134,7 +147,8 @@ async function readFileAsText(file: File): Promise<string | undefined> {
         : await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result ?? ""));
-            reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+            reader.onerror = () =>
+              reject(reader.error ?? new Error("read failed"));
             reader.readAsText(file);
           });
     return text.length > MAX_ATTACHMENT_TEXT_CHARS
@@ -145,7 +159,9 @@ async function readFileAsText(file: File): Promise<string | undefined> {
   }
 }
 
-async function readFileAsImage(file: File): Promise<ChatImageAttachment | undefined> {
+async function readFileAsImage(
+  file: File,
+): Promise<ChatImageAttachment | undefined> {
   if (!isSupportedImageFile(file)) return undefined;
 
   try {
@@ -194,18 +210,20 @@ function buildImagePayloads(
   return images.length > 0 ? images : undefined;
 }
 
-function buildDisplayMessage(input: string, attachments: ComposerAttachment[]): string {
+function buildDisplayMessage(
+  input: string,
+  attachments: ComposerAttachment[],
+): string {
   const trimmed = input.trim();
-  const attachmentNames = attachments.map((attachment) => attachment.name).join("、");
+  const attachmentNames = attachments
+    .map((attachment) => attachment.name)
+    .join("、");
   if (!trimmed) return `请参考这些资料：${attachmentNames}`;
   return `${trimmed}\n\n已添加资料：${attachmentNames}`;
 }
 
-function confirmDangerousTask(text: string): boolean {
-  if (!DANGEROUS_TASK_PATTERN.test(text)) return true;
-  return window.confirm(
-    "这个任务可能会删除或覆盖内容。确认继续吗？",
-  );
+function isDangerousTask(text: string): boolean {
+  return DANGEROUS_TASK_PATTERN.test(text);
 }
 
 export function ChatInput({
@@ -224,7 +242,7 @@ export function ChatInput({
   slashSkillsLoaded = false,
   slashSkillsLoading = false,
   slashSkills = [],
-  queuedMessageCount = 0,
+  queuedMessages = [],
   variant = "default",
   placeholder,
   showPermissionModeControl = true,
@@ -233,10 +251,16 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [activeSlashIndex, setActiveSlashIndex] = useState(0);
-  const [dismissedSlashToken, setDismissedSlashToken] = useState<string | null>(null);
-  const [slashRefreshToken, setSlashRefreshToken] = useState<string | null>(null);
+  const [dismissedSlashToken, setDismissedSlashToken] = useState<string | null>(
+    null,
+  );
+  const [slashRefreshToken, setSlashRefreshToken] = useState<string | null>(
+    null,
+  );
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [pendingDangerousSubmission, setPendingDangerousSubmission] =
+    useState<PreparedSubmission | null>(null);
   const { enterBehavior } = useEnterBehavior();
   const isHero = variant === "hero";
 
@@ -244,13 +268,18 @@ export function ChatInput({
   const slashToken = slashMatch ? slashMatch[0] : null;
   const slashQuery = (slashMatch?.[1] || "").toLowerCase();
   const installedSkills = useMemo(
-    () => slashSkills.filter((skill) => skill.installed && skill.enabled !== false),
+    () =>
+      slashSkills.filter((skill) => skill.installed && skill.enabled !== false),
     [slashSkills],
   );
   const slashSuggestions = useMemo(() => {
     if (!slashMatch) return [];
     return installedSkills.filter((skill) => {
-      const haystack = `${skill.trigger} ${skill.name} ${skill.id}`.toLowerCase();
+      const triggers = skill.triggers?.length
+        ? skill.triggers
+        : [skill.trigger];
+      const haystack =
+        `${triggers.join(" ")} ${skill.name} ${skill.id}`.toLowerCase();
       return haystack.includes(slashQuery);
     });
   }, [installedSkills, slashMatch, slashQuery]);
@@ -297,7 +326,8 @@ export function ChatInput({
       requestAnimationFrame(() => inputRef.current?.focus());
     };
     window.addEventListener("mycc:focus-chat-input", focusInput);
-    return () => window.removeEventListener("mycc:focus-chat-input", focusInput);
+    return () =>
+      window.removeEventListener("mycc:focus-chat-input", focusInput);
   }, []);
 
   useEffect(() => {
@@ -306,11 +336,23 @@ export function ChatInput({
       textarea.style.height = "auto";
       const computedStyle = getComputedStyle(textarea);
       const maxHeight =
-        parseInt(computedStyle.maxHeight, 10) || UI_CONSTANTS.TEXTAREA_MAX_HEIGHT;
+        parseInt(computedStyle.maxHeight, 10) ||
+        UI_CONSTANTS.TEXTAREA_MAX_HEIGHT;
       const scrollHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${scrollHeight}px`;
     }
   }, [input]);
+
+  const submitPrepared = (submission: PreparedSubmission) => {
+    if (submission.type === "plain") {
+      onSubmit();
+      return;
+    }
+
+    onSubmit(submission.message, submission.displayMessage, submission.images);
+    onInputChange("");
+    setAttachments([]);
+  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -318,29 +360,36 @@ export function ChatInput({
     const trimmedInput = input.trim();
     if (!trimmedInput && attachments.length === 0) return;
 
-    if (attachments.length === 0) {
-      if (!confirmDangerousTask(trimmedInput)) return;
-      onSubmit();
+    const attachmentContext =
+      attachments.length > 0 ? buildAttachmentContext(attachments) : "";
+    const preparedSubmission: PreparedSubmission =
+      attachments.length === 0
+        ? { type: "plain" }
+        : {
+            type: "withContext",
+            message: trimmedInput
+              ? `${trimmedInput}\n\n${attachmentContext}`
+              : attachmentContext,
+            displayMessage: buildDisplayMessage(trimmedInput, attachments),
+            images: buildImagePayloads(attachments),
+          };
+
+    if (trimmedInput && isDangerousTask(trimmedInput)) {
+      setPendingDangerousSubmission(preparedSubmission);
       return;
     }
 
-    const attachmentContext = buildAttachmentContext(attachments);
-    const messageWithContext = trimmedInput
-      ? `${trimmedInput}\n\n${attachmentContext}`
-      : attachmentContext;
-    if (!confirmDangerousTask(trimmedInput)) return;
-    onSubmit(
-      messageWithContext,
-      buildDisplayMessage(trimmedInput, attachments),
-      buildImagePayloads(attachments),
-    );
-    onInputChange("");
-    setAttachments([]);
+    submitPrepared(preparedSubmission);
   };
 
-  const applySlashSkill = (skill: {
-    trigger: string;
-  }) => {
+  const confirmDangerousSubmission = () => {
+    if (!pendingDangerousSubmission) return;
+    const submission = pendingDangerousSubmission;
+    setPendingDangerousSubmission(null);
+    submitPrepared(submission);
+  };
+
+  const applySlashSkill = (skill: { trigger: string }) => {
     const normalizedTrigger = skill.trigger.replace(/^\/+/, "").trim();
     if (!normalizedTrigger) return;
     onInputChange(`/${normalizedTrigger} `);
@@ -383,7 +432,8 @@ export function ChatInput({
         e.preventDefault();
         if (slashSuggestions.length > 0) {
           setActiveSlashIndex(
-            (prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length,
+            (prev) =>
+              (prev - 1 + slashSuggestions.length) % slashSuggestions.length,
           );
         }
         return;
@@ -392,7 +442,9 @@ export function ChatInput({
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         if (slashSuggestions.length > 0) {
-          applySlashSkill(slashSuggestions[activeSlashIndex] || slashSuggestions[0]);
+          applySlashSkill(
+            slashSuggestions[activeSlashIndex] || slashSuggestions[0],
+          );
         }
         return;
       }
@@ -455,7 +507,9 @@ export function ChatInput({
           type: file.type,
           textPreview,
           image,
-          truncated: Boolean(textPreview && file.size > MAX_ATTACHMENT_TEXT_CHARS),
+          truncated: Boolean(
+            textPreview && file.size > MAX_ATTACHMENT_TEXT_CHARS,
+          ),
         };
       }),
     );
@@ -511,11 +565,50 @@ export function ChatInput({
   }
 
   const canSubmit = Boolean(input.trim()) || attachments.length > 0;
-  const resolvedPlaceholder = placeholder
-    ?? (enterBehavior === "send" ? "输入你的问题，Enter 发送" : "输入你的问题，Shift+Enter 发送");
+  const showAbortButton = Boolean(isLoading && currentRequestId);
+  const resolvedPlaceholder =
+    placeholder ??
+    (enterBehavior === "send"
+      ? "输入你的问题，Enter 发送"
+      : "输入你的问题，Shift+Enter 发送");
+  const queuedPreview = queuedMessages[0]?.trim();
+  const hiddenQueuedCount = Math.max(queuedMessages.length - 1, 0);
 
   return (
-    <div className={isHero ? "w-full" : "flex-shrink-0 space-y-2"}>
+    <div className={isHero ? "relative w-full" : "relative flex-shrink-0"}>
+      {queuedPreview && (
+        <div
+          data-testid="queued-message-float"
+          className="pointer-events-none absolute inset-x-2 bottom-full z-10 translate-y-3"
+          aria-live="polite"
+        >
+          {hiddenQueuedCount > 0 && (
+            <div
+              className="mx-8 h-8 rounded-[22px] border border-slate-200/80 bg-white/70 shadow-sm backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/70"
+              aria-hidden="true"
+            />
+          )}
+          <div className="relative -mt-6 overflow-hidden rounded-[24px] border border-slate-200/90 bg-white/95 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.12)] backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_20px_70px_rgba(0,0,0,0.32)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                  aria-hidden="true"
+                >
+                  ↳
+                </span>
+                <span className="truncate text-sm font-semibold text-slate-700 dark:text-slate-100">
+                  {queuedPreview}
+                </span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+                等待接上
+                {hiddenQueuedCount > 0 ? ` · +${hiddenQueuedCount}` : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       <form
         onSubmit={handleSubmit}
         onDragEnter={(event) => {
@@ -529,7 +622,10 @@ export function ChatInput({
         }}
         onDragLeave={(event) => {
           const nextTarget = event.relatedTarget;
-          if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+          if (
+            nextTarget instanceof Node &&
+            event.currentTarget.contains(nextTarget)
+          ) {
             return;
           }
           setIsDraggingFiles(false);
@@ -626,7 +722,9 @@ export function ChatInput({
           className={
             isHero
               ? "min-h-[132px] w-full resize-none overflow-hidden rounded-[22px] border border-transparent bg-transparent px-4 py-4 text-base leading-7 text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white/45 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-950/20"
-              : "min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 pr-28 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900"
+              : `min-h-[50px] w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-3 py-2 ${
+                  showAbortButton ? "pr-48" : "pr-36"
+                } text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:bg-white dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-700 dark:focus:bg-slate-900`
           }
         />
 
@@ -645,7 +743,7 @@ export function ChatInput({
               </div>
             ) : installedSkills.length === 0 ? (
               <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
-                暂无已安装技能，请先到技能页安装后再使用。
+                暂无已启用技能，请先到助理技能库添加后再使用。
               </div>
             ) : slashSuggestions.length === 0 ? (
               <div className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
@@ -679,6 +777,14 @@ export function ChatInput({
                           /{skill.trigger.replace(/^\/+/, "")}
                         </span>
                       </div>
+                      {skill.triggers && skill.triggers.length > 1 && (
+                        <div className="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">
+                          {skill.triggers
+                            .filter((item) => item !== skill.trigger)
+                            .slice(0, 3)
+                            .join(" · ")}
+                        </div>
+                      )}
                       {skill.description && (
                         <div className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">
                           {skill.description}
@@ -693,10 +799,13 @@ export function ChatInput({
         )}
 
         <div
+          data-testid="chat-composer-actions"
           className={
             isHero
               ? "mt-2 flex items-center justify-between gap-3 px-1"
-              : "absolute bottom-3 right-3 flex items-center gap-2"
+              : attachments.length > 0
+                ? "absolute bottom-3 right-3 flex items-center gap-2"
+                : "absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2"
           }
         >
           {isHero && (
@@ -704,7 +813,7 @@ export function ChatInput({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
                 aria-label="添加资料"
               >
                 <PlusIcon className="h-4 w-4" />
@@ -713,9 +822,11 @@ export function ChatInput({
                 <button
                   type="button"
                   onClick={() =>
-                    onPermissionModeChange(getNextPermissionMode(permissionMode))
+                    onPermissionModeChange(
+                      getNextPermissionMode(permissionMode),
+                    )
                   }
-                  className="inline-flex h-9 items-center rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/25 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                  className="inline-flex h-10 items-center rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/25 dark:text-amber-200 dark:hover:bg-amber-900/40"
                   title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
                 >
                   {permissionModeName[permissionMode]}
@@ -728,18 +839,18 @@ export function ChatInput({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 aria-label="添加资料"
                 title="添加资料"
               >
                 <PlusIcon className="h-4 w-4" />
               </button>
             )}
-            {isLoading && currentRequestId && (
+            {showAbortButton && (
               <button
                 type="button"
                 onClick={onAbort}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300 dark:hover:bg-red-950/55"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-300 dark:hover:bg-red-950/55"
                 aria-label="暂停这次任务"
                 title="暂停这次任务 (ESC)"
               >
@@ -750,7 +861,7 @@ export function ChatInput({
             {isHero && (
               <button
                 type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="语音输入"
               >
                 <MicrophoneIcon className="h-4 w-4" />
@@ -763,32 +874,41 @@ export function ChatInput({
               className={
                 isHero
                   ? "inline-flex h-10 items-center gap-1.5 rounded-full bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                  : "inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  : "inline-flex h-10 min-w-[86px] items-center justify-center gap-1.5 rounded-full bg-amber-500 px-4 text-sm font-semibold leading-none text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
               }
             >
-              <PaperAirplaneIcon className="h-3.5 w-3.5" />
+              <PaperAirplaneIcon className="h-4 w-4" />
               {permissionMode === "plan" ? "规划" : "发送"}
             </button>
           </div>
         </div>
       </form>
-      {queuedMessageCount > 0 && (
-        <div className="px-1 text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-          已接住{queuedMessageCount > 1 ? ` ${queuedMessageCount} 条` : ""}，稍后继续
-        </div>
-      )}
-
       {!isHero && showPermissionModeControl && (
         <button
           type="button"
-          onClick={() => onPermissionModeChange(getNextPermissionMode(permissionMode))}
+          onClick={() =>
+            onPermissionModeChange(getNextPermissionMode(permissionMode))
+          }
           className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white/75 px-3 py-1.5 text-xs text-slate-600 transition hover:border-amber-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-amber-700 dark:hover:text-slate-100"
           title={`当前模式：${permissionModeName[permissionMode]}；点击切换（Ctrl+Shift+M）`}
         >
-          <span className="font-medium">执行模式：{permissionModeName[permissionMode]}</span>
-          <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Ctrl+Shift+M</span>
+          <span className="font-medium">
+            执行模式：{permissionModeName[permissionMode]}
+          </span>
+          <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+            Ctrl+Shift+M
+          </span>
         </button>
       )}
+      <ConfirmDialog
+        isOpen={Boolean(pendingDangerousSubmission)}
+        title="确认执行这个任务？"
+        description="这条指令看起来可能会删除、清空、重置或覆盖内容。确认后 MyCC 会继续执行。"
+        confirmLabel="继续执行"
+        variant="destructive"
+        onConfirm={confirmDangerousSubmission}
+        onCancel={() => setPendingDangerousSubmission(null)}
+      />
     </div>
   );
 }

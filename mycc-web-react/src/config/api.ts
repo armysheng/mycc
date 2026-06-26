@@ -117,24 +117,39 @@ export const getAutomationRunUrl = (automationId: string) => {
   return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/run`;
 };
 
-export const getWorkspaceTreeUrl = (path = "/", depth = 3) => {
-  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/tree?path=${encodeURIComponent(path)}&depth=${depth}`;
+const withOptionalIdeSessionId = (url: string, ideSessionId?: string | null) => {
+  if (!ideSessionId) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}ideSessionId=${encodeURIComponent(ideSessionId)}`;
 };
 
-export const getWorkspaceFileUrl = (path: string) => {
-  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`;
+export const getWorkspaceTreeUrl = (path = "/", depth = 3, ideSessionId?: string | null) => {
+  return withOptionalIdeSessionId(
+    `${API_CONFIG.ENDPOINTS.WORKSPACE}/tree?path=${encodeURIComponent(path)}&depth=${depth}`,
+    ideSessionId,
+  );
 };
 
-export const getWorkspacePreviewUrl = (path: string) => {
-  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/preview?path=${encodeURIComponent(path)}`;
+export const getWorkspaceFileUrl = (path: string, ideSessionId?: string | null) => {
+  return withOptionalIdeSessionId(
+    `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`,
+    ideSessionId,
+  );
 };
 
-export const getWorkspaceSaveFileUrl = () => {
-  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/file`;
+export const getWorkspacePreviewUrl = (path: string, ideSessionId?: string | null) => {
+  return withOptionalIdeSessionId(
+    `${API_CONFIG.ENDPOINTS.WORKSPACE}/preview?path=${encodeURIComponent(path)}`,
+    ideSessionId,
+  );
 };
 
-export const getWorkspaceExecUrl = () => {
-  return `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`;
+export const getWorkspaceSaveFileUrl = (ideSessionId?: string | null) => {
+  return withOptionalIdeSessionId(`${API_CONFIG.ENDPOINTS.WORKSPACE}/file`, ideSessionId);
+};
+
+export const getWorkspaceExecUrl = (ideSessionId?: string | null) => {
+  return withOptionalIdeSessionId(`${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`, ideSessionId);
 };
 
 export const getIdeConfigUrl = () => {

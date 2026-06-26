@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { Tree, type NodeRendererProps } from "react-arborist";
+import Editor from "@monaco-editor/react";
+import { getClassWithColor } from "file-icons-js";
+import "file-icons-js/css/style.css";
 import {
   ArrowPathIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
   ComputerDesktopIcon,
-  DocumentTextIcon,
-  EyeIcon,
   FolderIcon,
+  FolderOpenIcon,
   LockClosedIcon,
-  QueueListIcon,
-  SparklesIcon,
-  WrenchScrewdriverIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import type { AllMessage } from "../../types";
 import {
   getAuthHeaders,
   getIdeConfigUrl,
@@ -24,16 +23,9 @@ import {
   getWorkspaceTreeUrl,
   resolveIdeOpenUrl,
 } from "../../config/api";
-import {
-  buildWorkbenchActivitySnapshot,
-  type WorkbenchActivityFileChange,
-  type WorkbenchActivitySnapshot,
-  type WorkbenchActivityStatus,
-  type WorkbenchFileChangeKind,
-  type WorkbenchTodoStatus,
-} from "../../utils/workbenchActivity";
+import { PRODUCT_COPY } from "../../utils/productCopy";
 
-export type WorkbenchTab = "activity" | "browser" | "files" | "preview";
+export type WorkbenchTab = "browser" | "files";
 type BrowserSurfaceState = "desktop" | "home";
 type WorkspaceNodeType = "directory" | "file";
 const DESKTOP_KEEPALIVE_INTERVAL_MS = 30_000;
@@ -83,9 +75,7 @@ type AssistantWorkbenchDockProps = {
   initialTab?: WorkbenchTab;
   tabRequestId?: number;
   autoOpenBrowserRequestId?: number;
-  messages?: AllMessage[];
   onClose: () => void;
-  onOpenWorkspaceFile?: (path: string) => void;
 };
 
 const LOW_LEVEL_ERROR_PATTERN =
@@ -115,18 +105,38 @@ function safeWorkbenchError(error: unknown, fallback: string): string {
   return message;
 }
 
-function flattenTree(node: WorkspaceTreeNode | null): WorkspaceTreeNode[] {
-  if (!node) return [];
-  const children = node.children ?? [];
-  return children.flatMap((child) => [child, ...flattenTree(child)]);
-}
-
 function formatFileMeta(node: WorkspaceTreeNode): string {
   if (node.type === "directory") return "文件夹";
   if (typeof node.size !== "number") return "文件";
   if (node.size < 1024) return `${node.size} B`;
   if (node.size < 1024 * 1024) return `${(node.size / 1024).toFixed(1)} KB`;
   return `${(node.size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function detectPreviewLanguage(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript";
+  if (lower.endsWith(".js") || lower.endsWith(".jsx") || lower.endsWith(".mjs"))
+    return "javascript";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+  if (lower.endsWith(".py")) return "python";
+  if (
+    lower.endsWith(".sh") ||
+    lower.endsWith(".bash") ||
+    lower.endsWith(".zsh")
+  )
+    return "shell";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower.endsWith(".css")) return "css";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  if (lower.endsWith(".xml")) return "xml";
+  if (lower.endsWith(".sql")) return "sql";
+  return "plaintext";
+}
+
+function getFileIconClass(name: string): string {
+  return getClassWithColor(name) || "text-icon medium-blue";
 }
 
 function readStoredDesktopSessionId(): string | null {
@@ -159,9 +169,7 @@ export function AssistantWorkbenchDock({
   initialTab = "browser",
   tabRequestId = 0,
   autoOpenBrowserRequestId = 0,
-  messages = [],
   onClose,
-  onOpenWorkspaceFile,
 }: AssistantWorkbenchDockProps) {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialTab);
   const [browserSurface, setBrowserSurface] =
@@ -183,14 +191,22 @@ export function AssistantWorkbenchDock({
   const browserFrameRef = useRef<HTMLIFrameElement | null>(null);
   const desktopKeepaliveInFlightRef = useRef(false);
 
-  const workspaceNodes = useMemo(
-    () => flattenTree(treeRoot).slice(0, 80),
-    [treeRoot],
-  );
-  const activitySnapshot = useMemo(
-    () => buildWorkbenchActivitySnapshot(messages),
-    [messages],
-  );
+  const workspaceTreeData = useMemo(() => treeRoot?.children ?? [], [treeRoot]);
+  const ensureWorkspaceSessionId = useCallback(async () => {
+    if (desktopSessionId) return desktopSessionId;
+
+    const session = await readApiData<IdeSessionData>(
+      getIdeSessionsUrl(),
+      token,
+      { method: "POST", body: "{}" },
+    );
+    if (!session?.id) {
+      throw new Error(`${PRODUCT_COPY.projectFiles}准备失败`);
+    }
+    setDesktopSessionId(session.id);
+    storeDesktopSessionId(session.id);
+    return session.id;
+  }, [desktopSessionId, token]);
 
   const openMirroredBrowser = useCallback(
     async (forceReconnect = false) => {
@@ -207,7 +223,7 @@ export function AssistantWorkbenchDock({
           token,
         );
         if (config?.enabled === false || !config?.desktopEnabled) {
-          throw new Error("镜像浏览器当前不可用");
+          throw new Error(`${PRODUCT_COPY.assistantBrowser}当前不可用`);
         }
 
         const openDesktopForSession = async (sessionId: string) => {
@@ -219,7 +235,7 @@ export function AssistantWorkbenchDock({
           const openPath =
             desktopSession?.desktop?.openPath || desktopSession?.openPath;
           if (!openPath) {
-            throw new Error("镜像浏览器启动失败");
+            throw new Error(`${PRODUCT_COPY.assistantBrowser}启动失败`);
           }
           return { desktopSession, openPath };
         };
@@ -244,7 +260,7 @@ export function AssistantWorkbenchDock({
             { method: "POST", body: "{}" },
           );
           if (!session?.id) {
-            throw new Error("工作台准备失败");
+            throw new Error(`${PRODUCT_COPY.resultsSpace}准备失败`);
           }
           sessionId = session.id;
           const started = await openDesktopForSession(sessionId);
@@ -255,7 +271,12 @@ export function AssistantWorkbenchDock({
         storeDesktopSessionId(sessionId);
         setDesktopUrl(resolveIdeOpenUrl(openPath));
       } catch (error) {
-        setDesktopError(safeWorkbenchError(error, "镜像浏览器暂时打不开"));
+        setDesktopError(
+          safeWorkbenchError(
+            error,
+            `${PRODUCT_COPY.assistantBrowser}暂时打不开`,
+          ),
+        );
       } finally {
         setDesktopOpening(false);
       }
@@ -277,7 +298,7 @@ export function AssistantWorkbenchDock({
         const openPath =
           desktopSession?.desktop?.openPath || desktopSession?.openPath;
         if (!openPath) {
-          throw new Error("镜像浏览器启动失败");
+          throw new Error(`${PRODUCT_COPY.assistantBrowser}启动失败`);
         }
         const nextUrl = resolveIdeOpenUrl(openPath);
         setDesktopUrl((currentUrl) =>
@@ -285,7 +306,9 @@ export function AssistantWorkbenchDock({
         );
         setDesktopError(null);
       } catch (error) {
-        setDesktopError(safeWorkbenchError(error, "镜像浏览器正在重连"));
+        setDesktopError(
+          safeWorkbenchError(error, `${PRODUCT_COPY.assistantBrowser}正在重连`),
+        );
       } finally {
         desktopKeepaliveInFlightRef.current = false;
       }
@@ -302,27 +325,31 @@ export function AssistantWorkbenchDock({
     setFilesLoading(true);
     setFilesError(null);
     try {
+      const ideSessionId = await ensureWorkspaceSessionId();
       const data = await readApiData<{ tree: WorkspaceTreeNode }>(
-        getWorkspaceTreeUrl("/", 3),
+        getWorkspaceTreeUrl("/", 3, ideSessionId),
         token,
       );
       setTreeRoot(data?.tree ?? null);
       setFilesLoaded(true);
     } catch (error) {
-      setFilesError(safeWorkbenchError(error, "文件暂时读不出来"));
+      setFilesError(
+        safeWorkbenchError(error, `${PRODUCT_COPY.projectFiles}暂时读不出来`),
+      );
     } finally {
       setFilesLoading(false);
     }
-  }, [token]);
+  }, [ensureWorkspaceSessionId, token]);
 
   const previewWorkspacePath = useCallback(
     async (path: string) => {
-      setActiveTab("preview");
+      setActiveTab("files");
       setPreviewLoading(true);
       setPreviewError(null);
       try {
+        const ideSessionId = await ensureWorkspaceSessionId();
         const data = await readApiData<WorkspacePreviewData>(
-          getWorkspacePreviewUrl(path),
+          getWorkspacePreviewUrl(path, ideSessionId),
           token,
         );
         setPreviewData(data);
@@ -333,7 +360,7 @@ export function AssistantWorkbenchDock({
         setPreviewLoading(false);
       }
     },
-    [token],
+    [ensureWorkspaceSessionId, token],
   );
 
   const previewFile = useCallback(
@@ -342,17 +369,6 @@ export function AssistantWorkbenchDock({
       await previewWorkspacePath(node.path);
     },
     [previewWorkspacePath],
-  );
-
-  const openActivityFile = useCallback(
-    (path: string) => {
-      onOpenWorkspaceFile?.(path);
-      setActiveTab("files");
-      if (!filesLoaded && !filesLoading) {
-        void loadFiles();
-      }
-    },
-    [filesLoaded, filesLoading, loadFiles, onOpenWorkspaceFile],
   );
 
   useEffect(() => {
@@ -401,11 +417,10 @@ export function AssistantWorkbenchDock({
       if (message.type === "mycc.workbench") {
         if (
           message.tab === "browser" ||
-          message.tab === "activity" ||
           message.tab === "files" ||
           message.tab === "preview"
         ) {
-          setActiveTab(message.tab);
+          setActiveTab(message.tab === "preview" ? "files" : message.tab);
         }
       }
 
@@ -432,16 +447,76 @@ export function AssistantWorkbenchDock({
   }, [onClose]);
 
   const browserButtonLabel = desktopOpening
-    ? "镜像浏览器启动中"
+    ? `${PRODUCT_COPY.assistantBrowser}启动中`
     : desktopUrl
-      ? "显示镜像浏览器"
-      : "启动镜像浏览器";
+      ? `显示${PRODUCT_COPY.assistantBrowser}`
+      : `启动${PRODUCT_COPY.assistantBrowser}`;
   const isBrowserFrameVisible =
     activeTab === "browser" && browserSurface === "desktop";
+  const fileTreeHeight =
+    typeof window === "undefined"
+      ? 620
+      : Math.max(320, Math.min(760, window.innerHeight - 92));
+  const renderWorkspaceTreeNode = useCallback(
+    ({ node, style }: NodeRendererProps<WorkspaceTreeNode>) => {
+      const data = node.data;
+      const isDirectory = data.type === "directory";
+      const selected = data.type === "file" && previewData?.path === data.path;
+      const FileIcon = isDirectory
+        ? node.isOpen
+          ? FolderOpenIcon
+          : FolderIcon
+        : null;
+
+      return (
+        <button
+          type="button"
+          style={style}
+          onClick={() => {
+            if (isDirectory) {
+              node.toggle();
+              return;
+            }
+            void previewFile(data);
+          }}
+          aria-label={isDirectory ? `文件夹 ${data.name}` : `预览 ${data.name}`}
+          aria-expanded={isDirectory ? node.isOpen : undefined}
+          className={[
+            "group flex w-full items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm transition-colors",
+            selected
+              ? "bg-slate-100 text-slate-950 dark:bg-slate-800 dark:text-slate-50"
+              : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800",
+          ].join(" ")}
+        >
+          <span className="w-4 shrink-0 text-center text-[11px] text-slate-400">
+            {isDirectory ? (node.isOpen ? "▾" : "▸") : ""}
+          </span>
+          {FileIcon ? (
+            <FileIcon
+              className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400"
+              aria-hidden="true"
+            />
+          ) : (
+            <i
+              className={`${getFileIconClass(data.name)} shrink-0 text-[15px] leading-none`}
+              aria-hidden="true"
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {data.name}
+          </span>
+          <span className="shrink-0 text-xs text-slate-400">
+            {formatFileMeta(data)}
+          </span>
+        </button>
+      );
+    },
+    [previewData?.path, previewFile],
+  );
 
   return (
     <aside
-      aria-label="工作台"
+      aria-label={PRODUCT_COPY.resultsSpace}
       aria-hidden={!isOpen}
       data-fullscreen={isFullscreen ? "true" : "false"}
       data-open={isOpen ? "true" : "false"}
@@ -465,22 +540,12 @@ export function AssistantWorkbenchDock({
         onLockBrowser={lockMirroredBrowser}
         onOpenBrowser={() => void openMirroredBrowser()}
         onReconnectBrowser={() => void openMirroredBrowser(true)}
-        onOpenActivity={() => setActiveTab("activity")}
         onOpenFiles={() => setActiveTab("files")}
-        onOpenPreview={() => setActiveTab("preview")}
         onToggleFullscreen={() => setIsFullscreen((value) => !value)}
         onClose={handleClose}
       />
 
       <div className="min-h-0 flex-1">
-        {activeTab === "activity" && (
-          <WorkbenchActivityPanel
-            snapshot={activitySnapshot}
-            onOpenFile={openActivityFile}
-            onPreviewFile={(path) => void previewWorkspacePath(path)}
-          />
-        )}
-
         {(activeTab === "browser" || desktopUrl) && (
           <section
             className={[
@@ -497,7 +562,7 @@ export function AssistantWorkbenchDock({
             {desktopUrl ? (
               <iframe
                 ref={browserFrameRef}
-                title="镜像浏览器窗口"
+                title={`${PRODUCT_COPY.assistantBrowser}窗口`}
                 src={desktopUrl}
                 data-vnc-visible={isBrowserFrameVisible ? "true" : "false"}
                 className={[
@@ -507,14 +572,37 @@ export function AssistantWorkbenchDock({
                 allow="clipboard-read; clipboard-write"
               />
             ) : (
-              <div className="flex-1 bg-slate-950" />
+              <div className="flex flex-1 items-center justify-center bg-slate-950 px-8 text-center text-sm text-slate-300">
+                <div className="max-w-sm">
+                  <ComputerDesktopIcon
+                    className="mx-auto h-10 w-10 text-slate-500"
+                    aria-hidden="true"
+                  />
+                  <h2 className="mt-4 text-base font-semibold text-white">
+                    {PRODUCT_COPY.assistantBrowser}
+                  </h2>
+                  <p className="mt-2 leading-6 text-slate-400">
+                    需要查看图形界面、网页或桌面任务时，可以从这里打开 cc
+                    的浏览器。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void openMirroredBrowser()}
+                    disabled={desktopOpening}
+                    className="mt-5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {desktopOpening
+                      ? `${PRODUCT_COPY.assistantBrowser}启动中`
+                      : `打开${PRODUCT_COPY.assistantBrowser}`}
+                  </button>
+                </div>
+              </div>
             )}
           </section>
         )}
 
         {activeTab === "files" && (
           <section className="flex h-full flex-col pt-12">
-            <span className="sr-only">文件空间</span>
             {filesError ? (
               <div className="p-4 text-sm text-amber-700 dark:text-amber-200">
                 {filesError}
@@ -523,72 +611,63 @@ export function AssistantWorkbenchDock({
               <div className="flex flex-1 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                 正在读取文件...
               </div>
-            ) : workspaceNodes.length > 0 ? (
-              <div className="min-h-0 flex-1 overflow-y-auto py-2">
-                {workspaceNodes.map((node) => (
-                  <button
-                    type="button"
-                    key={node.id || node.path}
-                    onClick={() => void previewFile(node)}
-                    disabled={node.type !== "file"}
-                    aria-label={
-                      node.type === "file"
-                        ? `预览 ${node.name}`
-                        : `文件夹 ${node.name}`
-                    }
-                    className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-slate-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-slate-800 dark:disabled:hover:bg-transparent"
-                  >
-                    <FolderIcon
-                      className="h-4 w-4 shrink-0 text-slate-400"
-                      aria-hidden="true"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-slate-700 dark:text-slate-200">
-                        {node.name}
-                      </div>
-                      <div className="truncate text-xs text-slate-500 dark:text-slate-500">
-                        {node.path}
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-xs text-slate-400">
-                      {formatFileMeta(node)}
-                    </span>
-                  </button>
-                ))}
-              </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                暂无文件
+              <div className="flex min-h-0 flex-1 flex-col">
+                <header className="border-b border-slate-200 px-4 pb-3 dark:border-slate-800">
+                  <h2 className="text-sm font-semibold text-slate-950 dark:text-slate-50">
+                    {PRODUCT_COPY.projectFiles}
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    查看 cc 整理出的文件，也可以快速预览当前选中的内容。
+                  </p>
+                </header>
+                <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+                  <div
+                    className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 py-2 dark:border-slate-800 lg:w-[42%] lg:flex-none lg:border-b-0 lg:border-r"
+                    data-testid="workspace-file-tree"
+                  >
+                    {workspaceTreeData.length > 0 ? (
+                      <Tree<WorkspaceTreeNode>
+                        data={workspaceTreeData}
+                        childrenAccessor="children"
+                        idAccessor="id"
+                        rowHeight={34}
+                        width="100%"
+                        height={fileTreeHeight}
+                        indent={18}
+                        openByDefault
+                      >
+                        {renderWorkspaceTreeNode}
+                      </Tree>
+                    ) : (
+                      <div className="flex h-full min-h-[160px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                        暂无文件
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto p-3">
+                    {previewLoading ? (
+                      <div className="flex h-full min-h-[180px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                        正在生成预览...
+                      </div>
+                    ) : previewError ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                        {previewError}
+                      </div>
+                    ) : previewData ? (
+                      <PreviewPane preview={previewData} />
+                    ) : (
+                      <div className="flex h-full min-h-[180px] items-center justify-center px-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                        从文件列表点选一个文件进行预览。
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </section>
         )}
 
-        {activeTab === "preview" && (
-          <section className="flex h-full flex-col pt-12">
-            <span className="sr-only">预览</span>
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              {previewLoading ? (
-                <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                  正在生成预览...
-                </div>
-              ) : previewError ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                  {previewError}
-                </div>
-              ) : previewData ? (
-                <PreviewPane
-                  preview={previewData}
-                  onOpenWorkspaceFile={onOpenWorkspaceFile}
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center px-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                  从文件列表点选一个文件进行预览。
-                </div>
-              )}
-            </div>
-          </section>
-        )}
       </div>
     </aside>
   );
@@ -604,9 +683,7 @@ function FloatingWorkbenchControls({
   onLockBrowser,
   onOpenBrowser,
   onReconnectBrowser,
-  onOpenActivity,
   onOpenFiles,
-  onOpenPreview,
   onToggleFullscreen,
   onClose,
 }: {
@@ -619,9 +696,7 @@ function FloatingWorkbenchControls({
   onLockBrowser: () => void;
   onOpenBrowser: () => void;
   onReconnectBrowser: () => void;
-  onOpenActivity: () => void;
   onOpenFiles: () => void;
-  onOpenPreview: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
@@ -640,39 +715,31 @@ function FloatingWorkbenchControls({
         )}
       </IconBadgeButton>
       {canLockBrowser && (
-        <IconBadgeButton label="收起镜像画面" onClick={onLockBrowser}>
+        <IconBadgeButton
+          label={`收起${PRODUCT_COPY.assistantBrowser}`}
+          onClick={onLockBrowser}
+        >
           <LockClosedIcon className="h-4 w-4" aria-hidden="true" />
         </IconBadgeButton>
       )}
       {canReconnectBrowser && (
-        <IconBadgeButton label="重连镜像浏览器" onClick={onReconnectBrowser}>
+        <IconBadgeButton
+          label={`重连${PRODUCT_COPY.assistantBrowser}`}
+          onClick={onReconnectBrowser}
+        >
           <ArrowPathIcon className="h-4 w-4" aria-hidden="true" />
         </IconBadgeButton>
       )}
       <IconBadgeButton
-        active={activeTab === "activity"}
-        label="进展"
-        onClick={onOpenActivity}
-      >
-        <QueueListIcon className="h-4 w-4" aria-hidden="true" />
-      </IconBadgeButton>
-      <IconBadgeButton
         active={activeTab === "files"}
-        label="文件"
+        label={PRODUCT_COPY.projectFiles}
         onClick={onOpenFiles}
       >
         <FolderIcon className="h-4 w-4" aria-hidden="true" />
       </IconBadgeButton>
       <IconBadgeButton
-        active={activeTab === "preview"}
-        label="预览"
-        onClick={onOpenPreview}
-      >
-        <EyeIcon className="h-4 w-4" aria-hidden="true" />
-      </IconBadgeButton>
-      <IconBadgeButton
         active={isFullscreen}
-        label={isFullscreen ? "退出全屏" : "全屏工作台"}
+        label={isFullscreen ? "退出全屏" : `全屏${PRODUCT_COPY.resultsSpace}`}
         onClick={onToggleFullscreen}
       >
         {isFullscreen ? (
@@ -681,7 +748,10 @@ function FloatingWorkbenchControls({
           <ArrowsPointingOutIcon className="h-4 w-4" aria-hidden="true" />
         )}
       </IconBadgeButton>
-      <IconBadgeButton label="关闭工作台" onClick={onClose}>
+      <IconBadgeButton
+        label={`关闭${PRODUCT_COPY.resultsSpace}`}
+        onClick={onClose}
+      >
         <XMarkIcon className="h-4 w-4" aria-hidden="true" />
       </IconBadgeButton>
     </div>
@@ -720,464 +790,7 @@ function IconBadgeButton({
   );
 }
 
-function WorkbenchActivityPanel({
-  onOpenFile,
-  onPreviewFile,
-  snapshot,
-}: {
-  onOpenFile: (path: string) => void;
-  onPreviewFile: (path: string) => void;
-  snapshot: WorkbenchActivitySnapshot;
-}) {
-  const [selectedFileChangeId, setSelectedFileChangeId] = useState<
-    string | null
-  >(null);
-  const hasActivity =
-    snapshot.todos.length > 0 ||
-    snapshot.tools.length > 0 ||
-    snapshot.fileChanges.length > 0 ||
-    snapshot.deliverables.length > 0;
-  const selectedFileChange = useMemo(
-    () =>
-      snapshot.fileChanges.find((change) => change.id === selectedFileChangeId) ??
-      null,
-    [selectedFileChangeId, snapshot.fileChanges],
-  );
-
-  useEffect(() => {
-    if (
-      selectedFileChangeId &&
-      !snapshot.fileChanges.some((change) => change.id === selectedFileChangeId)
-    ) {
-      setSelectedFileChangeId(null);
-    }
-  }, [selectedFileChangeId, snapshot.fileChanges]);
-
-  return (
-    <section className="flex h-full flex-col pt-12">
-      <div className="border-b border-slate-200 px-4 pb-3 dark:border-slate-800">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
-          任务进展
-        </p>
-        <h2 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">
-          MyCC 正在整理的线索
-        </h2>
-        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          这里会把对话里的计划、操作、文件和成果放在一起，方便你接管或复盘。
-        </p>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {!hasActivity ? (
-          <div className="flex h-full items-center justify-center px-6 text-center">
-            <div className="rounded-3xl border border-dashed border-slate-200 bg-white/70 px-5 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-              <SparklesIcon className="mx-auto h-7 w-7 text-amber-500" />
-              <h3 className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                还没有新的进展
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                发起任务后，待办、文件变更和成果会逐步沉淀到这里。
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <ActivitySection
-              title="待办"
-              count={snapshot.todos.length}
-              icon={<QueueListIcon className="h-4 w-4" />}
-            >
-              {snapshot.todos.length === 0 ? (
-                <ActivityEmpty>还没有拆出待办。</ActivityEmpty>
-              ) : (
-                <div className="space-y-1.5">
-                  {snapshot.todos.map((todo) => (
-                    <div
-                      key={todo.id}
-                      className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900"
-                    >
-                      <span
-                        className={[
-                          "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                          getTodoDotClass(todo.status),
-                        ].join(" ")}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {todo.text}
-                        </p>
-                        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                          {getTodoStatusLabel(todo.status)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ActivitySection>
-
-            <ActivitySection
-              title="最近操作"
-              count={snapshot.tools.length}
-              icon={<WrenchScrewdriverIcon className="h-4 w-4" />}
-            >
-              {snapshot.tools.length === 0 ? (
-                <ActivityEmpty>还没有可展示的操作。</ActivityEmpty>
-              ) : (
-                <div className="space-y-1.5">
-                  {snapshot.tools.map((tool) => (
-                    <div
-                      key={tool.id}
-                      className="rounded-xl border border-slate-100 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950"
-                    >
-                      <div className="flex items-start gap-2">
-                        <span
-                          className={[
-                            "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                            getStatusDotClass(tool.status),
-                          ].join(" ")}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                            {tool.label}
-                          </p>
-                          {tool.path && (
-                            <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400">
-                              {tool.path}
-                            </p>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">
-                          {getActivityStatusLabel(tool.status)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ActivitySection>
-
-            <ActivitySection
-              title="刚刚改动"
-              count={snapshot.fileChanges.length}
-              icon={<DocumentTextIcon className="h-4 w-4" />}
-            >
-              {snapshot.fileChanges.length === 0 ? (
-                <ActivityEmpty>还没有识别到文件改动。</ActivityEmpty>
-              ) : (
-                <div className="space-y-2">
-                  <div className="space-y-1.5">
-                    {snapshot.fileChanges.map((change) => (
-                      <button
-                        type="button"
-                        key={change.id}
-                        aria-label={`审阅 ${change.fileName}`}
-                        onClick={() => setSelectedFileChangeId(change.id)}
-                        className={[
-                          "w-full rounded-xl border px-3 py-2 text-left transition-colors",
-                          selectedFileChange?.id === change.id
-                            ? "border-amber-300 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/30"
-                            : "border-slate-100 bg-white hover:border-amber-200 hover:bg-amber-50/50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-amber-900 dark:hover:bg-amber-950/20",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                              {change.fileName}
-                            </p>
-                            <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400">
-                              {change.path}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-                            {getFileChangeKindLabel(change.kind)}
-                          </span>
-                        </div>
-                        {(change.addedLines || change.removedLines) && (
-                          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                            {change.addedLines
-                              ? `新增约 ${change.addedLines} 行`
-                              : ""}
-                            {change.addedLines && change.removedLines
-                              ? " · "
-                              : ""}
-                            {change.removedLines
-                              ? `移除约 ${change.removedLines} 行`
-                              : ""}
-                          </p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedFileChange && (
-                    <FileChangeReviewCard
-                      change={selectedFileChange}
-                      onOpenFile={onOpenFile}
-                      onPreviewFile={onPreviewFile}
-                    />
-                  )}
-                </div>
-              )}
-            </ActivitySection>
-
-            <ActivitySection
-              title="成果线索"
-              count={snapshot.deliverables.length}
-              icon={<SparklesIcon className="h-4 w-4" />}
-            >
-              {snapshot.deliverables.length === 0 ? (
-                <ActivityEmpty>成果文件会在这里出现。</ActivityEmpty>
-              ) : (
-                <div className="space-y-1.5">
-                  {snapshot.deliverables.map((deliverable) => (
-                    <div
-                      key={deliverable.id}
-                      className="rounded-xl border border-slate-100 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950"
-                    >
-                      <div className="flex items-start gap-2">
-                        <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            {deliverable.title}
-                          </p>
-                          <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400">
-                            {deliverable.path}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ActivitySection>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function FileChangeReviewCard({
-  change,
-  onOpenFile,
-  onPreviewFile,
-}: {
-  change: WorkbenchActivityFileChange;
-  onOpenFile: (path: string) => void;
-  onPreviewFile: (path: string) => void;
-}) {
-  const hasDiffs = change.diffs.length > 0;
-  const previewLines = change.previewContent
-    ? change.previewContent.split("\n")
-    : [];
-
-  return (
-    <article className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm dark:border-amber-900 dark:bg-slate-950">
-      <header className="border-b border-amber-100 bg-amber-50/70 px-3 py-2 dark:border-amber-950 dark:bg-amber-950/20">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-200">
-              审阅改动
-            </p>
-            <h4 className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-              {change.fileName}
-            </h4>
-            <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
-              {change.path}
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 shadow-sm dark:bg-slate-900 dark:text-amber-200">
-            {getReviewKindLabel(change.reviewKind)}
-          </span>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onPreviewFile(change.previewPath)}
-            className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-            aria-label={`预览改动文件 ${change.fileName}`}
-          >
-            预览文件
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenFile(change.previewPath)}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
-            aria-label={`在文件空间打开 ${change.fileName}`}
-          >
-            在文件空间打开
-          </button>
-        </div>
-      </header>
-      <div className="max-h-[360px] overflow-auto bg-slate-950 p-3">
-        {hasDiffs ? (
-          <div className="space-y-3">
-            {change.diffs.map((diff, index) => (
-              <ReviewDiffBlock
-                // The order is stable within a single tool input.
-                key={`${change.id}-${index}`}
-                oldText={diff.oldText}
-                newText={diff.newText}
-              />
-            ))}
-          </div>
-        ) : previewLines.length > 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] py-2">
-            {previewLines.map((line, index) => (
-              <ReviewLine
-                // Content previews can contain duplicate lines.
-                key={`${change.id}-preview-${index}`}
-                tone="context"
-                text={`  ${line || " "}`}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-white/15 px-3 py-6 text-center text-xs text-slate-400">
-            这次改动没有可直接展示的内容，可以先打开文件查看。
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function ReviewDiffBlock({
-  newText,
-  oldText,
-}: {
-  newText: string;
-  oldText: string;
-}) {
-  const removedLines = oldText ? oldText.split("\n") : [];
-  const addedLines = newText ? newText.split("\n") : [];
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] py-2">
-      {removedLines.map((line, index) => (
-        <ReviewLine
-          // Diff text can contain duplicate lines; order is the stable identity.
-          key={`removed-${index}`}
-          tone="removed"
-          text={`- ${line || " "}`}
-        />
-      ))}
-      {addedLines.map((line, index) => (
-        <ReviewLine
-          // Diff text can contain duplicate lines; order is the stable identity.
-          key={`added-${index}`}
-          tone="added"
-          text={`+ ${line || " "}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ReviewLine({
-  text,
-  tone,
-}: {
-  text: string;
-  tone: "added" | "removed" | "context";
-}) {
-  return (
-    <div
-      className={[
-        "grid grid-cols-[3rem_1fr] px-2 text-[12px] leading-5",
-        tone === "added"
-          ? "bg-emerald-400/10 text-emerald-200"
-          : tone === "removed"
-            ? "bg-red-400/10 text-red-200"
-            : "text-slate-300",
-      ].join(" ")}
-    >
-      <span className="select-none pr-3 text-right font-mono text-slate-500" />
-      <code className="whitespace-pre font-mono">{text}</code>
-    </div>
-  );
-}
-
-function ActivitySection({
-  children,
-  count,
-  icon,
-  title,
-}: {
-  children: ReactNode;
-  count: number;
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
-          <span className="text-amber-500">{icon}</span>
-          <h3 className="truncate text-sm font-semibold">{title}</h3>
-        </div>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-          {count}
-        </span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ActivityEmpty({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-      {children}
-    </div>
-  );
-}
-
-function getStatusDotClass(status: WorkbenchActivityStatus): string {
-  if (status === "running") return "animate-pulse bg-amber-500";
-  if (status === "error") return "bg-red-500";
-  return "bg-emerald-500";
-}
-
-function getTodoDotClass(status: WorkbenchTodoStatus): string {
-  if (status === "completed") return "bg-emerald-500";
-  if (status === "in_progress") return "animate-pulse bg-amber-500";
-  return "bg-slate-300 dark:bg-slate-600";
-}
-
-function getTodoStatusLabel(status: WorkbenchTodoStatus): string {
-  if (status === "completed") return "已完成";
-  if (status === "in_progress") return "进行中";
-  return "待处理";
-}
-
-function getActivityStatusLabel(status: WorkbenchActivityStatus): string {
-  if (status === "running") return "进行中";
-  if (status === "error") return "需要处理";
-  return "已完成";
-}
-
-function getFileChangeKindLabel(kind: WorkbenchFileChangeKind): string {
-  if (kind === "created") return "新增";
-  if (kind === "updated") return "更新";
-  return "变更";
-}
-
-function getReviewKindLabel(
-  kind: WorkbenchActivityFileChange["reviewKind"],
-): string {
-  if (kind === "write") return "写入内容";
-  if (kind === "edit") return "前后对比";
-  return "文件线索";
-}
-
-function PreviewPane({
-  preview,
-  onOpenWorkspaceFile,
-}: {
-  preview: WorkspacePreviewData;
-  onOpenWorkspaceFile?: (path: string) => void;
-}) {
+function PreviewPane({ preview }: { preview: WorkspacePreviewData }) {
   if (!preview.supported || preview.previewType === "unsupported") {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
@@ -1189,8 +802,12 @@ function PreviewPane({
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
-        <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
-          {preview.path}
+        <span className="flex min-w-0 items-center gap-2 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+          <i
+            className={`${getFileIconClass(preview.path)} shrink-0 text-[15px] leading-none`}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 truncate">{preview.path}</span>
         </span>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-[11px] text-slate-400">
@@ -1201,15 +818,6 @@ function PreviewPane({
               type: "file",
             })}
           </span>
-          {onOpenWorkspaceFile && (
-            <button
-              type="button"
-              onClick={() => onOpenWorkspaceFile(preview.path)}
-              className="rounded-lg border px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-            >
-              在文件空间打开
-            </button>
-          )}
         </div>
       </header>
 
@@ -1235,9 +843,30 @@ function PreviewPane({
           className="h-[70vh] w-full bg-white"
         />
       ) : (
-        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words bg-slate-950 p-3 text-xs leading-5 text-slate-100">
-          {preview.content || "没有可显示的预览内容。"}
-        </pre>
+        <div
+          className="h-[70vh] bg-slate-950"
+          data-testid="workspace-preview-editor"
+        >
+          <span className="sr-only">
+            {preview.content || "没有可显示的预览内容。"}
+          </span>
+          <Editor
+            height="100%"
+            language={detectPreviewLanguage(preview.path)}
+            theme="vs-dark"
+            value={preview.content || "没有可显示的预览内容。"}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              fontSize: 13,
+              wordWrap: "on",
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              lineNumbersMinChars: 3,
+              renderLineHighlight: "none",
+            }}
+          />
+        </div>
       )}
 
       {preview.truncated && (

@@ -16,9 +16,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import { SettingsProvider } from "../contexts/SettingsContext";
+import { FORBIDDEN_PRODUCT_TERMS } from "../test/productSurface";
 
 vi.mock("./layout/Sidebar", () => ({
-  Sidebar: () => <aside data-testid="sidebar" />,
+  Sidebar: ({ desktopVisible }: { desktopVisible?: boolean }) => (
+    <aside
+      data-desktop-visible={desktopVisible ? "true" : "false"}
+      data-testid="sidebar"
+    />
+  ),
 }));
 
 vi.mock("../contexts/AuthContext", () => ({
@@ -35,8 +41,7 @@ vi.mock("../contexts/AuthContext", () => ({
   }),
 }));
 
-const FORBIDDEN_PROVIDER_TERMS =
-  /E2B|CCR|Agent SDK|code-server|GNU|Remote IDE|sandbox|沙盒|Claude Code|base url|traffic|tokens?|provider/i;
+const originalInnerWidth = window.innerWidth;
 
 function okJson(data: unknown) {
   return {
@@ -63,7 +68,9 @@ function sseResponse(events: unknown[]) {
   });
 }
 
-function pendingSseResponse(onStart: (controller: ReadableStreamDefaultController<Uint8Array>) => void) {
+function pendingSseResponse(
+  onStart: (controller: ReadableStreamDefaultController<Uint8Array>) => void,
+) {
   return new Response(
     new ReadableStream<Uint8Array>({
       start(controller) {
@@ -115,6 +122,15 @@ function renderChatPage(
       </MemoryRouter>
     </SettingsProvider>,
   );
+}
+
+function stubViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+  window.dispatchEvent(new Event("resize"));
 }
 
 describe("ChatPage workbench dock", () => {
@@ -216,7 +232,7 @@ describe("ChatPage workbench dock", () => {
             }),
           );
         }
-        if (url === "/api/workspace/preview?path=%2Freport.md") {
+        if (url.startsWith("/api/workspace/preview?path=%2Freport.md")) {
           return Promise.resolve(
             okJson({
               path: "/report.md",
@@ -240,21 +256,32 @@ describe("ChatPage workbench dock", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: originalInnerWidth,
+    });
   });
 
   it("opens the mirrored browser in the chat right dock through the MyCC proxy", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-    expect(screen.getByLabelText("工作台")).not.toHaveClass("hidden");
-    expect(screen.getByLabelText("工作台").parentElement).toHaveStyle({
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    expect(screen.getByLabelText("成果空间")).not.toHaveClass("hidden");
+    expect(screen.getByLabelText("成果空间").parentElement).toHaveStyle({
       width: "clamp(640px, 52vw, 880px)",
     });
+    expect(
+      screen.queryByRole("button", { name: "进展" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("任务进展")).not.toBeInTheDocument();
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     expect(iframe).toHaveAttribute(
       "src",
       `${window.location.origin}/api/ide/sessions/ide_123/desktop/proxy/vnc.html?autoconnect=true&reconnect=true&reconnect_delay=2000&resize=scale&path=api%2Fide%2Fsessions%2Fide_123%2Fdesktop%2Fproxy%2Fwebsockify`,
@@ -281,8 +308,59 @@ describe("ChatPage workbench dock", () => {
       }),
     );
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
+  });
+
+  it("hides the underlying chat surface from accessibility when the results space is a mobile overlay", async () => {
+    stubViewportWidth(433);
+    renderChatPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+
+    expect(document.querySelector("main")).toHaveAttribute(
+      "data-mobile-workbench-overlay",
+      "hidden",
+    );
+    expect(document.querySelector("main")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(
+      screen.queryByRole("button", { name: "技能" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("成果空间")).toBeInTheDocument();
+  });
+
+  it("collapses the left conversation sidebar while the right workbench is open", async () => {
+    renderChatPage();
+
+    expect(screen.getByTestId("sidebar")).toHaveAttribute(
+      "data-desktop-visible",
+      "true",
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar")).toHaveAttribute(
+        "data-desktop-visible",
+        "false",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭成果空间" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar")).toHaveAttribute(
+        "data-desktop-visible",
+        "true",
+      );
+    });
   });
 
   it("opens the mirrored browser dock when the agent stream uses the sandbox browser helper", async () => {
@@ -293,7 +371,7 @@ describe("ChatPage workbench dock", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     expect(iframe).toHaveAttribute(
       "src",
       expect.stringContaining(
@@ -309,7 +387,8 @@ describe("ChatPage workbench dock", () => {
     const chatCall = vi
       .mocked(fetch)
       .mock.calls.find(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     const chatBody = JSON.parse(String(chatCall?.[1]?.body));
     expect(chatBody).not.toHaveProperty("sessionId");
@@ -320,14 +399,13 @@ describe("ChatPage workbench dock", () => {
       }),
     );
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
   });
 
   it("sends an authenticated pause request and shows pause guidance when it is active", async () => {
-    let chatStreamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | null = null;
+    let chatStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
 
     vi.mocked(fetch).mockImplementation((input, init) => {
       const url = String(input);
@@ -371,7 +449,9 @@ describe("ChatPage workbench dock", () => {
       target: { value: "做一个可以暂停的长任务" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(await screen.findByRole("button", { name: "暂停这次任务" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "暂停这次任务" }),
+    );
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
@@ -387,14 +467,15 @@ describe("ChatPage workbench dock", () => {
     });
     expect(await screen.findByText("已暂停")).toBeInTheDocument();
     expect(screen.getByText(/补充说明后继续/)).toBeInTheDocument();
-    expect(screen.getByText(/右侧工作区/)).toBeInTheDocument();
-    expect(screen.queryByText(FORBIDDEN_PROVIDER_TERMS)).not.toBeInTheDocument();
+    expect(screen.getByText(/成果空间会保留/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
+    ).not.toBeInTheDocument();
   });
 
   it("does not pretend a pause succeeded when the active request has already ended", async () => {
-    let chatStreamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | null = null;
+    let chatStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
 
     vi.mocked(fetch).mockImplementation((input, init) => {
       const url = String(input);
@@ -438,7 +519,9 @@ describe("ChatPage workbench dock", () => {
       target: { value: "做一个已经结束的任务" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(await screen.findByRole("button", { name: "暂停这次任务" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "暂停这次任务" }),
+    );
 
     expect(await screen.findByText("已结束")).toBeInTheDocument();
     expect(screen.getByText(/这次任务已经结束/)).toBeInTheDocument();
@@ -446,9 +529,8 @@ describe("ChatPage workbench dock", () => {
   });
 
   it("can send another task after a confirmed pause", async () => {
-    let chatStreamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | null = null;
+    let chatStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
     let chatCallCount = 0;
 
     vi.mocked(fetch).mockImplementation((input, init) => {
@@ -507,7 +589,9 @@ describe("ChatPage workbench dock", () => {
       target: { value: "先做一个长任务" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(await screen.findByRole("button", { name: "暂停这次任务" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "暂停这次任务" }),
+    );
     expect(await screen.findByText("已暂停")).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("textbox"), {
@@ -519,15 +603,15 @@ describe("ChatPage workbench dock", () => {
     const chatCalls = vi
       .mocked(fetch)
       .mock.calls.filter(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     expect(chatCalls).toHaveLength(2);
   });
 
   it("queues a follow-up while the current task is running and sends it after completion", async () => {
-    let chatStreamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | null = null;
+    let chatStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
     const encoder = new TextEncoder();
     const chatBodies: Array<{ message?: string; sessionId?: string }> = [];
 
@@ -587,8 +671,12 @@ describe("ChatPage workbench dock", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.getByText("等你结束后接着做这个")).toBeInTheDocument();
-    expect(screen.getByText(/已接住/)).toBeInTheDocument();
+    expect(screen.getAllByText("等你结束后接着做这个").length).toBeGreaterThan(
+      1,
+    );
+    expect(screen.getByTestId("queued-message-float")).toHaveTextContent(
+      "等待接上",
+    );
     expect(chatBodies).toHaveLength(1);
 
     await act(async () => {
@@ -611,9 +699,8 @@ describe("ChatPage workbench dock", () => {
   });
 
   it("continues with a queued follow-up after pausing the current task", async () => {
-    let chatStreamController:
-      | ReadableStreamDefaultController<Uint8Array>
-      | null = null;
+    let chatStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
     const chatBodies: Array<{ message?: string }> = [];
 
     vi.mocked(fetch).mockImplementation((input, init) => {
@@ -680,7 +767,9 @@ describe("ChatPage workbench dock", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     expect(chatBodies).toHaveLength(1);
 
-    fireEvent.click(await screen.findByRole("button", { name: "暂停这次任务" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "暂停这次任务" }),
+    );
 
     expect(await screen.findByText("暂停后接上 OK")).toBeInTheDocument();
     await waitFor(() => expect(chatBodies).toHaveLength(2));
@@ -737,15 +826,14 @@ describe("ChatPage workbench dock", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("第一次回复")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "重新生成这条回复" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "重新生成这条回复" }));
 
     expect(await screen.findByText("重试 OK")).toBeInTheDocument();
     const chatCalls = vi
       .mocked(fetch)
       .mock.calls.filter(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     expect(chatCalls).toHaveLength(2);
     const firstBody = JSON.parse(String(chatCalls[0]?.[1]?.body));
@@ -784,7 +872,8 @@ describe("ChatPage workbench dock", () => {
     const chatCall = vi
       .mocked(fetch)
       .mock.calls.find(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     const chatBody = JSON.parse(String(chatCall?.[1]?.body));
     expect(chatBody.images).toEqual([
@@ -793,9 +882,9 @@ describe("ChatPage workbench dock", () => {
         mediaType: "image/png",
       },
     ]);
-    expect(screen.getByText(/已添加资料：screen\.png/).textContent).not.toContain(
-      "iVBORw",
-    );
+    expect(
+      screen.getByText(/已添加资料：screen\.png/).textContent,
+    ).not.toContain("iVBORw");
   });
 
   it("continues the loaded conversation session after a page reload", async () => {
@@ -822,7 +911,8 @@ describe("ChatPage workbench dock", () => {
     const chatCall = vi
       .mocked(fetch)
       .mock.calls.find(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     const chatBody = JSON.parse(String(chatCall?.[1]?.body));
     expect(chatBody.sessionId).toBe("session_reload");
@@ -882,8 +972,12 @@ describe("ChatPage workbench dock", () => {
   it("sends the default workspace directory when a new chat has no project path", async () => {
     renderChatPage("/projects");
 
-    expect((await screen.findAllByText("默认工作区")).length).toBeGreaterThan(0);
-    expect(screen.queryByText("/home/tester/workspace")).not.toBeInTheDocument();
+    expect((await screen.findAllByText("默认项目空间")).length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.queryByText("/home/tester/workspace"),
+    ).not.toBeInTheDocument();
 
     fireEvent.change(await screen.findByRole("textbox"), {
       target: { value: "整理当前工作区" },
@@ -899,7 +993,8 @@ describe("ChatPage workbench dock", () => {
     const chatCall = vi
       .mocked(fetch)
       .mock.calls.find(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     const chatBody = JSON.parse(String(chatCall?.[1]?.body));
     expect(chatBody.workingDirectory).toBe("~/workspace");
@@ -941,7 +1036,8 @@ describe("ChatPage workbench dock", () => {
     const chatCalls = vi
       .mocked(fetch)
       .mock.calls.filter(
-        ([input, init]) => String(input) === "/api/chat" && init?.method === "POST",
+        ([input, init]) =>
+          String(input) === "/api/chat" && init?.method === "POST",
       );
     const lastChatCall = chatCalls[chatCalls.length - 1];
     const chatBody = JSON.parse(String(lastChatCall?.[1]?.body));
@@ -951,12 +1047,14 @@ describe("ChatPage workbench dock", () => {
   it("keeps the mirrored browser iframe warm when the dock is closed and reopened", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     expect(iframe).toHaveAttribute(
       "src",
       expect.stringContaining(
@@ -969,19 +1067,19 @@ describe("ChatPage workbench dock", () => {
         ([input]) => String(input) === "/api/ide/sessions/ide_123/desktop",
       ).length;
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭工作台" }));
-    expect(screen.getByLabelText("工作台")).toHaveAttribute(
+    fireEvent.click(screen.getByRole("button", { name: "关闭成果空间" }));
+    expect(screen.getByLabelText("成果空间")).toHaveAttribute(
       "data-open",
       "false",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开右侧成果空间" }));
 
-    expect(screen.getByLabelText("工作台")).toHaveAttribute(
+    expect(screen.getByLabelText("成果空间")).toHaveAttribute(
       "data-open",
       "true",
     );
-    expect(screen.getByTitle("镜像浏览器窗口")).toHaveAttribute(
+    expect(screen.getByTitle("助理浏览器窗口")).toHaveAttribute(
       "src",
       expect.stringContaining(
         "/api/ide/sessions/ide_123/desktop/proxy/vnc.html",
@@ -1001,12 +1099,14 @@ describe("ChatPage workbench dock", () => {
     );
     renderChatPage("/projects/demo?sessionId=session_reload");
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     expect(iframe).toHaveAttribute(
       "src",
       expect.stringContaining(
@@ -1031,23 +1131,26 @@ describe("ChatPage workbench dock", () => {
 
   it("keeps the mirrored browser service alive after the frame is open", async () => {
     const keepaliveHandlers: Array<() => void> = [];
-    vi.spyOn(window, "setInterval").mockImplementation(
-      ((handler: TimerHandler, timeout?: number) => {
-        if (timeout === 30_000 && typeof handler === "function") {
-          keepaliveHandlers.push(handler as () => void);
-        }
-        return 1;
-      }) as unknown as typeof window.setInterval,
-    );
+    vi.spyOn(window, "setInterval").mockImplementation(((
+      handler: TimerHandler,
+      timeout?: number,
+    ) => {
+      if (timeout === 30_000 && typeof handler === "function") {
+        keepaliveHandlers.push(handler as () => void);
+      }
+      return 1;
+    }) as unknown as typeof window.setInterval);
     vi.spyOn(window, "clearInterval").mockImplementation(() => undefined);
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    await screen.findByTitle("镜像浏览器窗口");
+    await screen.findByTitle("助理浏览器窗口");
     expect(keepaliveHandlers.length).toBeGreaterThan(0);
     const desktopCallsBeforeKeepalive = vi
       .mocked(fetch)
@@ -1074,19 +1177,21 @@ describe("ChatPage workbench dock", () => {
   it("keeps the mirrored browser iframe mounted while switching workbench tabs", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     await waitFor(() => {
       expect(iframe).toHaveAttribute("data-vnc-visible", "true");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "项目文件" }));
 
-    expect(screen.getByTitle("镜像浏览器窗口")).toBe(iframe);
+    expect(screen.getByTitle("助理浏览器窗口")).toBe(iframe);
     await waitFor(() => {
       expect(iframe).toHaveAttribute("data-vnc-visible", "false");
     });
@@ -1095,12 +1200,14 @@ describe("ChatPage workbench dock", () => {
   it("lets the mirrored browser frame return to home and focuses it again on agent browser events", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    const iframe = await screen.findByTitle("镜像浏览器窗口");
+    const iframe = await screen.findByTitle("助理浏览器窗口");
     await act(async () => {
       window.dispatchEvent(
         new MessageEvent("message", {
@@ -1127,12 +1234,14 @@ describe("ChatPage workbench dock", () => {
   it("toggles the right workbench into an app-level fullscreen view", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
 
-    const dock = screen.getByLabelText("工作台");
+    const dock = screen.getByLabelText("成果空间");
     expect(dock).toHaveAttribute("data-fullscreen", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: "全屏工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "全屏成果空间" }));
     expect(dock).toHaveAttribute("data-fullscreen", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "退出全屏" }));
@@ -1142,289 +1251,101 @@ describe("ChatPage workbench dock", () => {
   it("switches the right dock to workspace files without leaving chat", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "项目文件" }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/workspace/tree?path=%2F&depth=3",
+        "/api/workspace/tree?path=%2F&depth=3&ideSessionId=ide_123",
         expect.any(Object),
       );
     });
     expect(await screen.findByText("report.md")).toBeInTheDocument();
-    expect(screen.getByText("/report.md")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-file-tree")).toBeInTheDocument();
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
   });
 
-  it("shows a productized activity workspace for the current conversation", async () => {
-    vi.mocked(fetch).mockImplementation((input, init) => {
-      const url = String(input);
-      if (url === "/api/assistant/home") {
-        return Promise.resolve(
-          okJson({
-            assistant: { initialized: true, name: "cc" },
-            tasks: [],
-            deliverables: [],
-            memory: { sources: [] },
-            capabilities: [],
-          }),
-        );
-      }
-      if (url === "/api/skills") {
-        return Promise.resolve(okJson({ skills: [] }));
-      }
-      if (url === "/api/chat" && init?.method === "POST") {
-        return Promise.resolve(
-          sseResponse([
-            {
-              type: "assistant",
-              message: {
-                content: [
-                  {
-                    type: "tool_use",
-                    id: "todo-1",
-                    name: "TodoWrite",
-                    input: {
-                      todos: [
-                        {
-                          content: "整理右侧进展面板",
-                          activeForm: "正在整理右侧进展面板",
-                          status: "in_progress",
-                        },
-                      ],
-                    },
-                  },
-                  {
-                    type: "tool_use",
-                    id: "write-1",
-                    name: "Write",
-                    input: {
-                      file_path: "/home/mycc/workspace/docs/report.md",
-                      content: "# 报告\n\n完成。",
-                    },
-                  },
-                  {
-                    type: "text",
-                    text: "已整理：[报告](/docs/report.md)",
-                  },
-                ],
-              },
-            },
-            {
-              type: "user",
-              message: {
-                content: [
-                  {
-                    type: "tool_result",
-                    tool_use_id: "write-1",
-                    content: "ok",
-                  },
-                ],
-              },
-            },
-            { type: "done", sessionId: "session_activity" },
-          ]),
-        );
-      }
-      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
-    });
-
+  it("loads right dock files from the same mirrored browser workbench session", async () => {
     renderChatPage();
 
-    fireEvent.change(await screen.findByRole("textbox"), {
-      target: { value: "整理当前项目状态" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
+    );
+    await screen.findByTitle("助理浏览器窗口");
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-
-    expect(await screen.findByText("任务进展")).toBeInTheDocument();
-    expect(screen.getByText("正在整理右侧进展面板")).toBeInTheDocument();
-    expect(screen.getByText("report.md")).toBeInTheDocument();
-    expect(screen.getAllByText("报告").length).toBeGreaterThan(0);
-    expect(screen.getByText(/刚刚改动/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "审阅 report.md" }));
-
-    expect(await screen.findByText("审阅改动")).toBeInTheDocument();
-    expect(screen.getByText("+ # 报告")).toBeInTheDocument();
-    expect(screen.getByText("+ 完成。")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "预览改动文件 report.md" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "在文件空间打开 report.md" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
-    ).not.toBeInTheDocument();
-  });
-
-  it("lets users review file changes and preview the changed file from the right dock", async () => {
-    vi.mocked(fetch).mockImplementation((input, init) => {
-      const url = String(input);
-      if (url === "/api/assistant/home") {
-        return Promise.resolve(
-          okJson({
-            assistant: { initialized: true, name: "cc" },
-            tasks: [],
-            deliverables: [],
-            memory: { sources: [] },
-            capabilities: [],
-          }),
-        );
-      }
-      if (url === "/api/skills") {
-        return Promise.resolve(okJson({ skills: [] }));
-      }
-      if (url === "/api/chat" && init?.method === "POST") {
-        return Promise.resolve(
-          sseResponse([
-            {
-              type: "assistant",
-              message: {
-                content: [
-                  {
-                    type: "tool_use",
-                    id: "edit-1",
-                    name: "Edit",
-                    input: {
-                      file_path: "/home/mycc/workspace/src/app.ts",
-                      old_str: "const title = '旧标题';",
-                      new_str: "const title = '新标题';",
-                    },
-                  },
-                ],
-              },
-            },
-            {
-              type: "user",
-              message: {
-                content: [
-                  {
-                    type: "tool_result",
-                    tool_use_id: "edit-1",
-                    content: "ok",
-                  },
-                ],
-              },
-            },
-            { type: "done", sessionId: "session_review" },
-          ]),
-        );
-      }
-      if (url === "/api/workspace/preview?path=%2Fsrc%2Fapp.ts") {
-        return Promise.resolve(
-          okJson({
-            path: "/src/app.ts",
-            size: 80,
-            mtime: new Date(0).toISOString(),
-            mimeType: "text/typescript",
-            previewType: "text",
-            truncated: false,
-            supported: true,
-            content: "const title = '新标题';",
-          }),
-        );
-      }
-      if (url.startsWith("/api/workspace/tree")) {
-        return Promise.resolve(
-          okJson({
-            tree: {
-              id: "/",
-              name: "/",
-              path: "/",
-              type: "directory",
-              children: [],
-            },
-          }),
-        );
-      }
-      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
-    });
-
-    renderChatPage();
-
-    fireEvent.change(await screen.findByRole("textbox"), {
-      target: { value: "更新标题" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "审阅 app.ts" }));
-
-    expect(await screen.findByText("审阅改动")).toBeInTheDocument();
-    expect(screen.getByText("- const title = '旧标题';")).toBeInTheDocument();
-    expect(screen.getByText("+ const title = '新标题';")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "预览改动文件 app.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "项目文件" }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/workspace/preview?path=%2Fsrc%2Fapp.ts",
+        "/api/workspace/tree?path=%2F&depth=3&ideSessionId=ide_123",
         expect.any(Object),
       );
     });
-    expect(await screen.findByText("/src/app.ts")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "进展" }));
-    fireEvent.click(screen.getByRole("button", { name: "审阅 app.ts" }));
-    fireEvent.click(screen.getByRole("button", { name: "在文件空间打开 app.ts" }));
-
-    expect(await screen.findByText("文件空间")).toBeInTheDocument();
-    expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText("report.md")).toBeInTheDocument();
   });
 
   it("previews a selected workspace file inside the dock", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "项目文件" }));
 
+    expect(
+      screen.queryByRole("button", { name: "预览" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       await screen.findByRole("button", { name: "预览 report.md" }),
     );
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/workspace/preview?path=%2Freport.md",
+        "/api/workspace/preview?path=%2Freport.md&ideSessionId=ide_123",
         expect.any(Object),
       );
     });
+    expect(screen.getByText("项目文件")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-preview-editor")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "预览 report.md" }),
+    ).toBeInTheDocument();
     expect(await screen.findByText("/report.md")).toBeInTheDocument();
     expect(screen.getByText(/这里是助理整理的重点/)).toBeInTheDocument();
     expect(screen.queryByText("暂无预览")).not.toBeInTheDocument();
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
   });
 
   it("keeps a previewed file in the right-side file space", async () => {
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
-    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "项目文件" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "预览 report.md" }),
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "在文件空间打开" }),
     );
 
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/projects/demo",
     );
-    expect(screen.getByText("文件空间")).toBeInTheDocument();
+    expect(screen.getByText("项目文件")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "预览 report.md" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
   });
 
@@ -1456,15 +1377,17 @@ describe("ChatPage workbench dock", () => {
 
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    expect(await screen.findByText("镜像浏览器暂时打不开")).toBeInTheDocument();
+    expect(await screen.findByText("助理浏览器暂时打不开")).toBeInTheDocument();
     expect(screen.queryByText("Bad Request")).not.toBeInTheDocument();
     expect(
-      screen.queryByText(FORBIDDEN_PROVIDER_TERMS),
+      screen.queryByText(FORBIDDEN_PRODUCT_TERMS),
     ).not.toBeInTheDocument();
   });
 
@@ -1496,12 +1419,14 @@ describe("ChatPage workbench dock", () => {
 
     renderChatPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开工作台" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "启动镜像浏览器" }),
+      await screen.findByRole("button", { name: "打开右侧成果空间" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "启动助理浏览器" }),
     );
 
-    expect(await screen.findByText("镜像浏览器暂时打不开")).toBeInTheDocument();
+    expect(await screen.findByText("助理浏览器暂时打不开")).toBeInTheDocument();
     expect(screen.queryByText("exit status 1")).not.toBeInTheDocument();
   });
 });

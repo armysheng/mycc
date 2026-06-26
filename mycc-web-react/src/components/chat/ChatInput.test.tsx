@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsProvider } from "../../contexts/SettingsContext";
 import { ChatInput } from "./ChatInput";
 
-function renderChatInput(overrides: Partial<Parameters<typeof ChatInput>[0]> = {}) {
+function renderChatInput(
+  overrides: Partial<Parameters<typeof ChatInput>[0]> = {},
+) {
   const props: Parameters<typeof ChatInput>[0] = {
     input: "",
     isLoading: false,
@@ -35,8 +37,12 @@ describe("ChatInput", () => {
       placeholder: "描述你想完成的事，MyCC 会帮你拆解并执行…",
     });
 
-    expect(screen.getByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "自动执行" })).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "自动执行" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(screen.queryByText(/Ctrl\+Shift\+M/)).not.toBeInTheDocument();
   });
@@ -121,8 +127,12 @@ describe("ChatInput", () => {
         />
       </SettingsProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /执行模式：自动接受编辑/ }));
-    expect(onPermissionModeChange).toHaveBeenLastCalledWith("bypassPermissions");
+    fireEvent.click(
+      screen.getByRole("button", { name: /执行模式：自动接受编辑/ }),
+    );
+    expect(onPermissionModeChange).toHaveBeenLastCalledWith(
+      "bypassPermissions",
+    );
   });
 
   it("can hide the permission mode control for productized bypass mode", () => {
@@ -133,7 +143,9 @@ describe("ChatInput", () => {
       showPermissionModeControl: false,
     });
 
-    expect(screen.queryByRole("button", { name: /执行模式：自动执行/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /执行模式：自动执行/ }),
+    ).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("textbox"), {
       key: "m",
       ctrlKey: true,
@@ -154,6 +166,32 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "暂停这次任务" }));
 
     expect(onAbort).toHaveBeenCalledOnce();
+  });
+
+  it("keeps default composer action buttons vertically centered", () => {
+    renderChatInput({
+      input: "继续做",
+      isLoading: true,
+      currentRequestId: "request-running",
+      showPermissionModeControl: false,
+    });
+
+    expect(screen.getByTestId("chat-composer-actions")).toHaveClass(
+      "top-1/2",
+      "-translate-y-1/2",
+      "items-center",
+    );
+    expect(screen.getByRole("button", { name: "添加资料" })).toHaveClass(
+      "h-10",
+      "w-10",
+      "rounded-full",
+    );
+    expect(screen.getByRole("button", { name: "暂停这次任务" })).toHaveClass(
+      "h-10",
+      "w-10",
+      "rounded-full",
+    );
+    expect(screen.getByRole("button", { name: "发送" })).toHaveClass("h-10");
   });
 
   it("keeps the composer usable while a task is running", () => {
@@ -190,6 +228,47 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("floats queued messages above the composer", () => {
+    renderChatInput({
+      input: "继续补充",
+      queuedMessages: ["知道了吗"],
+      showPermissionModeControl: false,
+    });
+
+    const queuedFloat = screen.getByTestId("queued-message-float");
+    expect(queuedFloat).toHaveTextContent("知道了吗");
+    expect(queuedFloat).toHaveTextContent("等待接上");
+    expect(queuedFloat.nextElementSibling).toBe(
+      screen.getByTestId("chat-composer-dropzone"),
+    );
+    expect(screen.queryByText(/已接住/)).not.toBeInTheDocument();
+  });
+
+  it("matches slash suggestions by natural language skill triggers", () => {
+    const onInputChange = vi.fn();
+    renderChatInput({
+      input: "/访问",
+      onInputChange,
+      slashSkillsLoaded: true,
+      slashSkills: [
+        {
+          id: "browser-use",
+          name: "可见浏览器自动化",
+          trigger: "/browser-use",
+          triggers: ["/browser-use", "打开网页", "访问网站"],
+          description: "操作网页",
+          installed: true,
+          enabled: true,
+        },
+      ],
+      showPermissionModeControl: false,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /可见浏览器自动化/ }));
+
+    expect(onInputChange).toHaveBeenCalledWith("/browser-use ");
   });
 
   it("keeps dropped files as chips and submits them as assistant context", async () => {
@@ -288,7 +367,9 @@ describe("ChatInput", () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(onSubmit.mock.calls[0][0]).toContain("看一下这个截图");
-    expect(onSubmit.mock.calls[0][1]).toBe("看一下这个截图\n\n已添加资料：screen.png");
+    expect(onSubmit.mock.calls[0][1]).toBe(
+      "看一下这个截图\n\n已添加资料：screen.png",
+    );
     expect(onSubmit.mock.calls[0][1]).not.toContain("iVBORw");
     expect(onSubmit.mock.calls[0][2]).toEqual([
       {
@@ -343,7 +424,6 @@ describe("ChatInput", () => {
 
   it("asks for confirmation before submitting destructive-looking tasks", () => {
     const onSubmit = vi.fn();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     renderChatInput({
       input: "删除所有工作区文件",
@@ -353,9 +433,17 @@ describe("ChatInput", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining("可能会删除或覆盖内容"),
-    );
+    expect(
+      screen.getByRole("dialog", { name: "确认执行这个任务？" }),
+    ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续执行" }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
   });
 });

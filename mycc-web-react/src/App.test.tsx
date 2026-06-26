@@ -6,12 +6,10 @@ import { ChatPage } from "./components/ChatPage";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import App from "./App";
+import { FORBIDDEN_PRODUCT_TERMS } from "./test/productSurface";
 
 // Mock fetch globally
 global.fetch = vi.fn();
-
-const FORBIDDEN_PRODUCT_TERMS =
-  /E2B|CCR|Agent SDK|code-server|GNU|sandbox|沙盒|Claude Code|Claude 工作空间|base url|tokens?|sessions?/i;
 
 function WorkspaceLocationProbe() {
   const location = useLocation();
@@ -64,7 +62,7 @@ describe("App Routing", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("MyCC").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("/test-path").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("test-path").length).toBeGreaterThan(0);
     });
   });
 
@@ -146,8 +144,9 @@ describe("App Routing", () => {
       );
     });
 
-    expect(await screen.findByText("我们应该在 /demo 中构建什么？")).toBeInTheDocument();
-    expect(screen.getAllByText("/demo").length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(screen.getAllByText("demo").length).toBeGreaterThan(0);
+    });
   });
 
   it("shows a product-facing empty state when an old conversation has no readable messages", async () => {
@@ -315,7 +314,7 @@ describe("App Routing", () => {
     vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
       key === "token" ? "test-token" : null
     ));
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input, init) => {
       const url = String(input);
       if (url.endsWith("/api/auth/me")) {
         return Promise.resolve({
@@ -357,7 +356,16 @@ describe("App Routing", () => {
           }),
         });
       }
-      if (url === "/api/workspace/tree?path=%2F&depth=3") {
+      if (url === "/api/ide/sessions" && init?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: { id: "ide_123", status: "running" },
+          }),
+        });
+      }
+      if (url === "/api/workspace/tree?path=%2F&depth=3&ideSessionId=ide_123") {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
@@ -406,13 +414,12 @@ describe("App Routing", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "打开成果" }));
 
-    expect(await screen.findByLabelText("工作台")).toBeInTheDocument();
-    expect(await screen.findByText("product-roadmap.md")).toBeInTheDocument();
+    expect(await screen.findByLabelText("成果空间")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-location")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/workspace/tree?path=%2F&depth=3",
-        expect.any(Object),
+        "/api/ide/sessions",
+        expect.objectContaining({ method: "POST" }),
       ),
     );
   });
