@@ -164,35 +164,41 @@ jobs:
             exit 1
           fi
 
-      - name: Verify backend readiness endpoint (via SSH)
+      - name: Verify backend deep readiness endpoint (via SSH)
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
           SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
-          READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz}"
+          READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz/deep}"
           MAX_RETRIES="${STAGING_BACKEND_READY_RETRIES:-20}"
           RETRY_INTERVAL="${STAGING_BACKEND_READY_RETRY_INTERVAL:-3}"
 
           passed=false
           for attempt in $(seq 1 "${MAX_RETRIES}"); do
-            if ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
-              "curl -fsS --connect-timeout 2 --max-time 5 '${READY_URL}'" >/dev/null; then
-              echo "Backend readiness check passed (${attempt}/${MAX_RETRIES})"
-              passed=true
-              break
+            READY_BODY="$(ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
+              "curl -fsS --connect-timeout 2 --max-time 5 '${READY_URL}'" 2>/dev/null || true)"
+            if [ -n "${READY_BODY}" ]; then
+              if printf '%s' "${READY_BODY}" | grep -Eq '"runtime"[[:space:]]*:[[:space:]]*\{[^}]*"status"[[:space:]]*:[[:space:]]*"pass"'; then
+                echo "Backend deep readiness check passed (${attempt}/${MAX_RETRIES})"
+                passed=true
+                break
+              fi
+              echo "Backend responded but runtime readiness is not pass (${attempt}/${MAX_RETRIES})"
             fi
             echo "Backend not ready (${attempt}/${MAX_RETRIES}), retry in ${RETRY_INTERVAL}s..."
             sleep "${RETRY_INTERVAL}"
           done
 
           if [ "${passed}" != "true" ]; then
-            echo "Backend readiness check failed after ${MAX_RETRIES} attempts: ${READY_URL}" >&2
+            echo "Backend deep readiness check failed after ${MAX_RETRIES} attempts: ${READY_URL}" >&2
             ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" '
               set +e
               echo "--- /health ---" >&2
               curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/health 2>&1 || true
               echo "--- /readyz ---" >&2
               curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/readyz 2>&1 || true
+              echo "--- /readyz/deep ---" >&2
+              curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/readyz/deep 2>&1 || true
               echo "--- recent user logs ---" >&2
               journalctl --user -n 80 --no-pager 2>/dev/null || true
             ' || true

@@ -70,7 +70,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 2. Staging deployment rehearsal
    - Deploy the release candidate to staging.
    - Run `npm run db:migrate`.
-   - Verify `GET /readyz/deep` returns `runtime.status=pass`.
+   - Verify `GET /readyz/deep` returns `runtime.status=pass`; the staging deploy workflow defaults `STAGING_BACKEND_READY_URL` to `http://127.0.0.1:8080/readyz/deep` and rejects responses where runtime readiness is not `pass`.
    - Run `BASE_URL=<staging-backend> npm run harness:verify -- --target=landing-live --no-write`.
 
 3. Product copy and surface audit

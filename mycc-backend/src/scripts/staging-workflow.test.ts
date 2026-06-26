@@ -21,9 +21,10 @@ describe('staging deploy workflow', () => {
 
   it('checks readiness separately from liveness', () => {
     expect(workflow).toContain('Verify backend health endpoint');
-    expect(workflow).toContain('Verify backend readiness endpoint');
+    expect(workflow).toContain('Verify backend deep readiness endpoint');
     expect(workflow).toContain('STAGING_BACKEND_READY_URL');
-    expect(workflow).toContain('http://127.0.0.1:8080/readyz');
+    expect(workflow).toContain('http://127.0.0.1:8080/readyz/deep');
+    expect(workflow).toContain('"runtime"[[:space:]]*:[[:space:]]*\\{[^}]*"status"[[:space:]]*:[[:space:]]*"pass"');
   });
 
   it('passes custom restart commands safely into the remote script', () => {
