@@ -5,6 +5,10 @@ set -e
 
 echo "=== MyCC Backend 生产环境部署 ==="
 
+NODE_BIN_DIR="${MYCC_NODE_BIN_DIR:-/home/armysheng/.local/node-v20.19.5-linux-x64/bin}"
+NODE_BIN="$NODE_BIN_DIR/node"
+NPM_BIN="$NODE_BIN_DIR/npm"
+
 # 检查是否为 root
 if [ "$EUID" -ne 0 ]; then
   echo "❌ 请使用 root 权限运行此脚本"
@@ -14,7 +18,20 @@ fi
 # 1. 安装系统依赖
 echo "📦 安装系统依赖..."
 apt update
-apt install -y postgresql redis-server nodejs npm sudo
+apt install -y postgresql redis-server sudo
+
+echo "📦 校验生产 Node 工具链..."
+if [ ! -x "$NODE_BIN" ] || [ ! -x "$NPM_BIN" ]; then
+  echo "❌ 未找到生产 Node v20.19.5: $NODE_BIN_DIR"
+  echo "请先安装 Node 到该目录，或通过 MYCC_NODE_BIN_DIR 指定服务 Node bin 目录。"
+  exit 1
+fi
+"$NODE_BIN" -v | grep -qx "v20.19.5" || {
+  echo "❌ $NODE_BIN 不是 v20.19.5"
+  "$NODE_BIN" -v || true
+  exit 1
+}
+echo "✅ Node $("$NODE_BIN" -v), npm $("$NPM_BIN" -v)"
 
 # 2. 创建服务账号
 echo "👤 创建服务账号..."
@@ -69,10 +86,11 @@ After=network.target postgresql.service redis.service
 Type=simple
 User=mycc_service
 WorkingDirectory=/home/mycc_service/mycc/mycc-backend
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=$NODE_BIN dist/index.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
+Environment=PATH=$NODE_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # 资源限制
 LimitNOFILE=4096
