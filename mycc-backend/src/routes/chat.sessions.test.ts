@@ -1,9 +1,11 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeTestUserLookup } from '../test/auth-mocks.js';
 import { chatRoutes } from './chat.js';
 
 const mocks = vi.hoisted(() => ({
+  findUserById: vi.fn(),
   getUserConversations: vi.fn(),
 }));
 
@@ -12,7 +14,7 @@ vi.mock('../db/client.js', () => ({
   checkQuota: vi.fn(),
   createUser: vi.fn(),
   findUserByCredential: vi.fn(),
-  findUserById: vi.fn(),
+  findUserById: mocks.findUserById,
   getConversationMessageSnapshots: vi.fn(),
   getSubscription: vi.fn(),
   getUserConversations: mocks.getUserConversations,
@@ -45,6 +47,11 @@ async function buildApp() {
 }
 
 describe('chat sessions route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
+  });
+
   it('filters control and bootstrap conversations out of the session list', async () => {
     mocks.getUserConversations.mockResolvedValue([
       {

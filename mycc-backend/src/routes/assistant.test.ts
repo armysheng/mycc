@@ -4,11 +4,35 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
+import { makeTestUser, makeTestUserLookup } from '../test/auth-mocks.js';
 import { assistantRoutes, type AssistantRoutesOptions } from './assistant.js';
 
 const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
+
+const mocks = vi.hoisted(() => ({
+  findUserById: vi.fn(),
+}));
+
+vi.mock('../db/client.js', () => ({
+  appendConversationMessages: vi.fn(),
+  checkQuota: vi.fn(),
+  createUser: vi.fn(),
+  findUserByCredential: vi.fn(),
+  findUserById: mocks.findUserById,
+  getConversationMessageSnapshots: vi.fn(),
+  getSubscription: vi.fn(),
+  getUserConversations: vi.fn(),
+  logUsage: vi.fn(),
+  markUserInitialized: vi.fn(),
+  pool: { query: vi.fn() },
+  renameConversation: vi.fn(),
+  updateConversationStats: vi.fn(),
+  updateUserProfile: vi.fn(),
+  upsertConversation: vi.fn(),
+  userOwnsConversation: vi.fn(),
+}));
 
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
@@ -58,17 +82,13 @@ function defaultOptions(): AssistantRoutesOptions {
         updatedAt: new Date('2026-05-30T10:00:00.000Z'),
       },
     ]),
-    findUserById: vi.fn().mockResolvedValue({
-      id: 42,
+    findUserById: vi.fn().mockResolvedValue(makeTestUser({
       email: 'tester@example.com',
-      password_hash: 'hash',
       assistant_name: '小麦',
       linux_user: 'tester',
-      status: 'active',
-      is_initialized: true,
       created_at: new Date('2026-05-01T00:00:00.000Z'),
       updated_at: new Date('2026-05-30T00:00:00.000Z'),
-    }),
+    })),
   };
 }
 
@@ -83,6 +103,11 @@ async function buildAppWithRunningSession(overrides: Partial<AssistantRoutesOpti
 }
 
 describe('assistant routes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
+  });
+
   it('requires auth for assistant home', async () => {
     const app = await buildApp(defaultOptions());
 

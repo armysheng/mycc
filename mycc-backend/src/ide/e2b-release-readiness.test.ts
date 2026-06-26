@@ -16,6 +16,9 @@ describe('E2B release readiness checklist', () => {
     expect(stdout).toContain('[ok] release checklist covers migration, smoke, and rollback');
     expect(stdout).toContain('[ok] agent run trace migration is idempotent');
     expect(stdout).toContain('[ok] IDE session identity migration is idempotent');
+    expect(stdout).toContain('[ok] backend index registers readiness routes');
+    expect(stdout).toContain('[ok] deep readiness route exposes protected readiness probes');
+    expect(stdout).toContain('[ok] deep readiness route requires operator authorization');
     expect(stdout).toContain('[ok] deep readiness probes E2B Agent runtime preflight');
     expect(stdout).toContain('[ok] IDE smoke proves raw E2B host stays private');
     expect(stdout).toContain('[ok] Agent SDK bridge has a local protocol contract');

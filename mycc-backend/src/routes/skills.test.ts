@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ISkillsService } from '../skills/contracts.js';
 
 const mocks = vi.hoisted(() => ({
@@ -203,6 +203,10 @@ describe('skills routes', () => {
     mocks.createSkillsService.mockReturnValue(serviceMock);
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('subscribes a skill through the explicit route and returns the Claude skills path', async () => {
     const app = await buildApp();
 
@@ -373,6 +377,7 @@ describe('skills routes', () => {
   });
 
   it('returns admin debug counts and image metadata for mainline integration', async () => {
+    vi.stubEnv('MYCC_ADMIN_USER_IDS', '42');
     const app = await buildApp();
 
     const response = await app.inject({
