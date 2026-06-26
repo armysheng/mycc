@@ -56,16 +56,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}" >> ~/.ssh/known_hosts
+          ssh-keyscan -t rsa -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}" >> ~/.ssh/known_hosts
 
       - name: Deploy on staging server
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
+          SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
           PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
           FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
           BACKEND_RESTART_CMD_B64="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD:-}" | base64 -w 0)"
-          ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+          ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
             "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
           set -euo pipefail
           STAGING_BACKEND_RESTART_CMD=""
@@ -132,13 +133,14 @@ jobs:
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
+          SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
           HEALTH_URL="${STAGING_BACKEND_HEALTH_URL:-http://127.0.0.1:8080/health}"
           MAX_RETRIES="${STAGING_BACKEND_HEALTH_RETRIES:-20}"
           RETRY_INTERVAL="${STAGING_BACKEND_HEALTH_RETRY_INTERVAL:-3}"
 
           passed=false
           for attempt in $(seq 1 "${MAX_RETRIES}"); do
-            if ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+            if ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
               "curl -fsS --connect-timeout 2 --max-time 5 '${HEALTH_URL}'" >/dev/null; then
               echo "Backend health check passed (${attempt}/${MAX_RETRIES})"
               passed=true
@@ -150,7 +152,7 @@ jobs:
 
           if [ "${passed}" != "true" ]; then
             echo "Backend health check failed after ${MAX_RETRIES} attempts: ${HEALTH_URL}" >&2
-            ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" '
+            ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" '
               set +e
               echo "--- systemctl --user status (mycc*) ---" >&2
               systemctl --user --no-pager --full status "mycc*" 2>/dev/null || true
@@ -166,13 +168,14 @@ jobs:
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
+          SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
           READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz}"
           MAX_RETRIES="${STAGING_BACKEND_READY_RETRIES:-20}"
           RETRY_INTERVAL="${STAGING_BACKEND_READY_RETRY_INTERVAL:-3}"
 
           passed=false
           for attempt in $(seq 1 "${MAX_RETRIES}"); do
-            if ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+            if ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
               "curl -fsS --connect-timeout 2 --max-time 5 '${READY_URL}'" >/dev/null; then
               echo "Backend readiness check passed (${attempt}/${MAX_RETRIES})"
               passed=true
@@ -184,7 +187,7 @@ jobs:
 
           if [ "${passed}" != "true" ]; then
             echo "Backend readiness check failed after ${MAX_RETRIES} attempts: ${READY_URL}" >&2
-            ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" '
+            ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" '
               set +e
               echo "--- /health ---" >&2
               curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/health 2>&1 || true
