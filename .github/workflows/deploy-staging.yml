@@ -30,6 +30,7 @@ jobs:
       STAGING_BACKEND_READY_URL: ${{ secrets.STAGING_BACKEND_READY_URL }}
       STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
       STAGING_BACKEND_RESTART_CMD: ${{ secrets.STAGING_BACKEND_RESTART_CMD }}
+      STAGING_NODE_BIN_DIR: ${{ secrets.STAGING_NODE_BIN_DIR }}
     steps:
       - name: Validate required staging secrets
         run: |
@@ -65,13 +66,23 @@ jobs:
           SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
           PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
           FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
+          NODE_BIN_DIR="${STAGING_NODE_BIN_DIR:-}"
           BACKEND_RESTART_CMD_B64="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD:-}" | base64 -w 0)"
           ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
-            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
+            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_NODE_BIN_DIR='${NODE_BIN_DIR}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
           set -euo pipefail
           STAGING_BACKEND_RESTART_CMD=""
           if [ -n "${STAGING_BACKEND_RESTART_CMD_B64:-}" ]; then
             STAGING_BACKEND_RESTART_CMD="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD_B64}" | base64 -d)"
+          fi
+          if [ -n "${STAGING_NODE_BIN_DIR:-}" ]; then
+            if [ ! -x "${STAGING_NODE_BIN_DIR}/node" ] || [ ! -x "${STAGING_NODE_BIN_DIR}/npm" ]; then
+              echo "STAGING_NODE_BIN_DIR must contain executable node and npm: ${STAGING_NODE_BIN_DIR}" >&2
+              exit 1
+            fi
+            export PATH="${STAGING_NODE_BIN_DIR}:${PATH}"
+            node --version
+            npm --version
           fi
 
           cd "${PROJECT_DIR}"
