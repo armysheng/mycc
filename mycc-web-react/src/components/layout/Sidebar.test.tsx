@@ -3,7 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-let mockUser: { email?: string | null; phone?: string | null; linux_user?: string | null };
+let mockUser: {
+  email?: string | null;
+  phone?: string | null;
+  plan?: "free" | "basic" | "pro";
+  is_initialized?: boolean;
+};
 const mockLogout = vi.fn();
 
 vi.mock("../../contexts/AuthContext", () => ({
@@ -19,7 +24,7 @@ describe("Sidebar", () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    mockUser = { email: "tester@example.com", linux_user: "tester" };
+    mockUser = { email: "tester@example.com", plan: "free", is_initialized: true };
     mockLogout.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -60,7 +65,7 @@ describe("Sidebar", () => {
   });
 
   it("does not expose linux user ids as product user names", async () => {
-    mockUser = { linux_user: "mycc_u18" };
+    mockUser = { plan: "free", is_initialized: true };
     fetchMock.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({
@@ -80,7 +85,7 @@ describe("Sidebar", () => {
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(document.body.textContent).not.toContain("mycc_u18");
+    expect(document.body.textContent).not.toContain("mycc_u");
     expect(screen.getByText("用户")).toBeInTheDocument();
   });
 });

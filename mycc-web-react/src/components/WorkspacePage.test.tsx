@@ -12,7 +12,12 @@ vi.mock("../contexts/AuthContext", () => ({
     logout: vi.fn(),
     refreshUser: vi.fn(),
     token: "test-token",
-    user: { email: "tester@example.com", id: 42, linux_user: "tester" },
+    user: {
+      email: "tester@example.com",
+      id: 42,
+      plan: "free",
+      is_initialized: true,
+    },
   }),
 }));
 

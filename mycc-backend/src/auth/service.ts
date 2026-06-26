@@ -19,6 +19,24 @@ export function requireSafeJwtSecret(env: NodeJS.ProcessEnv = process.env): stri
 const JWT_SECRET = requireSafeJwtSecret();
 const JWT_EXPIRES_IN = '24h';
 
+export interface PublicUser {
+  id: number;
+  phone?: string | null;
+  email?: string | null;
+  assistant_name?: string | null;
+  status?: string;
+  is_initialized?: boolean;
+  plan: string;
+  subscription?: {
+    plan: string;
+    tokens_limit: number;
+    tokens_used: number;
+    tokens_remaining: number;
+    reset_at: Date;
+    expires_at?: Date | null;
+  } | null;
+}
+
 export interface JWTPayload {
   userId: number;
   linuxUser: string;
@@ -28,12 +46,53 @@ export interface JWTPayload {
   exp: number;
 }
 
+function toPublicUser(
+  user: {
+    id: number;
+    phone?: string | null;
+    email?: string | null;
+    assistant_name?: string | null;
+    status?: string;
+    is_initialized?: boolean;
+  },
+  subscription: {
+    plan: string;
+    tokens_limit: number;
+    tokens_used: number;
+    reset_at: Date;
+    expires_at?: Date | null;
+  } | null | undefined,
+  options: { includeStatus?: boolean; includeSubscription?: boolean } = {},
+): PublicUser {
+  return {
+    id: user.id,
+    phone: user.phone,
+    email: user.email,
+    assistant_name: user.assistant_name,
+    ...(options.includeStatus ? { status: user.status } : {}),
+    is_initialized: user.is_initialized,
+    plan: subscription?.plan || 'free',
+    ...(options.includeSubscription
+      ? {
+          subscription: subscription ? {
+            plan: subscription.plan,
+            tokens_limit: subscription.tokens_limit,
+            tokens_used: subscription.tokens_used,
+            tokens_remaining: subscription.tokens_limit - subscription.tokens_used,
+            reset_at: subscription.reset_at,
+            expires_at: subscription.expires_at,
+          } : null,
+        }
+      : {}),
+  };
+}
+
 // 注册用户
 export async function register(params: {
   phone?: string;
   email?: string;
   password: string;
-}): Promise<{ token: string; user: any }> {
+}): Promise<{ token: string; user: PublicUser }> {
   // 验证输入
   if (!params.phone && !params.email) {
     throw new Error('手机号或邮箱必须提供一个');
@@ -84,15 +143,7 @@ export async function register(params: {
 
   return {
     token,
-    user: {
-      id: user.id,
-      phone: user.phone,
-      email: user.email,
-      assistant_name: user.assistant_name,
-      linux_user: user.linux_user,
-      plan: subscription?.plan,
-      is_initialized: user.is_initialized,
-    },
+    user: toPublicUser(user, subscription),
   };
 }
 
@@ -100,7 +151,7 @@ export async function register(params: {
 export async function login(params: {
   credential: string; // 手机号或邮箱
   password: string;
-}): Promise<{ token: string; user: any }> {
+}): Promise<{ token: string; user: PublicUser }> {
   // 查找用户
   const user = await findUserByCredential(params.credential);
   if (!user) {
@@ -130,15 +181,7 @@ export async function login(params: {
 
   return {
     token,
-    user: {
-      id: user.id,
-      phone: user.phone,
-      email: user.email,
-      assistant_name: user.assistant_name,
-      linux_user: user.linux_user,
-      plan: subscription?.plan,
-      is_initialized: user.is_initialized,
-    },
+    user: toPublicUser(user, subscription),
   };
 }
 
@@ -160,24 +203,10 @@ export async function getCurrentUser(userId: number) {
 
   const subscription = await getSubscription(userId);
 
-  return {
-    id: user.id,
-    phone: user.phone,
-    email: user.email,
-    assistant_name: user.assistant_name,
-    linux_user: user.linux_user,
-    status: user.status,
-    is_initialized: user.is_initialized,
-    plan: subscription?.plan || 'free',
-    subscription: subscription ? {
-      plan: subscription.plan,
-      tokens_limit: subscription.tokens_limit,
-      tokens_used: subscription.tokens_used,
-      tokens_remaining: subscription.tokens_limit - subscription.tokens_used,
-      reset_at: subscription.reset_at,
-      expires_at: subscription.expires_at,
-    } : null,
-  };
+  return toPublicUser(user, subscription, {
+    includeStatus: true,
+    includeSubscription: true,
+  });
 }
 
 export async function updateCurrentUserProfile(
@@ -191,22 +220,8 @@ export async function updateCurrentUserProfile(
 
   const subscription = await getSubscription(userId);
 
-  return {
-    id: user.id,
-    phone: user.phone,
-    email: user.email,
-    assistant_name: user.assistant_name,
-    linux_user: user.linux_user,
-    status: user.status,
-    is_initialized: user.is_initialized,
-    plan: subscription?.plan || 'free',
-    subscription: subscription ? {
-      plan: subscription.plan,
-      tokens_limit: subscription.tokens_limit,
-      tokens_used: subscription.tokens_used,
-      tokens_remaining: subscription.tokens_limit - subscription.tokens_used,
-      reset_at: subscription.reset_at,
-      expires_at: subscription.expires_at,
-    } : null,
-  };
+  return toPublicUser(user, subscription, {
+    includeStatus: true,
+    includeSubscription: true,
+  });
 }
