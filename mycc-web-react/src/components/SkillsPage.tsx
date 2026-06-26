@@ -69,6 +69,9 @@ const DETAIL_TABS: Array<{ key: DetailTabKey; label: string }> = [
   { key: "versions", label: "版本信息" },
 ];
 
+const SHOW_SKILLS_DEBUG =
+  import.meta.env.DEV || import.meta.env.VITE_MYCC_SHOW_SKILLS_DEBUG === "true";
+
 type SkillActionMessage = {
   text: string;
   trialSkill?: SkillItem;
@@ -1452,14 +1455,16 @@ export function SkillsPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={toggleDebugCenter}
-                className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-[var(--shadow-sm)] hover:bg-[var(--bg-hover)]"
-              >
-                <WrenchScrewdriverIcon className="h-4 w-4" />
-                技能调试
-              </button>
+              {SHOW_SKILLS_DEBUG && (
+                <button
+                  type="button"
+                  onClick={toggleDebugCenter}
+                  className="inline-flex items-center gap-2 rounded-lg border panel-surface px-3.5 py-2 text-sm font-medium text-[var(--text-secondary)] shadow-[var(--shadow-sm)] hover:bg-[var(--bg-hover)]"
+                >
+                  <WrenchScrewdriverIcon className="h-4 w-4" />
+                  技能调试
+                </button>
+              )}
               <button
                 type="button"
                 onClick={loadSkills}
@@ -1667,7 +1672,7 @@ export function SkillsPage() {
             </section>
           )}
 
-          {!selectedSkill && debugOpen && (
+          {SHOW_SKILLS_DEBUG && !selectedSkill && debugOpen && (
             <section className="rounded-lg border panel-surface p-4 shadow-[var(--shadow-sm)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
