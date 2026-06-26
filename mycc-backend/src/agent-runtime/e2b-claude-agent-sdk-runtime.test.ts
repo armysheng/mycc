@@ -115,6 +115,36 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     expect(sdkEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
 
+  it('uses Agent SDK specific provider env before shared Claude aliases', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_BASE_URL', 'https://agent-sdk.example.test/v1');
+    vi.stubEnv('MYCC_AGENT_SDK_AUTH_TOKEN', 'sdk-token');
+    vi.stubEnv('MYCC_CLAUDE_BASE_URL', 'https://claude-proxy.example.test/v1');
+    vi.stubEnv('MYCC_CLAUDE_AUTH_TOKEN', 'claude-token');
+    const runCommand = vi.fn().mockImplementation(async (_session, command, options) => {
+      if (String(command).includes('bridge.mjs')) {
+        await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    await collect(runtime.chat({
+      userId: 42,
+      message: 'hello from sdk env',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    const bridgeCall = runCommand.mock.calls.find(([, command]) => String(command).includes('bridge.mjs'));
+    expect(bridgeCall?.[2].envs).toEqual(expect.objectContaining({
+      ANTHROPIC_BASE_URL: 'https://agent-sdk.example.test',
+      ANTHROPIC_AUTH_TOKEN: 'sdk-token',
+    }));
+  });
+
   it('passes image attachments to the Agent SDK bridge', async () => {
     const runCommand = vi.fn().mockImplementation(async (_session, command, options) => {
       if (String(command).includes('bridge.mjs')) {
@@ -411,6 +441,36 @@ describe('E2bClaudeAgentSdkRuntime', () => {
       ...runningSession,
       status: 'stopped',
     });
+  });
+
+  it('returns product-facing copy for low-level Agent SDK bridge failures', async () => {
+    const runCommand = vi.fn().mockImplementation(async (_session, command) => {
+      if (String(command).includes('bridge.mjs')) {
+        return {
+          exitCode: 1,
+          stdout: '',
+          stderr: 'selected model may not exist or you may not have access to it; /v1/messages failed',
+        };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace/demo',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: '这次操作没有跑通。可以直接重试，或让我换个方式继续。' },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('selected model');
+    expect(JSON.stringify(events)).not.toContain('/v1/messages');
   });
 
   it('rejects unsupported Agent SDK permission modes before running bridge', async () => {

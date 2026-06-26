@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { describeClaudeProviderEnv, omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
+import {
+  describeClaudeProviderEnv,
+  omitClaudeProviderEnv,
+  resolveAgentSdkClaudeProviderEnv,
+  resolveClaudeProviderEnv,
+} from './claude-env.js';
 
 describe('Claude provider env resolver', () => {
   it('prefers direct MyCC Claude aliases over CCR and all fallbacks', () => {
@@ -131,5 +136,20 @@ describe('Claude provider env resolver', () => {
     expect(JSON.stringify(description)).not.toContain('zhuji-token');
     expect(JSON.stringify(description)).not.toContain('zhuji.example.test');
     expect(JSON.stringify(description)).not.toContain('ccr-token');
+  });
+
+  it('resolves Agent SDK provider env with dedicated aliases and removes trailing /v1', () => {
+    const result = resolveAgentSdkClaudeProviderEnv({
+      MYCC_AGENT_SDK_BASE_URL: ' https://agent-sdk.example.test/v1 ',
+      MYCC_CLAUDE_BASE_URL: 'https://claude-proxy.example.test/v1',
+      MYCC_AGENT_SDK_AUTH_TOKEN: ' sdk-token ',
+      MYCC_CLAUDE_AUTH_TOKEN: 'claude-token',
+      ANTHROPIC_API_KEY: 'stale-api-key',
+    });
+
+    expect(result).toEqual({
+      ANTHROPIC_BASE_URL: 'https://agent-sdk.example.test',
+      ANTHROPIC_AUTH_TOKEN: 'sdk-token',
+    });
   });
 });
