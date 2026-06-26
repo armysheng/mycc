@@ -28,6 +28,8 @@ const checks: Check[] = [
       '"landing:classify"',
       '"smoke:e2b-ide"',
       '"smoke:e2b-agent-sdk-workspace"',
+      '"smoke:auth-privacy"',
+      '"smoke:auth-onboarding"',
     ],
   },
   {
@@ -183,10 +185,27 @@ const checks: Check[] = [
       "id: 'e2b-ide-smoke'",
       "id: 'e2b-desktop-smoke'",
       "id: 'e2b-agent-sdk-smoke'",
+      "id: 'auth-privacy-smoke'",
+      "id: 'auth-onboarding-smoke'",
       "id: 'landing'",
       "id: 'landing-live'",
       "'backend-tests'",
       "'frontend-product-tests'",
+    ],
+  },
+  {
+    label: 'auth smoke scripts avoid chat and assert privacy',
+    file: 'src/scripts/auth-onboarding-smoke.ts',
+    snippets: [
+      '/api/auth/login',
+      '/api/auth/register',
+      '/api/onboarding/initialize',
+      '/api/auth/me',
+      '手机号/邮箱或密码错误',
+      'linux_user|mycc_u\\d+|用户不存在',
+    ],
+    forbiddenSnippets: [
+      '/api/chat',
     ],
   },
   {
