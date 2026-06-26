@@ -589,7 +589,7 @@ describe('ide routes', () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({
-      error: '未提供认证 token',
+      error: '请先登录后再继续。',
     });
     expect(startCodeServer).not.toHaveBeenCalled();
   });

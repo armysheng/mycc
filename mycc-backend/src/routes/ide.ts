@@ -65,7 +65,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     try {
       const user = request.user;
       if (!user) {
-        return reply.status(401).send({ error: '未提供认证 token' });
+        return reply.status(401).send({ error: '请先登录后再继续。' });
       }
 
       const reusableSession = await findLiveReusableSession({
@@ -103,7 +103,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
     try {
       const user = request.user;
       if (!user) {
-        return reply.status(401).send({ error: '未提供认证 token' });
+        return reply.status(401).send({ error: '请先登录后再继续。' });
       }
 
       const reusableSession = await findLiveReusableSession({
@@ -147,7 +147,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   }, async (request, reply) => {
     const user = request.user;
     if (!user) {
-      return reply.status(401).send({ error: '未提供认证 token' });
+      return reply.status(401).send({ error: '请先登录后再继续。' });
     }
 
     const session = await findLiveReusableSession({
@@ -275,7 +275,7 @@ export async function ideRoutes(fastify: FastifyInstance, options: IdeRoutesOpti
   }, async (request, reply) => {
     const user = request.user;
     if (!user) {
-      return reply.status(401).send({ error: '未提供认证 token' });
+      return reply.status(401).send({ error: '请先登录后再继续。' });
     }
 
     const session = await getSessionSafely(sessionStore, request.params.id);

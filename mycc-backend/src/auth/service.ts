@@ -190,7 +190,7 @@ export function verifyToken(token: string): JWTPayload {
   try {
     return jwt.verify(token, JWT_SECRET) as JWTPayload;
   } catch (err) {
-    throw new Error('Token 无效或已过期');
+    throw new Error('登录凭据无效或已过期');
   }
 }
 

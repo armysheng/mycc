@@ -54,7 +54,7 @@ describe('chat runtime config route', () => {
     });
 
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({ error: '未提供认证 token' });
+    expect(response.json()).toEqual({ error: '请先登录后再继续。' });
     await app.close();
   });
 

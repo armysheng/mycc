@@ -17,7 +17,7 @@ export async function jwtAuthMiddleware(
     // 从 Authorization header 获取 token
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return reply.status(401).send({ error: '未提供认证 token' });
+      return reply.status(401).send({ error: '请先登录后再继续。' });
     }
 
     const token = authHeader.substring(7); // 移除 "Bearer " 前缀
@@ -29,8 +29,7 @@ export async function jwtAuthMiddleware(
     request.user = payload;
   } catch (err) {
     return reply.status(401).send({
-      error: 'Token 无效或已过期',
-      message: err instanceof Error ? err.message : 'Unknown error'
+      error: '登录已失效，请重新登录后再试。',
     });
   }
 }
