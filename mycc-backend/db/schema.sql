@@ -69,6 +69,9 @@ CREATE TABLE ide_sessions (
   id UUID PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   provider VARCHAR(20) NOT NULL CHECK (provider IN ('e2b')),
+  template VARCHAR(120) NOT NULL,
+  linux_user VARCHAR(80) NOT NULL,
+  workspace_dir TEXT NOT NULL,
   sandbox_id VARCHAR(120) NOT NULL,
   code_server_pid INTEGER NOT NULL,
   host VARCHAR(255) NOT NULL,
@@ -107,6 +110,35 @@ CREATE TABLE skill_events (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Agent run trace（Claude SDK 运行轨迹）
+CREATE TABLE agent_runs (
+  id UUID PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  request_id VARCHAR(160),
+  chat_session_id VARCHAR(160),
+  sdk_session_id VARCHAR(160),
+  runtime_kind VARCHAR(40) NOT NULL CHECK (runtime_kind IN ('remote-claude', 'claude-agent-sdk', 'e2b-claude-cli', 'e2b-claude-agent-sdk')),
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'aborted')),
+  cwd TEXT NOT NULL,
+  linux_user VARCHAR(80) NOT NULL,
+  permission_mode VARCHAR(40) CHECK (permission_mode IN ('default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto')),
+  message_preview TEXT NOT NULL DEFAULT '',
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at TIMESTAMPTZ,
+  duration_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE agent_run_events (
+  id UUID PRIMARY KEY,
+  run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+  sequence INTEGER NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  type VARCHAR(80) NOT NULL,
+  payload JSONB NOT NULL DEFAULT 'null'::jsonb
+);
+
 -- 索引
 CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX idx_usage_logs_created_at ON usage_logs(created_at);
@@ -118,9 +150,20 @@ CREATE INDEX idx_conversation_messages_user_session
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_ide_sessions_user_id ON ide_sessions(user_id);
 CREATE INDEX idx_ide_sessions_status_expires_at ON ide_sessions(status, expires_at);
+CREATE INDEX idx_ide_sessions_reuse_identity ON ide_sessions(user_id, status, template, linux_user, workspace_dir, port, expires_at);
 CREATE INDEX idx_skill_events_skill_id_event_type ON skill_events(skill_id, event_type);
 CREATE INDEX idx_skill_events_user_id_created_at ON skill_events(user_id, created_at DESC);
 CREATE INDEX idx_skill_events_created_at ON skill_events(created_at DESC);
+CREATE UNIQUE INDEX idx_agent_run_events_run_sequence
+  ON agent_run_events(run_id, sequence);
+CREATE INDEX idx_agent_runs_user_started_at
+  ON agent_runs(user_id, started_at DESC);
+CREATE INDEX idx_agent_runs_request_id
+  ON agent_runs(request_id);
+CREATE INDEX idx_agent_runs_chat_session_id
+  ON agent_runs(chat_session_id);
+CREATE INDEX idx_agent_run_events_type
+  ON agent_run_events(type);
 
 -- 触发器：自动更新 updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -138,4 +181,7 @@ CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_ide_sessions_updated_at BEFORE UPDATE ON ide_sessions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_agent_runs_updated_at BEFORE UPDATE ON agent_runs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

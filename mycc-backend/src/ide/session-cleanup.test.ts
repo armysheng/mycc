@@ -5,6 +5,9 @@ import { InMemoryIdeSessionStore, type StoredIdeSession } from './session-store.
 const expiredSession: StoredIdeSession = {
   id: 'ide_expired',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_expired',
   codeServerPid: 1234,
   host: '18080-sbx_expired.e2b.app',

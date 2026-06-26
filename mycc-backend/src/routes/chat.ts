@@ -18,6 +18,7 @@ import {
 } from "../db/client.js";
 import { createAgentRuntime } from "../agent-runtime/index.js";
 import { describeAgentRuntimeConfig } from "../agent-runtime/factory.js";
+import { DEFAULT_CLAUDE_MODEL } from "../agent-runtime/claude-model.js";
 import {
   extractSessionId,
   extractUsage,
@@ -106,7 +107,7 @@ const REQUIRED_BOOTSTRAP_FILE_NAMES = [
 ] as const;
 
 const OPTIONAL_BOOTSTRAP_FILE_NAMES = ["MEMORY.md", "memory.md"] as const;
-const OPENCLAW_ABOUT_ME_DIR = "0-System/about-me";
+const OPENCLAW_ABOUT_ME_DIR = "about-me";
 const CONTEXT_PROMPT_CACHE_TTL_MS = 10 * 60 * 1000;
 const SESSION_INJECTION_MARK_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONTEXT_PROMPT_CACHE_ENTRIES = 512;
@@ -248,8 +249,8 @@ export function buildSkillInstallerBootstrapMessage(
     `目标技能关键词：${keyword}`,
     "请按以下流程执行并直接安装：",
     "1. 先搜索可安装来源（优先已配置市场，其次社区仓库）。",
-    "2. 找到最匹配项后直接安装，并确认 SKILL.md 已落到 .claude/skills/<skill-id>/。",
-    "3. 回答中给出最终 skill-id、来源地址、安装结果。",
+    "2. 找到最匹配项后直接安装，并确认 SKILL.md 已落到 .claude/skills/<skill-name>/。",
+    "3. 回答中给出最终 skill-id、Claude skill name、来源地址、安装结果。",
     "4. 如未找到精确匹配，返回前 3 个候选并说明差异。",
     "",
     `用户原始请求：${originalMessage}`,
@@ -338,6 +339,13 @@ function buildClaudeHistoryProjectDir(workspaceDir: string): string {
     .replace(/_/g, "-")
     .replace(/\//g, "-");
   return `${homeDir}/.claude/projects/${projectSegment}`;
+}
+
+function resolveClaudeHomeDirFromWorkspace(workspaceDir: string): string {
+  const normalizedWorkspace = path.posix
+    .normalize(workspaceDir)
+    .replace(/\/$/, "");
+  return `${path.posix.dirname(normalizedWorkspace)}/.claude`;
 }
 
 function buildHistoryReadCommand(historyPath: string, limit: number): string {
@@ -618,7 +626,7 @@ async function verifyOnboardingWorkspaceStateFromRemote(params: {
   const sshPool = getSSHPool();
   const connection = await sshPool.acquire();
   try {
-    const aboutMeDir = `${params.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+    const aboutMeDir = `${resolveClaudeHomeDirFromWorkspace(params.workspaceDir)}/${OPENCLAW_ABOUT_ME_DIR}`;
     const script = buildOnboardingWorkspaceVerificationScript({
       aboutMeDir,
       assistantName: params.assistantName,
@@ -685,7 +693,7 @@ async function verifyOnboardingWorkspaceStateFromE2b(params: {
     }
 
     const script = buildOnboardingWorkspaceVerificationScript({
-      aboutMeDir: `${plan.workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`,
+      aboutMeDir: `${resolveClaudeHomeDirFromWorkspace(plan.workspaceDir)}/${OPENCLAW_ABOUT_ME_DIR}`,
       assistantName: params.assistantName,
       ownerName: params.ownerName,
     });
@@ -784,7 +792,8 @@ export async function loadWorkspaceBootstrapFilesFromE2b(params: {
 }
 
 function buildBootstrapFilesReaderScript(workspaceDir: string): string {
-  const bootstrapRoot = `${workspaceDir}/${OPENCLAW_ABOUT_ME_DIR}`;
+  const claudeHomeDir = resolveClaudeHomeDirFromWorkspace(workspaceDir);
+  const bootstrapRoot = `${claudeHomeDir}/${OPENCLAW_ABOUT_ME_DIR}`;
   const entries = [
     ...REQUIRED_BOOTSTRAP_FILE_NAMES.map((name) => ({
       name,
@@ -1260,7 +1269,7 @@ export async function chatRoutes(
         let model =
           process.env.VPS_CLAUDE_MODEL ||
           process.env.CLAUDE_MODEL ||
-          "claude-sonnet-4-6";
+          DEFAULT_CLAUDE_MODEL;
         let streamHasError = false;
         let streamResultHasError = false;
         let lastStreamError: string | null = null;
@@ -1848,7 +1857,7 @@ function calculateCost(
   };
 
   // 匹配模型（支持部分匹配）
-  let modelPricing = pricing["claude-sonnet-4-6"]; // 默认
+  let modelPricing = pricing["claude-opus-4"]; // 默认按当前产品模型兜底
   for (const [key, value] of Object.entries(pricing)) {
     if (model.includes(key)) {
       modelPricing = value;

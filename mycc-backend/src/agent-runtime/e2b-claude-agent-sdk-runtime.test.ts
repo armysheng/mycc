@@ -5,6 +5,9 @@ import type { IdeSessionStore, StoredIdeSession } from '../ide/session-store.js'
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -36,6 +39,7 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 describe('E2bClaudeAgentSdkRuntime', () => {
   beforeEach(() => {
+    vi.stubEnv('MYCC_IDE_PROVIDER', 'e2b');
     vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
     vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
   });
@@ -50,7 +54,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'stale-anthropic-api-key');
     const runCommand = vi.fn().mockImplementation(async (_session, command, options) => {
       if (String(command).includes('bridge.mjs')) {
-        await options.onStdout('{"type":"system","session_id":"session-1","model":"claude-sonnet-4-6"}\n');
+        await options.onStdout('{"type":"system","session_id":"session-1","model":"claude-opus-4-7"}\n');
         await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
       }
       return { exitCode: 0, stdout: '', stderr: '' };
@@ -69,7 +73,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     }));
 
     expect(events).toEqual([
-      { type: 'system', session_id: 'session-1', model: 'claude-sonnet-4-6' },
+      { type: 'system', session_id: 'session-1', model: 'claude-opus-4-7' },
       { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' },
     ]);
     expect(runCommand).toHaveBeenCalledWith(
@@ -80,8 +84,8 @@ describe('E2bClaudeAgentSdkRuntime', () => {
         envs: expect.objectContaining({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456',
           ANTHROPIC_AUTH_TOKEN: 'ccr-auth-token',
-          CLAUDE_CONFIG_DIR: '/home/mycc/.mycc/claude',
-          HOME: '/home/mycc/.mycc/home',
+          CLAUDE_CONFIG_DIR: '/home/mycc/.claude',
+          HOME: '/home/mycc',
           MYCC_AGENT_REQUEST_FILE: expect.stringMatching(/^\/tmp\/mycc-agent-runtime\/.+\/request\.json$/),
         }),
       }),
@@ -100,7 +104,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
         allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'],
         cwd: '/home/mycc/workspace',
         includePartialMessages: false,
-        model: 'claude-sonnet-4-6',
+        model: 'claude-opus-4-7',
         permissionMode: 'bypassPermissions',
         sessionId: 'session-1',
       }),
@@ -148,6 +152,31 @@ describe('E2bClaudeAgentSdkRuntime', () => {
         mediaType: 'image/png',
       },
     ]);
+  });
+
+  it('normalizes legacy dot Claude model ids before writing the bridge request', async () => {
+    vi.stubEnv('MYCC_E2B_AGENT_SDK_MODEL', 'claude-opus-4.7');
+    const runCommand = vi.fn().mockImplementation(async (_session, command, options) => {
+      if (String(command).includes('bridge.mjs')) {
+        await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    await collect(runtime.chat({
+      userId: 42,
+      message: 'hello from legacy model env',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    const bridgeCall = runCommand.mock.calls.find(([, command]) => String(command).includes('bridge.mjs'));
+    const request = readWrittenJsonRequest(runCommand, bridgeCall?.[2].envs?.MYCC_AGENT_REQUEST_FILE);
+    expect(request.execution.model).toBe('claude-opus-4-7');
   });
 
   it('stores large bridge payloads in sandbox files instead of oversized process envs', async () => {
@@ -205,7 +234,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
       }
 
       if (String(command).includes('bridge.mjs')) {
-        await options.onStdout('{"type":"system","session_id":"fresh-session","model":"claude-sonnet-4-6"}\n');
+        await options.onStdout('{"type":"system","session_id":"fresh-session","model":"claude-opus-4-7"}\n');
         await options.onStdout('{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n');
         await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"fresh-session"}\n');
       }
@@ -225,7 +254,7 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     }));
 
     expect(events).toEqual([
-      { type: 'system', session_id: 'fresh-session', model: 'claude-sonnet-4-6' },
+      { type: 'system', session_id: 'fresh-session', model: 'claude-opus-4-7' },
       { type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } },
       { type: 'result', subtype: 'success', is_error: false, session_id: 'fresh-session' },
     ]);

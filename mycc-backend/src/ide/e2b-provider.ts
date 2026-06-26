@@ -35,11 +35,16 @@ const DESKTOP_WORKDIR = '/home/mycc/workspace';
 const DESKTOP_HEALTH_TIMEOUT_MS = 5000;
 const DESKTOP_READY_TIMEOUT_MS = 60_000;
 const DESKTOP_READY_POLL_MS = 1_000;
+const CODE_SERVER_HEALTH_TIMEOUT_MS = 5000;
+const DEFAULT_CODE_SERVER_READY_TIMEOUT_MS = 120_000;
+const CODE_SERVER_READY_POLL_MS = 1_000;
+const CODE_SERVER_LAUNCH_TIMEOUT_MS = 10_000;
 const DEFAULT_DESKTOP_VNC_PORT = 15900;
 const DEFAULT_DESKTOP_RESOLUTION = '1440x900';
 const DEFAULT_DESKTOP_MODE = 'browser-only';
 const DEFAULT_CREATE_RETRY_ATTEMPTS = 3;
 const DEFAULT_CREATE_RETRY_DELAY_MS = 1_000;
+const E2B_MAX_TIMEOUT_MS = 60 * 60 * 1000;
 
 export type StartedCodeServerSession = {
   provider: 'e2b';
@@ -74,13 +79,24 @@ export class E2bSandboxProvider {
 
   async startCodeServer(plan: E2bCodeServerSessionPlan): Promise<StartedCodeServerSession> {
     const apiKey = this.requireApiKey();
+    const timeoutMs = resolveE2bTimeoutMs(plan.sessionTtlSeconds);
 
-    const sandbox = await this.createSandboxWithRetry(plan, apiKey);
+    const sandbox = await this.createSandboxWithRetry(plan, apiKey, timeoutMs);
 
-    const command = await sandbox.commands.run(plan.startCommand, {
-      background: true,
-      cwd: plan.workspaceDir,
-    });
+    const codeServerPid = await this.startDurableCodeServerProcess(sandbox, plan);
+
+    try {
+      await this.waitForCodeServerHealthy(sandbox, plan);
+    } catch (error) {
+      if (sandbox.commands.kill) {
+        await sandbox.commands.kill(codeServerPid).catch(() => false);
+      }
+      if (sandbox.kill) {
+        await sandbox.kill().catch(() => undefined);
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`code-server did not become ready: ${detail}`);
+    }
 
     if (plan.desktopEnabled) {
       await this.prewarmDesktop(sandbox);
@@ -89,12 +105,12 @@ export class E2bSandboxProvider {
     return {
       provider: 'e2b',
       sandboxId: sandbox.sandboxId,
-      codeServerPid: command.pid,
+      codeServerPid,
       host: sandbox.getHost(plan.port),
       trafficAccessToken: sandbox.trafficAccessToken,
       port: plan.port,
       accessMode: plan.accessMode,
-      expiresAt: new Date(Date.now() + plan.sessionTtlSeconds * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + timeoutMs).toISOString(),
     };
   }
 
@@ -110,7 +126,7 @@ export class E2bSandboxProvider {
     sessionTtlSeconds: number,
   ): Promise<StartedCodeServerSession> {
     const sandbox = await this.connect(session.sandboxId);
-    const timeoutMs = sessionTtlSeconds * 1000;
+    const timeoutMs = resolveE2bTimeoutMs(sessionTtlSeconds);
 
     await sandbox.setTimeout?.(timeoutMs);
 
@@ -177,6 +193,54 @@ export class E2bSandboxProvider {
       },
     );
     return result.exitCode === 0;
+  }
+
+  private async waitForCodeServerHealthy(
+    sandbox: E2bSandboxLike,
+    plan: E2bCodeServerSessionPlan,
+  ): Promise<void> {
+    const timeoutMs = resolveCodeServerReadyTimeoutMs();
+    const deadline = Date.now() + timeoutMs;
+    let lastError = 'not checked';
+
+    do {
+      try {
+        const result = await sandbox.commands.run(buildCodeServerHealthCommand(plan.port), {
+          background: false,
+          cwd: plan.workspaceDir,
+          timeoutMs: CODE_SERVER_HEALTH_TIMEOUT_MS,
+        });
+        if (result.exitCode === 0) {
+          return;
+        }
+        lastError = result.stderr || result.error || result.stdout || `exit=${result.exitCode}`;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+      if (Date.now() >= deadline) break;
+      await sleep(CODE_SERVER_READY_POLL_MS);
+    } while (Date.now() < deadline);
+
+    throw new Error(lastError);
+  }
+
+  private async startDurableCodeServerProcess(
+    sandbox: E2bSandboxLike,
+    plan: E2bCodeServerSessionPlan,
+  ): Promise<number> {
+    const result = await sandbox.commands.run(buildDurableCodeServerStartCommand(plan), {
+      background: false,
+      cwd: plan.workspaceDir,
+      timeoutMs: CODE_SERVER_LAUNCH_TIMEOUT_MS,
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr || result.error || 'code-server launcher failed');
+    }
+    const pid = Number.parseInt(result.stdout.trim().split(/\s+/)[0] ?? '', 10);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      throw new Error(`code-server launcher did not return a pid: ${result.stdout.trim()}`);
+    }
+    return pid;
   }
 
   async isDesktopListening(session: StartedCodeServerSession & { desktopPort?: number }): Promise<boolean> {
@@ -253,6 +317,7 @@ export class E2bSandboxProvider {
   private async createSandboxWithRetry(
     plan: E2bCodeServerSessionPlan,
     apiKey: string,
+    timeoutMs: number,
   ): Promise<E2bSandboxLike> {
     const attempts = resolveCreateRetryAttempts();
     const retryDelayMs = resolveCreateRetryDelayMs();
@@ -262,7 +327,7 @@ export class E2bSandboxProvider {
       try {
         return await this.sandboxFactory.create(plan.template, {
           apiKey,
-          timeoutMs: plan.sessionTtlSeconds * 1000,
+          timeoutMs,
           metadata: {
             app: 'mycc',
             capability: 'code-server',
@@ -284,6 +349,10 @@ export class E2bSandboxProvider {
 
     throw lastError;
   }
+}
+
+function resolveE2bTimeoutMs(sessionTtlSeconds: number): number {
+  return Math.min(sessionTtlSeconds * 1000, E2B_MAX_TIMEOUT_MS);
 }
 
 function isTransientSandboxPlacementError(err: unknown): boolean {
@@ -309,6 +378,30 @@ function resolveCreateRetryDelayMs(): number {
     throw new Error(`Invalid MYCC_E2B_CREATE_RETRY_DELAY_MS: ${raw}`);
   }
   return parsed;
+}
+
+function resolveCodeServerReadyTimeoutMs(): number {
+  const raw = process.env.MYCC_E2B_CODE_SERVER_READY_TIMEOUT_MS;
+  if (!raw) return DEFAULT_CODE_SERVER_READY_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10 * 60 * 1000) {
+    throw new Error(`Invalid MYCC_E2B_CODE_SERVER_READY_TIMEOUT_MS: ${raw}`);
+  }
+  return parsed;
+}
+
+function buildCodeServerHealthCommand(port: number): string {
+  return `node -e "fetch('http://127.0.0.1:${port}/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`;
+}
+
+function buildDurableCodeServerStartCommand(plan: E2bCodeServerSessionPlan): string {
+  const stdout = `/tmp/mycc-code-server-${plan.port}.stdout.log`;
+  const stderr = `/tmp/mycc-code-server-${plan.port}.stderr.log`;
+  return [
+    'mkdir -p /tmp;',
+    `nohup sh -lc ${shellQuote(plan.startCommand)} > ${shellQuote(stdout)} 2> ${shellQuote(stderr)} < /dev/null &`,
+    'echo $!',
+  ].join(' ');
 }
 
 function resolveDesktopPort(): number {
@@ -375,4 +468,8 @@ function buildFindDesktopPidCommand(port: number): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

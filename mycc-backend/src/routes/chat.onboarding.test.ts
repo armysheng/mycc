@@ -10,6 +10,9 @@ import type { StoredIdeSession } from '../ide/session-store.js';
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -73,7 +76,7 @@ describe('parseOnboardingBootstrapRequest', () => {
       stdout: JSON.stringify([
         {
           name: 'README.md',
-          path: '/home/mycc/workspace/0-System/about-me/README.md',
+          path: '/home/mycc/.claude/about-me/README.md',
           content: 'hello from e2b',
           missing: false,
         },
@@ -90,7 +93,7 @@ describe('parseOnboardingBootstrapRequest', () => {
     expect(files).toEqual([
       {
         name: 'README.md',
-        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        path: '/home/mycc/.claude/about-me/README.md',
         content: 'hello from e2b',
         missing: false,
       },
@@ -104,7 +107,7 @@ describe('parseOnboardingBootstrapRequest', () => {
       },
     );
     const command = runCommandInSession.mock.calls[0]![1] as string;
-    expect(command).toContain('/home/mycc/workspace/0-System/about-me/README.md');
+    expect(command).toContain('/home/mycc/.claude/about-me/README.md');
     expect(command).not.toContain('sudo -n -u');
   });
 
@@ -112,14 +115,14 @@ describe('parseOnboardingBootstrapRequest', () => {
     expect(hasUsableBootstrapContent([
       {
         name: 'README.md',
-        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        path: '/home/mycc/.claude/about-me/README.md',
         missing: true,
       },
     ])).toBe(false);
     expect(hasUsableBootstrapContent([
       {
         name: 'README.md',
-        path: '/home/mycc/workspace/0-System/about-me/README.md',
+        path: '/home/mycc/.claude/about-me/README.md',
         content: 'hello',
         missing: false,
       },

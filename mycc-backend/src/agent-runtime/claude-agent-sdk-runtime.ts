@@ -4,9 +4,10 @@ import path from 'node:path';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 import { sanitizeLinuxUsername } from '../utils/validation.js';
 import { omitClaudeProviderEnv, resolveClaudeProviderEnv } from './claude-env.js';
+import { createMyccClaudeHooks } from './claude-hooks.js';
+import { DEFAULT_CLAUDE_MODEL, normalizeClaudeModelId } from './claude-model.js';
 
-const DEFAULT_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
-const DEFAULT_USER_RUNTIME_DIR = '.mycc';
+const DEFAULT_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'];
 const SUPPORTED_IMAGE_MEDIA_TYPES = [
   'image/jpeg',
   'image/png',
@@ -67,14 +68,15 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       cwd,
       env,
       includePartialMessages: process.env.MYCC_AGENT_SDK_PARTIAL_MESSAGES === 'true',
-      model: process.env.MYCC_AGENT_SDK_MODEL
-        || process.env.VPS_CLAUDE_MODEL
-        || process.env.CLAUDE_MODEL
-        || 'claude-sonnet-4-6',
+      hooks: createMyccClaudeHooks({
+        dangerousBashGuard: process.env.MYCC_AGENT_SDK_DANGEROUS_BASH_GUARD !== 'false',
+      }),
+      includeHookEvents: process.env.MYCC_AGENT_SDK_INCLUDE_HOOK_EVENTS === 'true',
+      model: this.resolveModel(),
       permissionMode,
       ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
       ...(params.sessionId ? { resume: params.sessionId } : {}),
-      settingSources: [],
+      settingSources: this.resolveSettingSources(),
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
@@ -108,10 +110,9 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       };
     }
 
-    const userRuntimeRoot = `/home/${linuxUser}/${DEFAULT_USER_RUNTIME_DIR}`;
     return {
-      claudeConfigDir: `${userRuntimeRoot}/claude`,
-      home: `${userRuntimeRoot}/home`,
+      claudeConfigDir: `/home/${linuxUser}/.claude`,
+      home: `/home/${linuxUser}`,
     };
   }
 
@@ -122,6 +123,25 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       .split(',')
       .map((tool) => tool.trim())
       .filter(Boolean);
+  }
+
+  private resolveModel(): string {
+    return normalizeClaudeModelId(
+      process.env.MYCC_AGENT_SDK_MODEL
+        || process.env.VPS_CLAUDE_MODEL
+        || process.env.CLAUDE_MODEL
+        || DEFAULT_CLAUDE_MODEL,
+    );
+  }
+
+  private resolveSettingSources(): Array<'user' | 'project' | 'local'> {
+    const raw = process.env.MYCC_AGENT_SDK_SETTING_SOURCES || 'user,project';
+    return raw
+      .split(',')
+      .map((source) => source.trim())
+      .filter((source): source is 'user' | 'project' | 'local' =>
+        source === 'user' || source === 'project' || source === 'local',
+      );
   }
 
   private resolvePermissionMode(requestedMode: AgentChatParams['permissionMode']): PermissionMode {

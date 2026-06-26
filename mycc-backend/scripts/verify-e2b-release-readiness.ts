@@ -6,6 +6,7 @@ type Check = {
   label: string;
   file: string;
   snippets: string[];
+  forbiddenSnippets?: string[];
 };
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,13 +27,21 @@ const checks: Check[] = [
     label: 'env example documents the E2B product path',
     file: '.env.example',
     snippets: [
-      'MYCC_AGENT_RUNTIME=remote-claude',
-      'MYCC_WORKSPACE_PROVIDER=ssh',
-      'MYCC_IDE_PROVIDER=disabled',
+      'MYCC_AGENT_RUNTIME=e2b-claude-agent-sdk',
+      'MYCC_WORKSPACE_PROVIDER=e2b',
+      'MYCC_IDE_PROVIDER=e2b',
       'MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev',
       'MYCC_E2B_DESKTOP_ENABLED=true',
       'MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false',
       'MYCC_E2B_AGENT_SDK_BRIDGE_COMMAND=',
+      'MYCC_AGENT_SDK_MODEL=claude-opus-4-7',
+      'MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep,Bash,Edit,Write',
+      'MYCC_AGENT_RUN_STORE=postgres',
+      '/home/{linuxUser}/.claude',
+    ],
+    forbiddenSnippets: [
+      '/home/{linuxUser}/.mycc/{home,claude}',
+      '/home/{linux_user}/.mycc',
     ],
   },
   {
@@ -82,6 +91,73 @@ const checks: Check[] = [
       'CREATE INDEX IF NOT EXISTS idx_ide_sessions_user_id',
       'CREATE INDEX IF NOT EXISTS idx_ide_sessions_status_expires_at',
       'update_ide_sessions_updated_at',
+    ],
+  },
+  {
+    label: 'agent run trace migration is idempotent',
+    file: 'db/migrations/007-add-agent-run-trace.sql',
+    snippets: [
+      'CREATE TABLE IF NOT EXISTS agent_runs',
+      'CREATE TABLE IF NOT EXISTS agent_run_events',
+      'CREATE INDEX IF NOT EXISTS idx_agent_runs_user_started_at',
+      'update_agent_runs_updated_at',
+    ],
+  },
+  {
+    label: 'IDE session identity migration is idempotent',
+    file: 'db/migrations/008-add-ide-session-identity.sql',
+    snippets: [
+      'ADD COLUMN IF NOT EXISTS template',
+      'ADD COLUMN IF NOT EXISTS linux_user',
+      'ADD COLUMN IF NOT EXISTS workspace_dir',
+      'idx_ide_sessions_reuse_identity',
+    ],
+  },
+  {
+    label: 'deep readiness probes E2B Agent runtime preflight',
+    file: 'src/index.ts',
+    snippets: [
+      "fastify.get('/readyz/deep'",
+      'checkRuntime: checkRuntimeReadiness',
+      'buildE2bAgentPreflightReport',
+      'Template.exists',
+    ],
+  },
+  {
+    label: 'IDE sessions are reused by sandbox workspace identity',
+    file: 'src/ide/session-store.ts',
+    snippets: [
+      'IdeSessionReuseCriteria',
+      'template = $',
+      'linux_user = $',
+      'workspace_dir = $',
+      'matchesReuseCriteria',
+    ],
+  },
+  {
+    label: 'E2B code-server sessions wait for readiness before exposure',
+    file: 'src/ide/e2b-provider.ts',
+    snippets: [
+      'waitForCodeServerHealthy',
+      'code-server did not become ready',
+      'MYCC_E2B_CODE_SERVER_READY_TIMEOUT_MS',
+      '127.0.0.1:${port}/healthz',
+    ],
+  },
+  {
+    label: 'Agent SDK product defaults use broad tools with hook guard and Opus model',
+    file: 'src/agent-runtime/claude-agent-sdk-runtime.ts',
+    snippets: [
+      "const DEFAULT_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write']",
+      'DEFAULT_CLAUDE_MODEL',
+      'normalizeClaudeModelId',
+      'createMyccClaudeHooks',
+      'allowDangerouslySkipPermissions',
+      "settingSources: this.resolveSettingSources()",
+    ],
+    forbiddenSnippets: [
+      "|| 'claude-sonnet-4-6'",
+      '/.mycc',
     ],
   },
   {
@@ -137,9 +213,14 @@ for (const check of checks) {
   const filePath = path.join(backendRoot, check.file);
   const source = readFileSync(filePath, 'utf8');
   const missing = check.snippets.filter((snippet) => !source.includes(snippet));
-  if (missing.length > 0) {
+  const forbidden = (check.forbiddenSnippets ?? []).filter((snippet) => source.includes(snippet));
+  if (missing.length > 0 || forbidden.length > 0) {
     failureCount += 1;
-    console.error(`[error] ${check.label}: ${check.file} is missing ${missing.join(', ')}`);
+    const details = [
+      missing.length > 0 ? `missing ${missing.join(', ')}` : '',
+      forbidden.length > 0 ? `contains forbidden ${forbidden.join(', ')}` : '',
+    ].filter(Boolean).join('; ');
+    console.error(`[error] ${check.label}: ${check.file} ${details}`);
   } else {
     console.log(`[ok] ${check.label}`);
   }

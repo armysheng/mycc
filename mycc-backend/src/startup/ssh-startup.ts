@@ -3,7 +3,7 @@ export function shouldInitializeSshAtStartup(env: NodeJS.ProcessEnv = process.en
     return false;
   }
 
-  const runtime = (env.MYCC_AGENT_RUNTIME || 'remote-claude').trim();
+  const runtime = (env.MYCC_AGENT_RUNTIME || 'e2b-claude-agent-sdk').trim();
   const ideProvider = (env.MYCC_IDE_PROVIDER || 'disabled').trim();
   const workspaceProvider = (env.MYCC_WORKSPACE_PROVIDER || 'ssh').trim();
 

@@ -15,6 +15,9 @@ const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
   provider: 'e2b',
+  template: 'mycc-assistant-sandbox-dev',
+  linuxUser: 'mycc',
+  workspaceDir: '/home/mycc/workspace',
   sandboxId: 'sbx_123',
   codeServerPid: 1234,
   host: '18080-sbx_123.e2b.app',
@@ -132,6 +135,94 @@ describe('workspace route helpers', () => {
     const command = runCommandInSession.mock.calls[0]![1] as string;
     expect(command).not.toContain('sudo -n -u');
     expect(command).toContain('/home/mycc/workspace');
+  });
+
+  it('uses the requested owned E2B IDE session for workspace reads', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    const requestedSession: StoredIdeSession = {
+      ...runningSession,
+      id: 'ide_requested',
+      sandboxId: 'sbx_requested',
+      host: '18080-sbx_requested.e2b.app',
+    };
+    const latestSession: StoredIdeSession = {
+      ...runningSession,
+      id: 'ide_latest',
+      sandboxId: 'sbx_latest',
+      host: '18080-sbx_latest.e2b.app',
+    };
+    await sessionStore.set(requestedSession);
+    await sessionStore.set(latestSession);
+    const runCommandInSession = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        tree: {
+          id: '/',
+          name: 'workspace',
+          path: '/',
+          type: 'directory',
+          size: 0,
+          mtime: '2026-05-30T00:00:00.000Z',
+          children: [],
+        },
+        truncated: false,
+        nodeCount: 1,
+      }),
+      stderr: '',
+    });
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/tree?path=/&ideSessionId=ide_requested',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(runCommandInSession).toHaveBeenCalledWith(
+      requestedSession,
+      expect.stringContaining("node -e '"),
+      expect.objectContaining({
+        cwd: '/home/mycc/workspace',
+        timeoutMs: 30000,
+      }),
+    );
+  });
+
+  it('rejects workspace reads for another user E2B IDE session', async () => {
+    const sessionStore = new InMemoryIdeSessionStore();
+    await sessionStore.set({ ...runningSession, userId: 7 });
+    const runCommandInSession = vi.fn();
+    const app = await buildApp({
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'e2b',
+        MYCC_IDE_PROVIDER: 'e2b',
+      },
+      ideSessionStore: sessionStore,
+      e2bProvider: { runCommandInSession },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/tree?ideSessionId=ide_123',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      success: false,
+      error: '需要先打开工作间',
+      code: 'workbench_required',
+    });
+    expect(runCommandInSession).not.toHaveBeenCalled();
+    expect(response.body).not.toMatch(/sbx_123|traffic-token|proxy-token|E2B|sandbox|session/i);
   });
 
   it('serves safe workspace previews without exposing provider details', async () => {

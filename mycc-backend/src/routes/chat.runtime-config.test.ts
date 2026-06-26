@@ -58,12 +58,14 @@ describe('chat runtime config route', () => {
     await app.close();
   });
 
-  it('returns safe runtime and CCR readiness metadata for authenticated users', async () => {
+  it('returns safe runtime and direct MyCC Claude provider metadata for authenticated users', async () => {
     const app = await buildApp({
       env: {
         MYCC_AGENT_RUNTIME: 'e2b-claude-agent-sdk',
         MYCC_CCR_BASE_URL: 'https://ccr.example.test/v1',
         MYCC_CCR_AUTH_TOKEN: 'ccr-secret',
+        MYCC_CLAUDE_BASE_URL: 'https://zhuji.example.test/v1',
+        MYCC_CLAUDE_AUTH_TOKEN: 'zhuji-secret',
       },
     });
 
@@ -82,11 +84,11 @@ describe('chat runtime config route', () => {
         usesAgentSdk: true,
         usesCodeServerWorkspace: true,
         claudeProvider: {
-          provider: 'ccr',
+          provider: 'mycc-claude',
           baseUrlConfigured: true,
-          baseUrlSource: 'MYCC_CCR_BASE_URL',
+          baseUrlSource: 'MYCC_CLAUDE_BASE_URL',
           credentialConfigured: true,
-          credentialSource: 'MYCC_CCR_AUTH_TOKEN',
+          credentialSource: 'MYCC_CLAUDE_AUTH_TOKEN',
           credentialTarget: 'ANTHROPIC_AUTH_TOKEN',
         },
         e2bAgentPreflight: {
@@ -114,6 +116,8 @@ describe('chat runtime config route', () => {
     });
     expect(response.body).not.toContain('ccr-secret');
     expect(response.body).not.toContain('ccr.example.test');
+    expect(response.body).not.toContain('zhuji-secret');
+    expect(response.body).not.toContain('zhuji.example.test');
     await app.close();
   });
 

@@ -20,10 +20,7 @@ describe('ClaudeAgentSdkRuntime', () => {
     vi.unstubAllEnvs();
   });
 
-  it('passes isolated and safe defaults to the Agent SDK', async () => {
-    vi.stubEnv('MYCC_AGENT_SDK_ALLOWED_TOOLS', 'Read,Glob,Grep');
-    vi.stubEnv('MYCC_AGENT_SDK_MODEL', 'claude-sonnet-4-6');
-
+  it('passes sandbox home defaults, default model, and guarded broad tool access to the Agent SDK', async () => {
     vi.mocked(query).mockReturnValue((async function* () {
       yield { type: 'system', subtype: 'init', session_id: 'session-1' };
       yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
@@ -44,21 +41,46 @@ describe('ClaudeAgentSdkRuntime', () => {
     expect(query).toHaveBeenCalledWith({
       prompt: 'hello',
       options: expect.objectContaining({
-        allowedTools: ['Read', 'Glob', 'Grep'],
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'],
         cwd: '/home/tester/workspace',
         env: expect.objectContaining({
-          CLAUDE_CONFIG_DIR: '/home/tester/.mycc/claude',
-          HOME: '/home/tester/.mycc/home',
-          XDG_CONFIG_HOME: '/home/tester/.mycc/home/.config',
-          XDG_DATA_HOME: '/home/tester/.mycc/home/.local/share',
+          CLAUDE_CONFIG_DIR: '/home/tester/.claude',
+          HOME: '/home/tester',
+          XDG_CONFIG_HOME: '/home/tester/.config',
+          XDG_DATA_HOME: '/home/tester/.local/share',
         }),
+        hooks: expect.objectContaining({
+          PreToolUse: expect.any(Array),
+        }),
+        includeHookEvents: false,
         includePartialMessages: false,
-        model: 'claude-sonnet-4-6',
+        model: 'claude-opus-4-7',
         allowDangerouslySkipPermissions: true,
         permissionMode: 'bypassPermissions',
         resume: 'session-1',
-        settingSources: [],
+        settingSources: ['user', 'project'],
         systemPrompt: { type: 'preset', preset: 'claude_code', excludeDynamicSections: true },
+      }),
+    });
+  });
+
+  it('normalizes legacy Opus model aliases', async () => {
+    vi.stubEnv('MYCC_AGENT_SDK_MODEL', 'claude-opus-4.7');
+    vi.mocked(query).mockReturnValue((async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, session_id: 'session-1' };
+    })() as ReturnType<typeof query>);
+
+    const runtime = new ClaudeAgentSdkRuntime();
+    await collect(runtime.chat({
+      message: 'hello',
+      cwd: '/home/tester/workspace',
+      linuxUser: 'tester',
+    }));
+
+    expect(query).toHaveBeenCalledWith({
+      prompt: 'hello',
+      options: expect.objectContaining({
+        model: 'claude-opus-4-7',
       }),
     });
   });

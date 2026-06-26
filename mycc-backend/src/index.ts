@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
+import { Template } from 'e2b';
 import { authRoutes } from './routes/auth.js';
 import { chatRoutes } from './routes/chat.js';
 import { assistantRoutes } from './routes/assistant.js';
@@ -14,8 +15,20 @@ import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
 import { shouldInitializeSshAtStartup, shouldStartAutomationScheduler } from './startup/ssh-startup.js';
+import {
+  buildHealthResponse,
+  buildReadinessResponse,
+  type ReadinessCheck,
+  requireProductionStartupSecrets,
+} from './startup/readiness.js';
 import { validateRegistry } from './skills/skill-registry.js';
+import { buildE2bAgentPreflightReport } from './ide/e2b-preflight.js';
 import { AutomationScheduler } from './automations/scheduler.js';
+import {
+  shouldStartIdeSessionKeepalive,
+  startIdeSessionKeepaliveScheduler,
+  type IdeSessionKeepaliveScheduler,
+} from './ide/session-keepalive.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -26,6 +39,7 @@ dotenv.config();
 const PORT = parseInt(process.env.PORT || '8080');
 const HOST = '0.0.0.0';
 let automationScheduler: AutomationScheduler | null = null;
+let ideSessionKeepaliveScheduler: IdeSessionKeepaliveScheduler | null = null;
 
 // 创建 Fastify 实例
 const fastify = Fastify({
@@ -42,33 +56,66 @@ await fastify.register(cors, {
   allowedHeaders: ['Content-Type', 'Authorization'],
 });
 
-// 健康检查
-fastify.get('/health', async () => {
-  if (!shouldInitializeSshAtStartup()) {
+function getRuntimeCatalogPath(): string {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  return process.env.SKILLS_CATALOG_DIR || path.join(__dirname, 'skills', 'catalog');
+}
+
+async function checkRuntimeReadiness(): Promise<ReadinessCheck> {
+  const report = await buildE2bAgentPreflightReport({
+    env: process.env,
+    templateExists: (templateName, apiKey) => Template.exists(templateName, { apiKey }),
+  });
+  if (report.ok) {
     return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: 'skipped'
+      status: 'pass',
+      message: 'E2B Agent preflight ready',
     };
   }
+  const failing = report.checks
+    .filter((check) => check.status === 'error')
+    .map((check) => check.label)
+    .join(', ');
+  return {
+    status: 'fail',
+    message: failing ? `E2B Agent preflight failed: ${failing}` : 'E2B Agent preflight failed',
+  };
+}
 
-  try {
-    // 测试 SSH 连接
-    const sshPool = getSSHPool();
-    const sshOk = await sshPool.testConnection();
+// 存活检查：只证明进程可响应，不代表依赖已就绪。
+fastify.get('/health', async () => buildHealthResponse());
 
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: sshOk ? 'connected' : 'disconnected'
-    };
-  } catch (err) {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: 'not_initialized'
-    };
+// 就绪检查：用于发布、负载均衡和运维排障。
+fastify.get('/readyz', async (_request, reply) => {
+  const readiness = await buildReadinessResponse({
+    checkDatabase: () => pool.query('SELECT NOW()'),
+    checkSsh: async () => {
+      const sshPool = getSSHPool();
+      return sshPool.testConnection();
+    },
+    validateSkills: () => validateRegistry(getRuntimeCatalogPath()),
+  });
+  if (!readiness.ready) {
+    return reply.status(503).send(readiness);
   }
+  return readiness;
+});
+
+fastify.get('/readyz/deep', async (_request, reply) => {
+  const readiness = await buildReadinessResponse({
+    checkDatabase: () => pool.query('SELECT NOW()'),
+    checkRuntime: checkRuntimeReadiness,
+    checkSsh: async () => {
+      const sshPool = getSSHPool();
+      return sshPool.testConnection();
+    },
+    validateSkills: () => validateRegistry(getRuntimeCatalogPath()),
+  });
+  if (!readiness.ready) {
+    return reply.status(503).send(readiness);
+  }
+  return readiness;
 });
 
 // 注册路由
@@ -85,6 +132,8 @@ await fastify.register(ideRoutes);
 // 启动服务器
 async function start() {
   try {
+    requireProductionStartupSecrets();
+
     // 测试数据库连接
     await pool.query('SELECT NOW()');
     console.log('✅ 数据库连接成功');
@@ -134,10 +183,13 @@ async function start() {
       console.log('ℹ️ 自动化调度器已禁用（当前运行时未初始化 SSH，等待 E2B 自动化后端接入）');
     }
 
+    if (shouldStartIdeSessionKeepalive()) {
+      ideSessionKeepaliveScheduler = startIdeSessionKeepaliveScheduler();
+      console.log('ℹ️ 工作间续租已启用');
+    }
+
     // 技能注册表一致性校验
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const catalogPath = process.env.SKILLS_CATALOG_DIR || path.join(__dirname, 'skills', 'catalog');
+    const catalogPath = getRuntimeCatalogPath();
     const missing = validateRegistry(catalogPath);
     if (missing.length > 0) {
       console.warn(`[SkillRegistry] ${missing.length} 个 SKILL.md 文件缺失:`);
@@ -164,6 +216,10 @@ process.on('SIGINT', async () => {
   if (automationScheduler) {
     automationScheduler.stop();
     automationScheduler = null;
+  }
+  if (ideSessionKeepaliveScheduler) {
+    ideSessionKeepaliveScheduler.stop();
+    ideSessionKeepaliveScheduler = null;
   }
   await fastify.close();
   await pool.end();

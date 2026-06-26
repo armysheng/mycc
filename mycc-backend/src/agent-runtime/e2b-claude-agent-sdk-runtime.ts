@@ -8,6 +8,7 @@ import { sanitizeLinuxUsername } from '../utils/validation.js';
 import { parseAgentRunnerEventLine } from './agent-runner-events.js';
 import { buildClaudeAgentRunnerRequest, parseCommaSeparatedList } from './agent-runner-request.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
+import { DEFAULT_CLAUDE_MODEL, normalizeClaudeModelId } from './claude-model.js';
 import { resolveSandboxTaskCwd, resolveSandboxWorkspaceRoot } from './e2b-workspace-paths.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
@@ -22,7 +23,6 @@ export type E2bClaudeAgentSdkRuntimeOptions = {
 const DEFAULT_SANDBOX_LINUX_USER = 'mycc';
 const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep,Bash,Edit,Write';
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const BRIDGE_PAYLOAD_CHUNK_SIZE = 16 * 1024;
 const SUPPORTED_PERMISSION_MODES = new Set([
   'default',
@@ -324,8 +324,8 @@ function buildAgentSdkBridgeEnv(
   sandboxUser: string,
   requestFile: string,
 ): Record<string, string> {
-  const home = `/home/${sandboxUser}/.mycc/home`;
-  const claudeConfigDir = `/home/${sandboxUser}/.mycc/claude`;
+  const home = `/home/${sandboxUser}`;
+  const claudeConfigDir = `${home}/.claude`;
 
   return {
     CLAUDE_AGENT_SDK_CLIENT_APP: process.env.CLAUDE_AGENT_SDK_CLIENT_APP || 'mycc-backend/e2b-agent-sdk-runtime',
@@ -365,11 +365,12 @@ function resolveSandboxLinuxUser(): string {
 }
 
 function resolveAgentSdkModel(): string {
-  return process.env.MYCC_E2B_AGENT_SDK_MODEL
+  const model = process.env.MYCC_E2B_AGENT_SDK_MODEL
     || process.env.MYCC_AGENT_SDK_MODEL
     || process.env.VPS_CLAUDE_MODEL
     || process.env.CLAUDE_MODEL
-    || DEFAULT_MODEL;
+    || DEFAULT_CLAUDE_MODEL;
+  return normalizeClaudeModelId(model);
 }
 
 function resolveCommandTimeoutMs(): number {

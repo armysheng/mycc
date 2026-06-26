@@ -49,6 +49,14 @@ describe('IDE session service config', () => {
     });
   });
 
+  it('caps custom E2B session TTL at the provider one-hour limit', () => {
+    process.env.MYCC_IDE_SESSION_TTL_SECONDS = '7200';
+
+    expect(resolveIdeConfig()).toEqual(expect.objectContaining({
+      sessionTtlSeconds: 3600,
+    }));
+  });
+
   it('advertises assistant sandbox desktop capability when E2B is enabled without a custom template', () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
 

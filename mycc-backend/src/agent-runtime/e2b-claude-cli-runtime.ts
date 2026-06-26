@@ -5,6 +5,7 @@ import { isLikelyStaleE2bSessionError } from '../ide/e2b-session-errors.js';
 import { PostgresIdeSessionStore, type IdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
 import { escapeShellArg, sanitizeLinuxUsername } from '../utils/validation.js';
 import { resolveClaudeProviderEnv } from './claude-env.js';
+import { DEFAULT_CLAUDE_MODEL, normalizeClaudeModelId } from './claude-model.js';
 import { resolveSandboxTaskCwd, resolveSandboxWorkspaceRoot } from './e2b-workspace-paths.js';
 import type { AgentChatParams, AgentRuntime, AgentRuntimeEvent } from './types.js';
 
@@ -162,7 +163,7 @@ function buildClaudeCliCommand(params: AgentChatParams): string {
   const model = process.env.MYCC_E2B_CLAUDE_MODEL
     || process.env.VPS_CLAUDE_MODEL
     || process.env.CLAUDE_MODEL
-    || 'claude-sonnet-4-6';
+    || DEFAULT_CLAUDE_MODEL;
   const args = [
     'claude',
     '--print',
@@ -171,7 +172,7 @@ function buildClaudeCliCommand(params: AgentChatParams): string {
     '--verbose',
     '--dangerously-skip-permissions',
     '--model',
-    model,
+    normalizeClaudeModelId(model),
     ...(params.sessionId ? ['--resume', params.sessionId] : []),
     params.message,
   ];
@@ -179,8 +180,8 @@ function buildClaudeCliCommand(params: AgentChatParams): string {
 }
 
 function buildClaudeEnv(sandboxUser: string): Record<string, string> {
-  const home = `/home/${sandboxUser}/.mycc/home`;
-  const claudeConfigDir = `/home/${sandboxUser}/.mycc/claude`;
+  const home = `/home/${sandboxUser}`;
+  const claudeConfigDir = `${home}/.claude`;
 
   return {
     CLAUDE_CONFIG_DIR: claudeConfigDir,

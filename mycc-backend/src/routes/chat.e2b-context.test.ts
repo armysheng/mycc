@@ -124,7 +124,7 @@ describe("chat E2B project context injection", () => {
       stdout: JSON.stringify([
         {
           name: "README.md",
-          path: "/home/mycc/workspace/0-System/about-me/README.md",
+          path: "/home/mycc/.claude/about-me/README.md",
           content: "hello from e2b about-me",
           missing: false,
         },
@@ -163,7 +163,16 @@ describe("chat E2B project context injection", () => {
 
     expect(response.statusCode).toBe(200);
     expect(startCodeServer).toHaveBeenCalledOnce();
-    expect(runCommandInSession).toHaveBeenCalledOnce();
+    expect(runCommandInSession).toHaveBeenCalledTimes(3);
+    expect(runCommandInSession.mock.calls[0]?.[1]).toEqual(
+      expect.stringContaining("MYCC_CLAUDE_HOME_TEMPLATE_SEED"),
+    );
+    expect(runCommandInSession.mock.calls[1]?.[1]).toEqual(
+      expect.stringContaining("MYCC_WORKSPACE_TEMPLATE_SEED"),
+    );
+    expect(runCommandInSession.mock.calls[2]?.[1]).toEqual(
+      expect.stringContaining("node -e"),
+    );
     expect(mocks.runtimeChat).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining("hello from e2b about-me"),

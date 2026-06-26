@@ -13,13 +13,16 @@ describe('E2bSandboxProvider', () => {
     delete process.env.MYCC_E2B_DESKTOP_MODE;
     delete process.env.MYCC_E2B_CREATE_RETRY_ATTEMPTS;
     delete process.env.MYCC_E2B_CREATE_RETRY_DELAY_MS;
+    delete process.env.MYCC_E2B_CODE_SERVER_READY_TIMEOUT_MS;
   });
 
-  it('creates a private E2B sandbox and starts code-server in the background', async () => {
+  it('creates a private E2B sandbox, starts code-server, and waits for health', async () => {
     process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
-    const run = vi.fn().mockResolvedValue({ pid: 1234 });
+    const run = vi.fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: 'ok', stderr: '' });
     const create = vi.fn().mockResolvedValue({
       sandboxId: 'sbx_123',
       trafficAccessToken: 'traffic-token',
@@ -48,11 +51,22 @@ describe('E2bSandboxProvider', () => {
         allowPublicTraffic: false,
       },
     });
-    expect(run).toHaveBeenCalledWith(plan.startCommand, {
-      background: true,
+    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining('nohup'), {
+      background: false,
       cwd: '/home/mycc/workspace',
+      timeoutMs: 10000,
     });
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0]?.[0]).toContain('sh -lc');
+    expect(run.mock.calls[0]?.[0]).toContain('code-server');
+    expect(run.mock.calls[0]?.[0]).toContain('0.0.0.0:18080');
+    expect(run.mock.calls[0]?.[0]).toContain('/tmp/mycc-code-server-18080.stdout.log');
+    expect(run.mock.calls[0]?.[0]).toContain('echo $!');
+    expect(run).toHaveBeenNthCalledWith(2, expect.stringContaining('127.0.0.1:18080/healthz'), {
+      background: false,
+      cwd: '/home/mycc/workspace',
+      timeoutMs: 5000,
+    });
+    expect(run).toHaveBeenCalledTimes(2);
     expect(session).toEqual({
       provider: 'e2b',
       sandboxId: 'sbx_123',
@@ -65,12 +79,38 @@ describe('E2bSandboxProvider', () => {
     });
   });
 
+  it('fails session creation when code-server never becomes healthy', async () => {
+    process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
+    process.env.MYCC_IDE_PROVIDER = 'e2b';
+    process.env.MYCC_E2B_CODE_SERVER_READY_TIMEOUT_MS = '1';
+    const run = vi.fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValue({ exitCode: 7, stdout: '', stderr: 'connection refused' });
+    const create = vi.fn().mockResolvedValue({
+      sandboxId: 'sbx_unhealthy',
+      trafficAccessToken: 'traffic-token',
+      commands: { run },
+      getHost: vi.fn().mockReturnValue('18080-sbx_unhealthy.e2b.app'),
+      kill: vi.fn().mockResolvedValue(undefined),
+    });
+    const provider = new E2bSandboxProvider({ create });
+    const plan = buildE2bCodeServerSessionPlan({
+      userId: 42,
+      linuxUser: 'tester',
+      workspaceDir: '/home/tester/workspace',
+    });
+
+    await expect(provider.startCodeServer(plan)).rejects.toThrow('code-server did not become ready');
+  });
+
   it('retries transient E2B placement failures while creating a sandbox', async () => {
     process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     process.env.MYCC_E2B_TEMPLATE = 'mycc-code-server-dev';
     process.env.MYCC_E2B_CREATE_RETRY_DELAY_MS = '0';
-    const run = vi.fn().mockResolvedValue({ pid: 1234 });
+    const run = vi.fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValue({ exitCode: 0, stdout: 'ok', stderr: '' });
     const create = vi.fn()
       .mockRejectedValueOnce(new Error('500: Failed to place sandbox'))
       .mockResolvedValueOnce({
@@ -89,10 +129,14 @@ describe('E2bSandboxProvider', () => {
     const session = await provider.startCodeServer(plan);
 
     expect(create).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenCalledWith(plan.startCommand, {
-      background: true,
+    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining('nohup'), {
+      background: false,
       cwd: '/home/mycc/workspace',
+      timeoutMs: 10000,
     });
+    expect(run.mock.calls[0]?.[0]).toContain('sh -lc');
+    expect(run.mock.calls[0]?.[0]).toContain('code-server');
+    expect(run.mock.calls[0]?.[0]).toContain('0.0.0.0:18080');
     expect(session).toEqual(expect.objectContaining({
       sandboxId: 'sbx_after_retry',
       codeServerPid: 1234,
@@ -103,7 +147,8 @@ describe('E2bSandboxProvider', () => {
     process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const run = vi.fn()
-      .mockResolvedValueOnce({ pid: 1234 })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: 'ok', stderr: '' })
       .mockResolvedValueOnce({ pid: 4321 });
     const create = vi.fn().mockResolvedValue({
       sandboxId: 'sbx_123',
@@ -121,11 +166,20 @@ describe('E2bSandboxProvider', () => {
     await provider.startCodeServer(plan);
 
     expect(plan.desktopEnabled).toBe(true);
-    expect(run).toHaveBeenNthCalledWith(1, plan.startCommand, {
-      background: true,
+    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining('nohup'), {
+      background: false,
       cwd: '/home/mycc/workspace',
+      timeoutMs: 10000,
     });
-    expect(run).toHaveBeenNthCalledWith(2, 'mycc-start-desktop', {
+    expect(run.mock.calls[0]?.[0]).toContain('sh -lc');
+    expect(run.mock.calls[0]?.[0]).toContain('code-server');
+    expect(run.mock.calls[0]?.[0]).toContain('0.0.0.0:18080');
+    expect(run).toHaveBeenNthCalledWith(2, expect.stringContaining('127.0.0.1:18080/healthz'), {
+      background: false,
+      cwd: '/home/mycc/workspace',
+      timeoutMs: 5000,
+    });
+    expect(run).toHaveBeenNthCalledWith(3, 'mycc-start-desktop', {
       background: true,
       cwd: '/home/mycc/workspace',
       envs: {
@@ -142,7 +196,8 @@ describe('E2bSandboxProvider', () => {
     process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     const run = vi.fn()
-      .mockResolvedValueOnce({ pid: 1234 })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: 'ok', stderr: '' })
       .mockRejectedValueOnce(new Error('prewarm failed'));
     const create = vi.fn().mockResolvedValue({
       sandboxId: 'sbx_123',
@@ -160,7 +215,7 @@ describe('E2bSandboxProvider', () => {
     const session = await provider.startCodeServer(plan);
 
     expect(session.codeServerPid).toBe(1234);
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledTimes(3);
   });
 
   it('requires an E2B API key before creating sandboxes', async () => {
@@ -180,7 +235,9 @@ describe('E2bSandboxProvider', () => {
   it('uses the generic E2B_API_KEY fallback', async () => {
     process.env.MYCC_IDE_PROVIDER = 'e2b';
     process.env.E2B_API_KEY = 'e2b_cafebabe';
-    const run = vi.fn().mockResolvedValue({ pid: 1234 });
+    const run = vi.fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '1234\n', stderr: '' })
+      .mockResolvedValue({ exitCode: 0, stdout: 'ok', stderr: '' });
     const create = vi.fn().mockResolvedValue({
       sandboxId: 'sbx_123',
       commands: { run },
@@ -226,7 +283,7 @@ describe('E2bSandboxProvider', () => {
     expect(killSandbox).toHaveBeenCalledOnce();
   });
 
-  it('renews the sandbox timeout for a running session', async () => {
+  it('renews the sandbox timeout for a running session within the E2B one-hour limit', async () => {
     process.env.MYCC_E2B_API_KEY = 'e2b_deadbeef';
     const setTimeout = vi.fn().mockResolvedValue(undefined);
     const connect = vi.fn().mockResolvedValue({ setTimeout });
@@ -243,7 +300,7 @@ describe('E2bSandboxProvider', () => {
     }, 7200);
 
     expect(connect).toHaveBeenCalledWith('sbx_123', { apiKey: 'e2b_deadbeef' });
-    expect(setTimeout).toHaveBeenCalledWith(7200000);
+    expect(setTimeout).toHaveBeenCalledWith(3600000);
     expect(result.expiresAt).toEqual(expect.any(String));
   });
 

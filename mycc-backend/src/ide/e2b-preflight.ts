@@ -214,17 +214,17 @@ function checkClaudeProvider(
   if (resolvedEnv.ANTHROPIC_AUTH_TOKEN || resolvedEnv.ANTHROPIC_API_KEY || description.credentialConfigured) {
     return {
       id: 'claude-provider',
-      label: 'Claude/CCR credential',
+      label: 'Claude provider credential',
       status: 'ok',
       message: `Credential source is ${description.credentialSource ?? 'configured'}.`,
     };
   }
   return {
     id: 'claude-provider',
-    label: 'Claude/CCR credential',
+    label: 'Claude provider credential',
     status: 'error',
     message: 'No Claude credential is configured.',
-    action: 'Set MYCC_CCR_AUTH_TOKEN, MYCC_CCR_API_KEY, ANTHROPIC_AUTH_TOKEN, or ANTHROPIC_API_KEY.',
+    action: 'Set MYCC_CLAUDE_AUTH_TOKEN or MYCC_CLAUDE_API_KEY for direct Claude-compatible access; CCR variables are optional routing fallbacks.',
   };
 }
 
@@ -237,7 +237,7 @@ function checkClaudeProviderConsistency(description: ClaudeProviderEnvDescriptio
       label: 'Claude provider consistency',
       status: 'warn',
       message: `Base URL source is ${base}, but credential source is ${credential}.`,
-      action: 'Prefer one explicit pair: MYCC_CCR_BASE_URL + MYCC_CCR_AUTH_TOKEN, or official Anthropic with no VPS base URL.',
+      action: 'Prefer one explicit pair: MYCC_CLAUDE_BASE_URL + MYCC_CLAUDE_AUTH_TOKEN for direct access, or MYCC_CCR_BASE_URL + MYCC_CCR_AUTH_TOKEN when intentionally routing through CCR.',
     };
   }
   if (credential?.startsWith('VPS_') && base && !base.startsWith('VPS_')) {
