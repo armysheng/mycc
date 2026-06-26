@@ -33,4 +33,10 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('base64 -d');
     expect(workflow).toContain('bash -lc "${STAGING_BACKEND_RESTART_CMD}"');
   });
+
+  it('can pin the remote Node runtime used for deploy commands', () => {
+    expect(workflow).toContain('STAGING_NODE_BIN_DIR');
+    expect(workflow).toContain('export PATH="${STAGING_NODE_BIN_DIR}:${PATH}"');
+    expect(workflow).toContain('STAGING_NODE_BIN_DIR must contain executable node and npm');
+  });
 });
