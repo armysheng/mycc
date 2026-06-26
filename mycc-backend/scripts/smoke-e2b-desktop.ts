@@ -44,6 +44,7 @@ const PROXY_REQUEST_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_PRO
 const DIRECT_HOST_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_SMOKE_DIRECT_HOST_TIMEOUT_MS, 15_000);
 const USER_ID = parsePositiveInteger(process.env.MYCC_SMOKE_USER_ID, 42);
 const LINUX_USER = process.env.MYCC_SMOKE_LINUX_USER || 'mycc';
+const DB_LINUX_USER = process.env.MYCC_SMOKE_DB_LINUX_USER || `mycc_smoke_${USER_ID}`;
 
 let sessionId: string | undefined;
 const sessionStore = new PostgresIdeSessionStore();
@@ -52,6 +53,7 @@ const e2bProvider = new E2bSandboxProvider();
 async function main() {
   const apiKey = requireE2bApiKey();
   process.env.MYCC_E2B_API_KEY = apiKey;
+  await ensureSmokeUser();
 
   const token = jwt.sign({
     userId: USER_ID,
@@ -202,6 +204,40 @@ async function cleanupSession(id: string, authorization: string): Promise<void> 
     throw new Error(`Cleanup did not stop IDE session ${id}: ${JSON.stringify(stopped.data)}`);
   }
   console.log(`[cleanup] E2B desktop smoke cleanup complete: session=${id}`);
+}
+
+async function ensureSmokeUser(): Promise<void> {
+  await pool.query(
+    `INSERT INTO users (
+       id,
+       phone,
+       email,
+       password_hash,
+       nickname,
+       assistant_name,
+       linux_user,
+       status,
+       is_initialized
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', true)
+     ON CONFLICT (id)
+     DO UPDATE SET linux_user = EXCLUDED.linux_user,
+                   status = 'active',
+                   is_initialized = true,
+                   updated_at = NOW()`,
+    [
+      USER_ID,
+      `smoke-${USER_ID}`,
+      `smoke-${USER_ID}@mycc.local`,
+      'smoke-password-hash',
+      'Smoke Test',
+      'cc',
+      DB_LINUX_USER,
+    ],
+  );
+  await pool.query(
+    `SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM users), 1), true)`,
+  );
 }
 
 function assertNoProviderSecrets(session: IdeSessionResponse['data']): void {

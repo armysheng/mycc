@@ -1,0 +1,10 @@
+{
+  "id": "chat-basic",
+  "title": "Basic assistant response stays product-facing",
+  "prompt": "请简短说明你准备怎么帮助我整理当前项目。",
+  "expected": {
+    "finalResponseIncludes": ["整理"],
+    "forbiddenText": ["E2B", "sandbox", "Claude Code", "token"],
+    "forbiddenToolCalls": ["Bash"]
+  }
+}

@@ -110,19 +110,24 @@ journalctl -u mycc-backend -f
 
 ```bash
 cd mycc/mycc-backend
+npm run harness:verify -- --target=landing --no-write
 npm run verify:e2b-release
+npm run db:migrate
 npm run doctor:e2b-agent
 ```
+
+应用 `npm run db:migrate` 后，P2+ 环境应设置 `MYCC_AGENT_RUN_STORE=postgres` 持久化 agent run trace。Harness OTEL 默认只通过 OpenTelemetry API 产 best-effort spans；未配置 exporter 时为 no-op，可用 `MYCC_HARNESS_OTEL=false` 临时关闭。
 
 在目标环境启动后，再用同一份 `.env` 跑真实 smoke：
 
 ```bash
+BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
 BASE_URL=http://localhost:8080 npm run smoke:e2b-ide
 BASE_URL=http://localhost:8080 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:8080 npm run smoke:e2b-agent-sdk-workspace
 ```
 
-生产启用值必须保持 `MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false`。如果启用个人助理工作区模板，设置 `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` 与 `MYCC_E2B_DESKTOP_ENABLED=true`，再由后端代理 code-server/noVNC。若需要快速回滚，优先改配置为 `MYCC_AGENT_RUNTIME=remote-claude`、`MYCC_IDE_PROVIDER=disabled`、`MYCC_WORKSPACE_PROVIDER=ssh`，重启服务后再运行 `npm run cleanup:ide-sessions`。
+生产主路径使用 `MYCC_AGENT_RUNTIME=e2b-claude-agent-sdk`、`MYCC_IDE_PROVIDER=e2b`、`MYCC_WORKSPACE_PROVIDER=e2b`，并必须保持 `MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false`。如果启用个人助理工作区模板，设置 `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` 与 `MYCC_E2B_DESKTOP_ENABLED=true`，再由后端代理 code-server/noVNC。若需要快速回滚，优先改配置为 `MYCC_AGENT_RUNTIME=remote-claude`、`MYCC_IDE_PROVIDER=disabled`、`MYCC_WORKSPACE_PROVIDER=ssh`，重启服务后再运行 `npm run cleanup:ide-sessions`。
 
 ### 6. 配置反向代理（可选）
 

@@ -8,11 +8,25 @@ interface HistoryViewProps {
   onBack?: () => void;
 }
 
+interface ChatSessionRow {
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
+  title?: string | null;
+}
+
+interface ChatSessionsResponse {
+  data?: {
+    conversations?: ChatSessionRow[];
+  };
+}
+
 const HISTORY_LIST_ERROR_MESSAGE =
   "历史记录暂时没读出来，原记录不会被删除。可以先回到新对话，稍后再试一次。";
 const UNTITLED_CONVERSATION_LABEL = "未命名对话";
 
-export function HistoryView(_props: HistoryViewProps) {
+export function HistoryView({ onBack }: HistoryViewProps) {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,9 +44,9 @@ export function HistoryView(_props: HistoryViewProps) {
         if (!response.ok) {
           throw new Error(HISTORY_LIST_ERROR_MESSAGE);
         }
-        const data = await response.json();
+        const data = (await response.json()) as ChatSessionsResponse;
         const rows = data?.data?.conversations || [];
-        const mapped: ConversationSummary[] = rows.map((item: any) => ({
+        const mapped: ConversationSummary[] = rows.map((item) => ({
           sessionId: item.sessionId,
           startTime: item.createdAt,
           lastTime: item.updatedAt,
@@ -133,6 +147,17 @@ export function HistoryView(_props: HistoryViewProps) {
   return (
     <div className="flex-1 overflow-hidden">
       <div className="p-6 h-full flex flex-col">
+        {onBack && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={onBack}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
+            >
+              返回对话
+            </button>
+          </div>
+        )}
         <div className="grid gap-4 flex-1 overflow-y-auto">
           {conversations.map((conversation) => (
             <div
