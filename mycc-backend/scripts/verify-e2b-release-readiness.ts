@@ -175,6 +175,16 @@ const checks: Check[] = [
     ],
   },
   {
+    label: 'staging deploy verifies deep runtime readiness',
+    file: '../.github/workflows/deploy-staging.yml',
+    snippets: [
+      'READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz/deep}"',
+      'Backend deep readiness check passed',
+      '"runtime"[[:space:]]*:[[:space:]]*\\{[^}]*"status"[[:space:]]*:[[:space:]]*"pass"',
+      'curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/readyz/deep',
+    ],
+  },
+  {
     label: 'deployment guide documents E2B rollback switches',
     file: 'DEPLOYMENT.md',
     snippets: [

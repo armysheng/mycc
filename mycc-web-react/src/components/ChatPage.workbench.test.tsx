@@ -1152,7 +1152,7 @@ describe("ChatPage workbench dock", () => {
     );
 
     await screen.findByTitle("助理浏览器窗口");
-    expect(keepaliveHandlers.length).toBeGreaterThan(0);
+    await waitFor(() => expect(keepaliveHandlers.length).toBeGreaterThan(0));
     const desktopCallsBeforeKeepalive = vi
       .mocked(fetch)
       .mock.calls.filter(
