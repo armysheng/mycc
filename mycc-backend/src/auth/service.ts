@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { createUser, findUserByCredential, findUserById, getSubscription, updateUserProfile } from '../db/client.js';
 import { vpsUserManager } from '../vps/user-manager.js';
 import { shouldInitializeSshAtStartup } from '../startup/ssh-startup.js';
+import type { Subscription, User } from '../db/client.js';
 
 export const DEVELOPMENT_JWT_SECRET_PLACEHOLDER = 'your_jwt_secret_change_in_production';
 
@@ -19,6 +20,47 @@ export function requireSafeJwtSecret(env: NodeJS.ProcessEnv = process.env): stri
 const JWT_SECRET = requireSafeJwtSecret();
 const JWT_EXPIRES_IN = '24h';
 
+export const AUTH_ERROR_MESSAGES = {
+  credentialRequired: '手机号或邮箱必须提供一个',
+  passwordTooShort: '密码长度至少 6 位',
+  accountExists: '该手机号或邮箱已注册，请直接登录或换一个账号注册',
+  invalidLogin: '手机号/邮箱或密码错误',
+} as const;
+
+export class PublicAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PublicAuthError';
+  }
+}
+
+export function isPublicAuthError(err: unknown): err is PublicAuthError {
+  return err instanceof PublicAuthError;
+}
+
+function publicAuthError(message: string): PublicAuthError {
+  return new PublicAuthError(message);
+}
+
+function isUniqueCredentialError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const candidate = err as { code?: unknown; constraint?: unknown; message?: unknown };
+  if (candidate.code === '23505') return true;
+  if (typeof candidate.constraint === 'string' && candidate.constraint.startsWith('users_')) {
+    return true;
+  }
+  return typeof candidate.message === 'string' && candidate.message.includes('duplicate key value');
+}
+
+function normalizeOptionalCredential(value?: string): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function normalizeOptionalEmail(value?: string): string | undefined {
+  return normalizeOptionalCredential(value)?.toLowerCase();
+}
+
 export interface PublicUser {
   id: number;
   phone?: string | null;
@@ -26,9 +68,9 @@ export interface PublicUser {
   assistant_name?: string | null;
   status?: string;
   is_initialized?: boolean;
-  plan: string;
+  plan: Subscription['plan'] | 'free';
   subscription?: {
-    plan: string;
+    plan: Subscription['plan'];
     tokens_limit: number;
     tokens_used: number;
     tokens_remaining: number;
@@ -47,21 +89,8 @@ export interface JWTPayload {
 }
 
 function toPublicUser(
-  user: {
-    id: number;
-    phone?: string | null;
-    email?: string | null;
-    assistant_name?: string | null;
-    status?: string;
-    is_initialized?: boolean;
-  },
-  subscription: {
-    plan: string;
-    tokens_limit: number;
-    tokens_used: number;
-    reset_at: Date;
-    expires_at?: Date | null;
-  } | null | undefined,
+  user: Pick<User, 'id' | 'phone' | 'email' | 'assistant_name' | 'status' | 'is_initialized'>,
+  subscription: Subscription | null | undefined,
   options: { includeStatus?: boolean; includeSubscription?: boolean } = {},
 ): PublicUser {
   return {
@@ -93,20 +122,23 @@ export async function register(params: {
   email?: string;
   password: string;
 }): Promise<{ token: string; user: PublicUser }> {
+  const phone = normalizeOptionalCredential(params.phone);
+  const email = normalizeOptionalEmail(params.email);
+
   // 验证输入
-  if (!params.phone && !params.email) {
-    throw new Error('手机号或邮箱必须提供一个');
+  if (!phone && !email) {
+    throw publicAuthError(AUTH_ERROR_MESSAGES.credentialRequired);
   }
 
   if (params.password.length < 6) {
-    throw new Error('密码长度至少 6 位');
+    throw publicAuthError(AUTH_ERROR_MESSAGES.passwordTooShort);
   }
 
   // 检查用户是否已存在
-  const credential = params.phone || params.email!;
+  const credential = phone || email!;
   const existingUser = await findUserByCredential(credential);
   if (existingUser) {
-    throw new Error('用户已存在');
+    throw publicAuthError(AUTH_ERROR_MESSAGES.accountExists);
   }
 
   // 加密密码
@@ -114,9 +146,14 @@ export async function register(params: {
 
   // 创建用户
   const user = await createUser({
-    phone: params.phone,
-    email: params.email,
+    phone,
+    email,
     password_hash,
+  }).catch(err => {
+    if (isUniqueCredentialError(err)) {
+      throw publicAuthError(AUTH_ERROR_MESSAGES.accountExists);
+    }
+    throw err;
   });
 
   // 获取订阅信息
@@ -152,16 +189,21 @@ export async function login(params: {
   credential: string; // 手机号或邮箱
   password: string;
 }): Promise<{ token: string; user: PublicUser }> {
+  const credential = params.credential.trim();
+  const normalizedCredential = credential.includes('@')
+    ? credential.toLowerCase()
+    : credential;
+
   // 查找用户
-  const user = await findUserByCredential(params.credential);
+  const user = await findUserByCredential(normalizedCredential);
   if (!user) {
-    throw new Error('用户不存在');
+    throw publicAuthError(AUTH_ERROR_MESSAGES.invalidLogin);
   }
 
   // 验证密码
   const isValid = await bcrypt.compare(params.password, user.password_hash);
   if (!isValid) {
-    throw new Error('密码错误');
+    throw publicAuthError(AUTH_ERROR_MESSAGES.invalidLogin);
   }
 
   // 获取订阅信息

@@ -69,6 +69,82 @@ describe('JWT secret safety', () => {
 });
 
 describe('register runtime side effects', () => {
+  it('maps duplicate credential storage errors to a product-facing message', async () => {
+    vi.mocked(findUserByCredential).mockResolvedValue(null);
+    vi.mocked(createUser).mockRejectedValue(
+      Object.assign(new Error('duplicate key value violates unique constraint "users_phone_key"'), {
+        code: '23505',
+        constraint: 'users_phone_key',
+      }),
+    );
+
+    await expect(register({
+      email: 'new@example.test',
+      password: 'test123456',
+    })).rejects.toThrow('该手机号或邮箱已注册，请直接登录或换一个账号注册');
+  });
+
+  it('treats blank optional credentials as not provided before creating the user', async () => {
+    vi.mocked(findUserByCredential).mockResolvedValue(null);
+    vi.mocked(createUser).mockResolvedValue({
+      id: 43,
+      phone: undefined,
+      email: 'new@example.test',
+      password_hash: 'hash',
+      assistant_name: 'cc',
+      linux_user: 'mycc_u43',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    vi.mocked(getSubscription).mockResolvedValue({
+      id: 2,
+      user_id: 43,
+      plan: 'free',
+      tokens_limit: 300000,
+      tokens_used: 0,
+      reset_at: new Date(),
+      expires_at: undefined,
+      created_at: new Date(),
+    });
+
+    await register({
+      phone: '   ',
+      email: ' New@Example.TEST ',
+      password: 'test123456',
+    });
+
+    expect(findUserByCredential).toHaveBeenCalledWith('new@example.test');
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
+      phone: undefined,
+      email: 'new@example.test',
+    }));
+  });
+
+  it('normalizes email casing before checking duplicate accounts', async () => {
+    vi.mocked(findUserByCredential).mockResolvedValue({
+      id: 99,
+      phone: undefined,
+      email: 'new@example.test',
+      password_hash: 'hash',
+      assistant_name: 'cc',
+      linux_user: 'mycc_u99',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await expect(register({
+      email: ' New@Example.TEST ',
+      password: 'test123456',
+    })).rejects.toThrow('该手机号或邮箱已注册，请直接登录或换一个账号注册');
+
+    expect(findUserByCredential).toHaveBeenCalledWith('new@example.test');
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
   it('does not create legacy VPS users on the E2B product path', async () => {
     vi.mocked(findUserByCredential).mockResolvedValue(null);
     vi.mocked(createUser).mockResolvedValue({
@@ -186,5 +262,34 @@ describe('public auth responses', () => {
       tokens_remaining: 299000,
     });
     expect(updatedUser.assistant_name).toBe('小麦');
+  });
+});
+
+describe('login error privacy', () => {
+  it('uses the same public error for missing accounts and wrong passwords', async () => {
+    vi.mocked(findUserByCredential).mockResolvedValueOnce(null);
+
+    await expect(login({
+      credential: 'missing@example.test',
+      password: 'test123456',
+    })).rejects.toThrow('手机号/邮箱或密码错误');
+
+    vi.mocked(findUserByCredential).mockResolvedValueOnce({
+      id: 45,
+      phone: undefined,
+      email: 'login@example.test',
+      password_hash: await bcrypt.hash('correct-password', 10),
+      assistant_name: 'cc',
+      linux_user: 'mycc_u45',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await expect(login({
+      credential: 'login@example.test',
+      password: 'wrong-password',
+    })).rejects.toThrow('手机号/邮箱或密码错误');
   });
 });

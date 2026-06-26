@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  authorizeDeepReadinessRequest,
   buildHealthResponse,
   buildReadinessResponse,
   requireProductionStartupSecrets,
@@ -54,6 +55,47 @@ describe('startup health and readiness', () => {
       status: 'fail',
       message: 'E2B Agent preflight failed: E2B template',
     });
+  });
+
+  it('denies deep readiness details by default when no token is configured', () => {
+    for (const env of [{}, { NODE_ENV: 'production' }]) {
+      const decision = authorizeDeepReadinessRequest({
+        env,
+        headers: {},
+      });
+
+      expect(decision.authorized).toBe(false);
+      if (!decision.authorized) {
+        expect(decision.statusCode).toBe(401);
+        expect(JSON.stringify(decision.body)).not.toMatch(/database|ssh|skills|runtime|E2B/i);
+      }
+    }
+  });
+
+  it('authorizes deep readiness with bearer or header token when configured', () => {
+    const env = {
+      NODE_ENV: 'production',
+      MYCC_READYZ_DEEP_TOKEN: 'ops-secret',
+    };
+
+    expect(
+      authorizeDeepReadinessRequest({
+        env,
+        headers: { authorization: 'Bearer ops-secret' },
+      }).authorized,
+    ).toBe(true);
+    expect(
+      authorizeDeepReadinessRequest({
+        env,
+        headers: { 'x-mycc-readyz-deep-token': 'ops-secret' },
+      }).authorized,
+    ).toBe(true);
+    expect(
+      authorizeDeepReadinessRequest({
+        env,
+        headers: { authorization: 'Bearer wrong-secret' },
+      }).authorized,
+    ).toBe(false);
   });
 
   it('requires production JWT safety before startup', () => {
