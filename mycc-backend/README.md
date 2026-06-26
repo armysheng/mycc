@@ -10,6 +10,9 @@ MyCC 商业化后端服务
 # 方式一：使用自动化脚本（推荐）
 ./dev-setup.sh
 
+# Codex worktree：固定端口 3001/8081，并先检查/启动 Postgres、Redis
+../scripts/dev-codex.sh
+
 # 方式二：手动启动
 docker-compose up -d
 npm install
@@ -23,6 +26,9 @@ npm run dev
 ```bash
 # 健康检查
 curl http://localhost:8080/health
+
+# Codex worktree readiness
+curl http://localhost:8081/readyz
 
 # 注册用户
 curl -X POST http://localhost:8080/api/auth/register \
@@ -160,7 +166,7 @@ Authorization: Bearer <token>
 | PLAN_PRO_TOKENS | 专业版额度 | 12000000 |
 | PLAN_BASIC_PRICE_CNY | 基础版月费（人民币） | 39 |
 | PLAN_PRO_PRICE_CNY | 专业版月费（人民币） | 99 |
-| MYCC_AGENT_RUNTIME | Agent 运行时：`remote-claude`、`claude-agent-sdk`、`e2b-claude-cli` 或 `e2b-claude-agent-sdk` | remote-claude |
+| MYCC_AGENT_RUNTIME | Agent 运行时：`e2b-claude-agent-sdk`、`e2b-claude-cli`、`claude-agent-sdk` 或 legacy `remote-claude` | e2b-claude-agent-sdk |
 | MYCC_CCR_BASE_URL | Claude/Anthropic 请求的 CCR router base URL，优先级最高 | - |
 | MYCC_CCR_AUTH_TOKEN | CCR router auth token，和 `MYCC_CCR_API_KEY` 二选一 | - |
 | MYCC_CCR_API_KEY | CCR router API key，优先级低于 `MYCC_CCR_AUTH_TOKEN` | - |
@@ -170,13 +176,17 @@ Authorization: Bearer <token>
 | MYCC_AGENT_SDK_BASE_URL | Agent SDK 的 legacy Anthropic/CCR base URL | - |
 | MYCC_AGENT_SDK_AUTH_TOKEN | Agent SDK/CCR auth token | - |
 | MYCC_AGENT_SDK_API_KEY | Agent SDK Anthropic API key | ANTHROPIC_API_KEY |
-| MYCC_AGENT_SDK_MODEL | Agent SDK 默认模型 | claude-sonnet-4-6 |
-| MYCC_AGENT_SDK_ALLOWED_TOOLS | Agent SDK 自动允许工具，逗号分隔 | Read,Glob,Grep |
+| MYCC_AGENT_SDK_MODEL | Agent SDK 默认模型 | claude-opus-4-7 |
+| MYCC_AGENT_SDK_ALLOWED_TOOLS | Agent SDK 自动允许工具，逗号分隔；系统保护由 MyCC hooks 与隔离环境承担 | Read,Glob,Grep,Bash,Edit,Write |
 | MYCC_AGENT_SDK_PERMISSION_MODE | Agent SDK 权限模式 | bypassPermissions |
 | MYCC_AGENT_SDK_PARTIAL_MESSAGES | 是否输出 SDK partial stream event | false |
-| MYCC_AGENT_SDK_CONFIG_ROOT | Agent SDK 每用户 HOME/Claude 配置根目录；为空时使用 `/home/{linux_user}/.mycc` | - |
-| MYCC_WORKSPACE_PROVIDER | 内置 Workspace API provider：`ssh` 走 VPS，`e2b` 复用当前用户 running E2B sandbox session | ssh |
-| MYCC_IDE_PROVIDER | 工作区 provider：`disabled` 或 `e2b` | disabled |
+| MYCC_AGENT_SDK_CONFIG_ROOT | 自管容器可选 runtime 根目录；为空时使用 `/home/{linux_user}` 和 `/home/{linux_user}/.claude` | - |
+| MYCC_AGENT_RUN_TRACE | 是否记录 agent run trace；设为 `false` 可关闭 trace wrapper | true |
+| MYCC_AGENT_RUN_STORE | Agent run trace store；P2+ 环境执行迁移后应使用 `postgres` | postgres |
+| MYCC_HARNESS_OTEL | Harness OpenTelemetry span 开关；设为 `false` 可关闭 agent/eval/sandbox/verifier spans | true |
+| MYCC_OTEL_ENABLED | 全局 OTEL 兼容开关；设为 `false` 也会关闭 harness spans | true |
+| MYCC_WORKSPACE_PROVIDER | 内置 Workspace API provider：`e2b` 复用当前用户 running E2B sandbox session，`ssh` 为 legacy VPS 路径 | e2b |
+| MYCC_IDE_PROVIDER | 工作区 provider：`e2b` 或 `disabled` | e2b |
 | MYCC_IDE_PORT | code-server 在沙箱内监听的端口 | 18080 |
 | MYCC_IDE_SESSION_TTL_SECONDS | IDE sandbox/session 默认 TTL | 3600 |
 | MYCC_E2B_API_KEY | E2B API key，优先使用；也兼容 `E2B_API_KEY`，格式前缀必须为 `e2b_<token>` | - |
@@ -189,28 +199,46 @@ Authorization: Bearer <token>
 
 后端聊天和自动化都通过 `src/agent-runtime` 工厂创建运行时，方便逐步接入不同底层：
 
-- `remote-claude`：默认稳定路径，保持现有行为，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
-- `claude-agent-sdk`：实验路径，使用官方 `@anthropic-ai/claude-agent-sdk` 在当前服务环境中启动 Claude Code agent。默认 `settingSources: []`、`permissionMode: bypassPermissions`、`allowedTools: Read,Glob,Grep`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下，避免多租户场景下误读本机 Claude 配置或默认放开高风险工具。
+- `e2b-claude-agent-sdk`：默认产品路径，在同一个 E2B/code-server sandbox 内执行 `/opt/mycc-agent-runtime/bridge.mjs`，由 bridge 调用 `@anthropic-ai/claude-agent-sdk`，并复用 Remote IDE workspace。
+- `remote-claude`：legacy/rollback 路径，通过 SSH 在 VPS 用户工作区执行 `claude --print --output-format stream-json`。
+- `claude-agent-sdk`：使用官方 `@anthropic-ai/claude-agent-sdk` 在隔离用户环境中启动 Claude Code agent。默认 `settingSources: user,project`、`permissionMode: bypassPermissions`、`allowedTools: Read,Glob,Grep,Bash,Edit,Write`，并强制 cwd 落在 `/home/{linux_user}/workspace` 下。系统保护由 MyCC hooks、cwd 约束和沙箱策略承担，避免每次普通操作都打断用户确认。
 - `e2b-claude-cli`：在 E2B/code-server sandbox 内执行 `claude --print --output-format stream-json`，优先复用当前用户未过期 Remote IDE session；如果 chat 先发生，会自动创建 sandbox/session。
-- `e2b-claude-agent-sdk`：在同一个 E2B/code-server sandbox 内执行 `/opt/mycc-agent-runtime/bridge.mjs`，由 bridge 调用 `@anthropic-ai/claude-agent-sdk`，同样复用 Remote IDE workspace。
+- `e2b-claude-agent-sdk` 依赖 `MYCC_IDE_PROVIDER=e2b` 和 `MYCC_WORKSPACE_PROVIDER=e2b`，默认 E2B sandbox 用户为 `mycc`，workspace 为 `/home/mycc/workspace`。
 
-`claude-agent-sdk` runtime 会覆盖传给 SDK 子进程的 `HOME`、`CLAUDE_CONFIG_DIR`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`。默认每个用户写到 `/home/{linux_user}/.mycc`；如果运行在 E2B/容器沙箱或希望挂载专用 runtime 卷，可设置 `MYCC_AGENT_SDK_CONFIG_ROOT=/srv/mycc/runtime`，最终目录为 `/srv/mycc/runtime/{linux_user}/{home,.claude}`。
+`claude-agent-sdk` runtime 会覆盖传给 SDK 子进程的 `HOME`、`CLAUDE_CONFIG_DIR`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`。默认每个隔离用户使用 `/home/{linux_user}`，Claude 用户级配置、记忆模板和 skills 写到 `/home/{linux_user}/.claude`；如果运行在自管容器且希望挂载专用 runtime 卷，可设置 `MYCC_AGENT_SDK_CONFIG_ROOT=/srv/mycc/runtime`，最终目录为 `/srv/mycc/runtime/{linux_user}/{home,.claude}`。
 
 如果要让 Claude/Agent SDK 通过 ccr router 转换/路由模型，可先启动 ccr，再优先配置 `MYCC_CCR_*`；mycc 会把它映射为 Anthropic runtime 需要的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。如果 ccr router 再转发到 OpenAI-compatible provider，把 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 配在 ccr router 内部；不要把全局 `OPENAI_*` 直接复用于 mycc 的 Claude runtime，避免误用其他 OpenAI-compatible 服务凭据。
 
 ```bash
-MYCC_AGENT_RUNTIME=claude-agent-sdk
+MYCC_AGENT_RUNTIME=e2b-claude-agent-sdk
+MYCC_IDE_PROVIDER=e2b
+MYCC_WORKSPACE_PROVIDER=e2b
 MYCC_CCR_BASE_URL=http://127.0.0.1:3456
 MYCC_CCR_AUTH_TOKEN=<ccr-api-key-or-token>
-MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
+MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep,Bash,Edit,Write
 MYCC_AGENT_SDK_PERMISSION_MODE=bypassPermissions
 ```
 
-注意：`claude-agent-sdk` runtime 当前是 opt-in 实验能力，适合沙箱/单用户隔离环境验证；生产多用户默认仍使用 `remote-claude`。
+注意：`remote-claude` 仅作为 legacy/rollback 路径保留；生产多用户主路径使用 `e2b-claude-agent-sdk`，由 E2B sandbox、MyCC hooks、cwd 约束和后端代理共同提供隔离与系统保护。
+
+### Harness / Agent Run Trace
+
+后端默认会把 runtime 包装为 traced runtime。trace 写入是 best-effort，写入失败不会中断用户聊天。默认内存 store 适合本地调试；执行 `npm run db:migrate` 后，可启用 Postgres 持久化：
+
+```bash
+MYCC_AGENT_RUN_TRACE=true
+MYCC_AGENT_RUN_STORE=postgres
+```
+
+Harness OpenTelemetry 由 `src/harness/telemetry.ts` 统一接入，覆盖 agent run、观察到的工具事件、sandbox readiness、agent eval 和 harness verifier。未配置 OTEL provider/exporter 时，OpenTelemetry API 会 no-op；如需临时关闭：
+
+```bash
+MYCC_HARNESS_OTEL=false
+```
 
 ### MyCC Assistant Sandbox / code-server / GNU desktop
 
-后端已接入 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions`、`/api/ide/sessions/:id/open`、`/api/ide/sessions/:id/status`、renew/delete 和 `/api/ide/sessions/:id/proxy/*`。在 assistant sandbox 模板上，还支持 `POST /api/ide/sessions/:id/desktop`、`/api/ide/sessions/:id/desktop/open` 和 `/api/ide/sessions/:id/desktop/proxy/*`。默认 `MYCC_IDE_PROVIDER=disabled`，不会创建 sandbox；设置为 `e2b` 后会创建或复用用户未过期的 E2B sandbox，并按需启动 code-server 或 GNU desktop service。响应会隐藏 E2B host 与 traffic token，浏览器只拿 MyCC open path，后端 proxy 再注入 `e2b-traffic-access-token`。
+后端已接入 `/api/ide/config`、`/api/ide/sessions/plan`、`POST /api/ide/sessions`、`/api/ide/sessions/:id/open`、`/api/ide/sessions/:id/status`、renew/delete 和 `/api/ide/sessions/:id/proxy/*`。在 assistant sandbox 模板上，还支持 `POST /api/ide/sessions/:id/desktop`、`/api/ide/sessions/:id/desktop/open` 和 `/api/ide/sessions/:id/desktop/proxy/*`。默认 `MYCC_IDE_PROVIDER=e2b`；创建或复用 session 时会按 user/template/linux user/workspace/port 匹配，并等待 code-server `/healthz` ready 后才返回。响应会隐藏 E2B host 与 traffic token，浏览器只拿 MyCC open path，后端 proxy 再注入 `e2b-traffic-access-token`。
 
 ```bash
 MYCC_IDE_PROVIDER=e2b
@@ -228,6 +256,7 @@ MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 本地 smoke：
 
 ```bash
+npm run harness:verify -- --target=landing --no-write
 npm run verify:e2b-release
 npm run doctor:e2b-agent
 npm run smoke:e2b-ide
@@ -236,7 +265,13 @@ npm run smoke:e2b-agent-workspace
 npm run smoke:e2b-agent-sdk-workspace
 ```
 
-生产启用/回滚门禁请按 `docs/e2b-release-readiness.md` 执行；`verify:e2b-release` 会在不读取外部密钥的前提下确认迁移、template 发布脚本、runtime contract、bridge contract 和 smoke 安全断言没有漂移。
+正式 landing 前，对目标环境运行：
+
+```bash
+BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
+```
+
+生产启用/回滚门禁请按 `docs/e2b-release-readiness.md` 和 `docs/landing-readiness.md` 执行；`verify:e2b-release` 会在不读取外部密钥的前提下确认迁移、template 发布脚本、runtime contract、bridge contract 和 smoke 安全断言没有漂移。
 
 先跑 `doctor:e2b-agent` 可以在不打印密钥的前提下检查 E2B key、template、Agent runtime、IDE/Workspace provider、Claude/CCR 凭据和全局 `OPENAI_*` 误注入风险。有有效 E2B key 时，它会额外向 E2B 查询 `MYCC_E2B_TEMPLATE` 是否存在。
 
@@ -246,7 +281,7 @@ npm run smoke:e2b-agent-sdk-workspace
 
 当前 E2B workspace 是 `/home/mycc/workspace`。代码编辑器、GNU desktop 与 `e2b-claude-cli` / `e2b-claude-agent-sdk` 会共享这份 sandbox 文件系统；设置 `MYCC_WORKSPACE_PROVIDER=e2b` 后，内置 Workspace API 的文件树、读取、保存和管理员 exec 也会复用同一个 running E2B sandbox session。没有 running session 时，Workspace API 会返回 `409`，提示先打开代码编辑器，避免一次普通文件树请求隐式创建昂贵 sandbox。
 
-E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSession` 提前创建或复用 E2B IDE session，从 `/home/mycc/workspace/0-System/about-me` 读取；全新 sandbox 若还没有任何可用 about-me 内容，会跳过注入且不缓存 missing context，后续可通过首次同步/初始化补齐。
+E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSession` 提前创建或复用 E2B IDE session，并从 sandbox 用户目录的 `/home/mycc/.claude/about-me` 读取用户级记忆与身份；workspace 只保存当前项目文件和产出。全新 sandbox 若还没有任何可用 about-me 内容，会跳过注入且不缓存 missing context，后续可通过首次同步/初始化补齐。
 
 ## 开发说明
 
@@ -267,6 +302,7 @@ E2B agent runtime 的 chat 项目上下文会通过同一个 `ensureE2bIdeSessio
 ```bash
 # 开发
 npm run dev          # 启动开发服务器（热重载）
+npm run dev:codex    # 启动依赖后使用 8081 端口运行
 npm run build        # 编译 TypeScript
 npm start            # 启动生产服务器
 

@@ -27,6 +27,7 @@ jobs:
       STAGING_PROJECT_DIR: ${{ secrets.STAGING_PROJECT_DIR }}
       STAGING_FRONTEND_DIST_DIR: ${{ secrets.STAGING_FRONTEND_DIST_DIR }}
       STAGING_BACKEND_HEALTH_URL: ${{ secrets.STAGING_BACKEND_HEALTH_URL }}
+      STAGING_BACKEND_READY_URL: ${{ secrets.STAGING_BACKEND_READY_URL }}
       STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
       STAGING_BACKEND_RESTART_CMD: ${{ secrets.STAGING_BACKEND_RESTART_CMD }}
     steps:
@@ -63,9 +64,14 @@ jobs:
           SSH_PORT="${STAGING_PORT:-22}"
           PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
           FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
+          BACKEND_RESTART_CMD_B64="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD:-}" | base64 -w 0)"
           ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
-            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' bash -s" <<'EOF'
+            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
           set -euo pipefail
+          STAGING_BACKEND_RESTART_CMD=""
+          if [ -n "${STAGING_BACKEND_RESTART_CMD_B64:-}" ]; then
+            STAGING_BACKEND_RESTART_CMD="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD_B64}" | base64 -d)"
+          fi
 
           cd "${PROJECT_DIR}"
 
@@ -97,6 +103,7 @@ jobs:
           fi
 
           npm -C mycc-backend ci
+          npm -C mycc-backend run db:migrate
           npm -C mycc-backend run build
 
           if [ -n "${STAGING_BACKEND_RESTART_CMD:-}" ]; then
@@ -149,6 +156,40 @@ jobs:
               systemctl --user --no-pager --full status "mycc*" 2>/dev/null || true
               echo "--- pm2 list ---" >&2
               pm2 list 2>/dev/null || true
+              echo "--- recent user logs ---" >&2
+              journalctl --user -n 80 --no-pager 2>/dev/null || true
+            ' || true
+            exit 1
+          fi
+
+      - name: Verify backend readiness endpoint (via SSH)
+        run: |
+          set -euo pipefail
+          SSH_PORT="${STAGING_PORT:-22}"
+          READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz}"
+          MAX_RETRIES="${STAGING_BACKEND_READY_RETRIES:-20}"
+          RETRY_INTERVAL="${STAGING_BACKEND_READY_RETRY_INTERVAL:-3}"
+
+          passed=false
+          for attempt in $(seq 1 "${MAX_RETRIES}"); do
+            if ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" \
+              "curl -fsS --connect-timeout 2 --max-time 5 '${READY_URL}'" >/dev/null; then
+              echo "Backend readiness check passed (${attempt}/${MAX_RETRIES})"
+              passed=true
+              break
+            fi
+            echo "Backend not ready (${attempt}/${MAX_RETRIES}), retry in ${RETRY_INTERVAL}s..."
+            sleep "${RETRY_INTERVAL}"
+          done
+
+          if [ "${passed}" != "true" ]; then
+            echo "Backend readiness check failed after ${MAX_RETRIES} attempts: ${READY_URL}" >&2
+            ssh -p "${SSH_PORT}" "${STAGING_USER}@${STAGING_HOST}" '
+              set +e
+              echo "--- /health ---" >&2
+              curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/health 2>&1 || true
+              echo "--- /readyz ---" >&2
+              curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/readyz 2>&1 || true
               echo "--- recent user logs ---" >&2
               journalctl --user -n 80 --no-pager 2>/dev/null || true
             ' || true

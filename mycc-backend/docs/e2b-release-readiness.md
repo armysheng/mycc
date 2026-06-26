@@ -15,7 +15,7 @@ Keep this path opt-in until the release owner has run every gate below.
 - E2B CLI auth for template builds: `E2B_ACCESS_TOKEN` or `npx --yes @e2b/cli auth login`.
 - Claude/CCR credentials: prefer `MYCC_CCR_BASE_URL` plus `MYCC_CCR_AUTH_TOKEN`.
 - E2B template name: `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` unless releasing a versioned template.
-- Database migrations applied: `db/migrations/003-add-ide-sessions.sql` and `db/migrations/004-add-ide-desktop-service.sql`.
+- Database migrations applied through `npm run db:migrate`, including `db/migrations/003-add-ide-sessions.sql`, `db/migrations/004-add-ide-desktop-service.sql`, `db/migrations/008-add-ide-session-identity.sql`, and `db/migrations/007-add-agent-run-trace.sql`.
 
 Do not configure global `OPENAI_BASE_URL` or `OPENAI_API_KEY` in the MyCC backend process for this path. Put OpenAI-compatible upstream credentials inside the CCR router process instead.
 
@@ -39,18 +39,19 @@ npm run smoke:e2b-template
 Before enabling E2B in a long-lived environment:
 
 ```bash
-psql "$DATABASE_URL" -f db/migrations/003-add-ide-sessions.sql
-psql "$DATABASE_URL" -f db/migrations/004-add-ide-desktop-service.sql
-psql "$DATABASE_URL" -c "select to_regclass('public.ide_sessions') as ide_sessions;"
+npm run db:migrate
+psql "$DATABASE_URL" -c "select to_regclass('public.ide_sessions') as ide_sessions, to_regclass('public.agent_runs') as agent_runs;"
 ```
 
-Expected result: `ide_sessions` resolves to `ide_sessions`.
+Expected result: `ide_sessions` and `agent_runs` resolve to table names.
 
 ## Local Verification Gate
 
 Run these from `mycc-backend` before pushing a release branch:
 
 ```bash
+npm run landing:classify -- --fail-on-unclassified
+npm run harness:verify -- --target=landing --no-write
 npm run verify:e2b-release
 npm test -- --run
 npm run build
@@ -64,6 +65,7 @@ The first command is a static release-readiness guard. The doctor command may qu
 Start the backend with the target `.env`, then run:
 
 ```bash
+BASE_URL=http://localhost:18081 npm run harness:verify -- --target=landing-live --no-write
 BASE_URL=http://localhost:18081 npm run smoke:e2b-ide
 BASE_URL=http://localhost:18081 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:18081 npm run smoke:e2b-agent-sdk-workspace
@@ -87,11 +89,12 @@ MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev
 MYCC_E2B_DESKTOP_ENABLED=true
 MYCC_E2B_DESKTOP_PORT=16080
 MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
-MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep
+MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep,Bash,Edit,Write
 MYCC_AGENT_SDK_PERMISSION_MODE=bypassPermissions
+MYCC_AGENT_RUN_STORE=postgres
 ```
 
-Keep write-capable smoke defaults such as `Write,Edit,MultiEdit,Bash` out of product defaults unless a separate product review explicitly approves them.
+The product default allows normal workspace work with `Read,Glob,Grep,Bash,Edit,Write` and `bypassPermissions`. System protection belongs in MyCC hooks, cwd validation, sandbox policy, and release smoke checks, not repeated user confirmations.
 
 ## Rollback
 

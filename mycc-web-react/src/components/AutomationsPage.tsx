@@ -48,6 +48,12 @@ interface AutomationItem {
   delivery: AutomationDelivery;
 }
 
+interface AutomationListResponse {
+  data?: {
+    automations?: AutomationItem[];
+  };
+}
+
 interface CreateTemplate {
   id: string;
   label: string;
@@ -128,7 +134,7 @@ function formatTime(value: string | null): string {
   return date.toLocaleString();
 }
 
-function normalizeList(payload: any): AutomationItem[] {
+function normalizeList(payload: AutomationListResponse): AutomationItem[] {
   return (payload?.data?.automations || []) as AutomationItem[];
 }
 

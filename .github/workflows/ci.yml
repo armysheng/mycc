@@ -45,8 +45,14 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test -- --run
 
       - name: Upload dist artifact
         if: always()
@@ -91,5 +97,32 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test
+        run: npm test -- --run
+
+      - name: Harness verification
+        run: npm run harness:verify -- --target=agent-eval-static,e2b-release --no-write
+
       - name: Validate skill provenance metadata
         run: npx tsx scripts/validate-skill-provenance.ts
+
+  sandbox-ci:
+    name: sandbox-ci
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mycc-sandbox
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test sandbox contracts
+        run: npm test
