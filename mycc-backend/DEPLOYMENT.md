@@ -6,6 +6,7 @@
 - **系统**: Ubuntu 22.04 LTS
 - **地区**: 香港/新加坡（需要访问 Anthropic API）
 - **网络**: 公网 IP，开放 8080 端口
+- **Node**: 生产发布和 systemd 服务必须使用同一个 Node 工具链。当前生产固定为 `/home/armysheng/.local/node-v20.19.5-linux-x64/bin`；不要依赖 SSH 登录环境里的 `node/npm`。
 
 ## 部署步骤
 
@@ -40,12 +41,17 @@ cd mycc/mycc-backend
 # 赋予执行权限
 chmod +x scripts/*.sh
 
+# 生产 Node 必须已安装在固定目录；如部署到其他目录，先设置 MYCC_NODE_BIN_DIR
+test -x /home/armysheng/.local/node-v20.19.5-linux-x64/bin/node
+/home/armysheng/.local/node-v20.19.5-linux-x64/bin/node -v
+
 # 运行生产环境部署脚本（需要 root 权限）
 ./scripts/prod-setup.sh
 ```
 
 脚本会自动完成：
-- 安装系统依赖（PostgreSQL、Redis、Node.js）
+- 安装系统依赖（PostgreSQL、Redis、sudo）
+- 校验固定 Node v20.19.5 工具链
 - 创建服务账号（mycc_service）
 - 配置 sudo 权限
 - 配置资源限制
@@ -85,11 +91,19 @@ PORT=8080
 ### 5. 构建和启动服务
 
 ```bash
+# 先从 systemd unit 读取服务 Node，并把本 shell 的 npm 固定到同一目录
+NODE_BIN_DIR="$(./scripts/guard-production-node.sh --print-bin-dir)"
+export PATH="$NODE_BIN_DIR:$PATH"
+NPM="$NODE_BIN_DIR/npm"
+
+# 打印并校验 node -v / npm -v / which node / which npm；不一致会停止发布
+./scripts/guard-production-node.sh
+
 # 安装依赖
-npm install
+"$NPM" ci
 
 # 构建 TypeScript
-npm run build
+"$NPM" run build
 
 # 退出服务账号
 exit
@@ -240,13 +254,19 @@ git fetch origin main
 git checkout main
 git pull --ff-only origin main
 
+# 读取 systemd Node，固定 PATH，并在任何 npm ci/build 前强制校验
+NODE_BIN_DIR="$(./mycc-backend/scripts/guard-production-node.sh --print-bin-dir)"
+export PATH="$NODE_BIN_DIR:$PATH"
+NPM="$NODE_BIN_DIR/npm"
+./mycc-backend/scripts/guard-production-node.sh
+
 # 安装依赖
-npm -C mycc-web-react ci
-npm -C mycc-backend ci
+"$NPM" -C mycc-web-react ci
+"$NPM" -C mycc-backend ci
 
 # 重新构建
-npm -C mycc-web-react run build
-npm -C mycc-backend run build
+"$NPM" -C mycc-web-react run build
+"$NPM" -C mycc-backend run build
 
 # 退出并重启服务
 exit

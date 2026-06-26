@@ -11,10 +11,11 @@ WorkingDirectory=/home/mycc_service/mycc/mycc-backend
 
 # 环境变量
 Environment=NODE_ENV=production
+Environment=PATH=/home/armysheng/.local/node-v20.19.5-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=/home/mycc_service/mycc/mycc-backend/.env
 
 # 启动命令
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/home/armysheng/.local/node-v20.19.5-linux-x64/bin/node dist/index.js
 
 # 重启策略
 Restart=always
