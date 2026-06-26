@@ -473,6 +473,67 @@ describe('E2bClaudeAgentSdkRuntime', () => {
     expect(JSON.stringify(events)).not.toContain('/v1/messages');
   });
 
+  it('returns resource-busy copy for Agent SDK rate limit failures without leaking runtime internals', async () => {
+    const runCommand = vi.fn().mockImplementation(async (_session, command) => {
+      if (String(command).includes('bridge.mjs')) {
+        return {
+          exitCode: 1,
+          stdout: '',
+          stderr: '429 rate_limit_error from claude-agent-sdk bridge adapter in sandbox for model claude-opus-4-7',
+        };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace/demo',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: '服务资源暂时繁忙，当前请求没有及时返回。请稍后重试；如果多次出现，请联系管理员。' },
+    ]);
+    expect(JSON.stringify(events)).not.toMatch(/429|bridge|adapter|sdk|model|sandbox|claude-agent-sdk/i);
+  });
+
+  it('returns resource-busy copy when the Agent SDK bridge has no valid output before the idle timeout', async () => {
+    vi.stubEnv('MYCC_E2B_AGENT_SDK_RATE_LIMIT_IDLE_TIMEOUT_MS', '5');
+    const runCommand = vi.fn().mockImplementation((_session, command, options) => {
+      if (String(command).includes('bridge.mjs')) {
+        return new Promise((_, reject) => {
+          options.signal.addEventListener('abort', () => {
+            reject(new Error('bridge adapter idle timeout in sandbox'));
+          }, { once: true });
+        });
+      }
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+    });
+    const runtime = new E2bClaudeAgentSdkRuntime({
+      sessionStore: createStore(runningSession),
+      e2bProvider: { runCommandInSession: runCommand },
+    });
+
+    const events = await collect(runtime.chat({
+      userId: 42,
+      message: 'hello',
+      cwd: '/home/tester/workspace/demo',
+      linuxUser: 'tester',
+    }));
+
+    expect(events).toEqual([
+      { type: 'error', error: '服务资源暂时繁忙，当前请求没有及时返回。请稍后重试；如果多次出现，请联系管理员。' },
+    ]);
+    const bridgeCall = runCommand.mock.calls.find(([, command]) => String(command).includes('bridge.mjs'));
+    expect(bridgeCall?.[2].signal.aborted).toBe(true);
+    expect(JSON.stringify(events)).not.toMatch(/bridge|adapter|sdk|model|sandbox|claude-agent-sdk/i);
+  });
+
   it('rejects unsupported Agent SDK permission modes before running bridge', async () => {
     vi.stubEnv('MYCC_E2B_AGENT_SDK_FORCE_BYPASS_PERMISSIONS', 'false');
     vi.stubEnv('MYCC_AGENT_SDK_PERMISSION_MODE', 'writeEverything');

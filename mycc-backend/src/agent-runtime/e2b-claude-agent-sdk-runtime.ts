@@ -22,8 +22,11 @@ export type E2bClaudeAgentSdkRuntimeOptions = {
 
 const DEFAULT_SANDBOX_LINUX_USER = 'mycc';
 const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_RATE_LIMIT_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const DEFAULT_ALLOWED_TOOLS = 'Read,Glob,Grep,Bash,Edit,Write';
 const BRIDGE_PAYLOAD_CHUNK_SIZE = 16 * 1024;
+const PUBLIC_AGENT_SDK_GENERIC_ERROR = '这次操作没有跑通。可以直接重试，或让我换个方式继续。';
+const PUBLIC_AGENT_SDK_RESOURCE_BUSY_ERROR = '服务资源暂时繁忙，当前请求没有及时返回。请稍后重试；如果多次出现，请联系管理员。';
 const SUPPORTED_PERMISSION_MODES = new Set([
   'default',
   'acceptEdits',
@@ -108,12 +111,50 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       ? []
       : null;
     let resumeMadeProgress = false;
+    let idleTimedOut = false;
     let finished = false;
     let resolveNext: (() => void) | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const idleTimeoutMs = resolveRateLimitIdleTimeoutMs();
+    const commandAbortController = new AbortController();
+    const abortCommandFromCaller = () => {
+      commandAbortController.abort();
+    };
+    if (params.signal?.aborted) {
+      commandAbortController.abort();
+    } else {
+      params.signal?.addEventListener('abort', abortCommandFromCaller, { once: true });
+    }
 
     const waitForEvent = () => new Promise<void>((resolve) => {
       resolveNext = resolve;
     });
+    const clearIdleTimer = () => {
+      if (!idleTimer) return;
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    };
+    const failForIdleTimeout = () => {
+      if (finished || idleTimedOut || params.signal?.aborted) return;
+      clearIdleTimer();
+      params.signal?.removeEventListener('abort', abortCommandFromCaller);
+      idleTimedOut = true;
+      commandAbortController.abort();
+      pushEvent({
+        type: 'error',
+        error: PUBLIC_AGENT_SDK_RESOURCE_BUSY_ERROR,
+      });
+      finished = true;
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    const resetIdleTimer = () => {
+      clearIdleTimer();
+      if (finished || idleTimedOut || params.signal?.aborted) return;
+      idleTimer = setTimeout(failForIdleTimeout, idleTimeoutMs);
+    };
     const pushEvent = (event: AgentRuntimeEvent) => {
       if (pendingResumeEvents && !resumeMadeProgress) {
         if (isResumeProgressEvent(event)) {
@@ -141,10 +182,14 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       buffer = lines.pop() || '';
       for (const line of lines) {
         const event = parseAgentRunnerEventLine(line);
-        if (event) pushEvent(event);
+        if (event) {
+          resetIdleTimer();
+          pushEvent(event);
+        }
       }
     };
 
+    resetIdleTimer();
     const runPromise = this.e2bProvider.runCommandInSession(session, buildAgentSdkBridgeCommand(), {
       cwd,
       envs,
@@ -152,10 +197,10 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
       onStderr: (data) => {
         stderrBuffer += data;
       },
-      signal: params.signal,
+      signal: commandAbortController.signal,
       timeoutMs: resolveCommandTimeoutMs(),
     } satisfies E2bCommandRunOptions).then(async (result) => {
-      if (params.signal?.aborted) return;
+      if (params.signal?.aborted || idleTimedOut) return;
       if (buffer.trim()) {
         const event = parseAgentRunnerEventLine(buffer);
         if (event) pushEvent(event);
@@ -169,7 +214,7 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         });
       }
     }).catch(async (error) => {
-      if (params.signal?.aborted) return;
+      if (params.signal?.aborted || idleTimedOut) return;
       await this.markSessionStoppedIfStale(session, error);
       const message = error instanceof Error ? error.message : String(error);
       pushEvent({
@@ -177,6 +222,8 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         error: toPublicAgentSdkError(message),
       });
     }).finally(() => {
+      clearIdleTimer();
+      params.signal?.removeEventListener('abort', abortCommandFromCaller);
       finished = true;
       if (resolveNext) {
         resolveNext();
@@ -194,7 +241,9 @@ export class E2bClaudeAgentSdkRuntime implements AgentRuntime {
         await waitForEvent();
       }
     }
-    await runPromise;
+    if (!idleTimedOut) {
+      await runPromise;
+    }
 
     if (
       pendingResumeEvents &&
@@ -307,10 +356,15 @@ function isResumeProgressEvent(event: AgentRuntimeEvent): boolean {
 
 function isLikelyStaleResumeFailure(events: AgentRuntimeEvent[]): boolean {
   if (events.some(isResumeProgressEvent)) return false;
+  if (events.some(isPublicResourceBusyError)) return false;
   return events.some((event) => {
     if (event.type === 'error') return true;
     return event.type === 'result' && event.is_error === true;
   });
+}
+
+function isPublicResourceBusyError(event: AgentRuntimeEvent): boolean {
+  return event.type === 'error' && event.error === PUBLIC_AGENT_SDK_RESOURCE_BUSY_ERROR;
 }
 
 function buildAgentSdkBridgeCommand(): string {
@@ -384,15 +438,32 @@ function resolveCommandTimeoutMs(): number {
   return parsed;
 }
 
+function resolveRateLimitIdleTimeoutMs(): number {
+  const raw = process.env.MYCC_E2B_AGENT_SDK_RATE_LIMIT_IDLE_TIMEOUT_MS;
+  if (!raw) return DEFAULT_RATE_LIMIT_IDLE_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid E2B Agent SDK rate-limit idle timeout: ${raw}`);
+  }
+  return parsed;
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function toPublicAgentSdkError(error: string): string {
+  if (isRateLimitOrIdleAgentSdkError(error)) {
+    return PUBLIC_AGENT_SDK_RESOURCE_BUSY_ERROR;
+  }
   if (isLowLevelAgentSdkError(error)) {
-    return '这次操作没有跑通。可以直接重试，或让我换个方式继续。';
+    return PUBLIC_AGENT_SDK_GENERIC_ERROR;
   }
   return error;
+}
+
+function isRateLimitOrIdleAgentSdkError(error: string): boolean {
+  return /\b429\b|rate[_ -]?limit|too many requests|idle timeout|timed out waiting|no valid output|resource temporarily unavailable/i.test(error);
 }
 
 function isLowLevelAgentSdkError(error: string): boolean {
