@@ -56,17 +56,23 @@ if [ ! -f /opt/mycc-agent-runtime/bridge.mjs ]; then
   missing="$missing file:/opt/mycc-agent-runtime/bridge.mjs"
 fi
 
-for skill in browser-use browser pdf docx xlsx pptx data-analysis deep-research skill-installer skill-creator; do
-  if [ ! -f "/home/mycc/.claude/skills/$skill/SKILL.md" ]; then
-    missing="$missing skill:claude:$skill"
+preload_manifest="/opt/mycc/skills/.mycc-preload-skills.json"
+if [ ! -f "$preload_manifest" ]; then
+  missing="$missing file:$preload_manifest"
+else
+  preload_skills="$(jq -r '.skills[].id // empty' "$preload_manifest" 2>/dev/null || true)"
+  if [ -z "$preload_skills" ]; then
+    missing="$missing skills:preload-manifest-empty"
   fi
-  if [ ! -f "/home/mycc/.mycc/skills/$skill/SKILL.md" ]; then
-    missing="$missing skill:mycc:$skill"
-  fi
-  if [ ! -f "/home/mycc/.mycc/claude/skills/$skill/SKILL.md" ]; then
-    missing="$missing skill:claude-config:$skill"
-  fi
-done
+  while IFS= read -r skill; do
+    [ -n "$skill" ] || continue
+    if [ ! -f "/home/mycc/.claude/skills/$skill/SKILL.md" ]; then
+      missing="$missing skill:claude:$skill"
+    fi
+  done <<EOF
+$preload_skills
+EOF
+fi
 
 if [ "$ready_only" -eq 1 ]; then
   finish_contract

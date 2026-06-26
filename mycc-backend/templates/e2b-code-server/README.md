@@ -78,8 +78,8 @@ The backend passes prompt/session/workspace details through environment variable
 - `MYCC_AGENT_WORKSPACE_CWD=/home/mycc/workspace`
 - `MYCC_AGENT_SESSION_ID` when resuming
 - `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, or `ANTHROPIC_API_KEY`
-- `CLAUDE_CONFIG_DIR=/home/mycc/.mycc/claude`
-- `HOME=/home/mycc/.mycc/home`
+- `CLAUDE_CONFIG_DIR=/home/mycc/.claude`
+- `HOME=/home/mycc`
 
 For the target sandbox-local CCR path, MyCC should inject provider credentials into the `ccr-router` service, not into every user-facing process. Claude CLI and Agent SDK bridge should receive only the local CCR endpoint and router auth key, for example:
 
@@ -88,7 +88,7 @@ For the target sandbox-local CCR path, MyCC should inject provider credentials i
 
 The upstream provider base URL/token should be present only in the CCR process env or a restricted CCR config/secret file.
 
-The product default allowed tools are read-only. The SDK workspace smoke script sets write-capable smoke defaults locally (`Read,Glob,Grep,Write,Edit,MultiEdit,Bash` with `bypassPermissions`) unless you override `MYCC_AGENT_SDK_ALLOWED_TOOLS` / `MYCC_AGENT_SDK_PERMISSION_MODE`.
+The product default allowed tools cover normal workspace work (`Read,Glob,Grep,Bash,Edit,Write`) with `bypassPermissions`; system protection comes from MyCC hooks and sandbox policy. Override `MYCC_AGENT_SDK_ALLOWED_TOOLS` / `MYCC_AGENT_SDK_PERMISSION_MODE` only for narrow experiments.
 
 ## Smoke Checks
 

@@ -88,7 +88,7 @@ E2B 运行时再把这个用户侧 cwd 映射到沙箱内同路径段：
 
 code-server、文件空间和成果 registry 的根目录仍然是 `/home/mycc/workspace`，不会因为任务 cwd 是子目录就重复创建 sandbox 或把 IDE 根切到子目录。元数据统一放在 `/home/mycc/workspace/.mycc/`。后端必须拒绝 `/home/<other>/...`、`../` 归一化越界、空字节等不在当前用户 workspace root 下的 cwd。
 
-`mycc-start-desktop` 只启动 Xvfb、XFCE、x11vnc、websockify/noVNC。它不主动打开 Chromium。可见浏览器应该由 Claude Agent SDK 在执行 `browser-use` 或浏览器相关工具调用时运行到 `${MYCC_DESKTOP_DISPLAY:-:99}`，MyCC 只负责把这个桌面镜像给用户看。
+`mycc-start-desktop` 负责启动 Xvfb、XFCE、x11vnc、websockify/noVNC，并可打开一个空白 Chromium 窗口让桌面首屏可见。业务导航仍应由 Claude Agent SDK 在执行 `browser-use` 或浏览器相关工具调用时运行到 `${MYCC_DESKTOP_DISPLAY:-:99}`，MyCC 只负责把这个桌面镜像给用户看。
 
 ### 成果登记
 
@@ -128,23 +128,26 @@ helper 会写入 `/home/mycc/workspace/.mycc/deliverables.json`，按 workspace 
 
 ## 内置 Skills
 
-这里的 skill 指会被复制到 Claude/MyCC skill 目录的 `SKILL.md` 包。当前模板内置两类：
+这里的 skill 指会被复制到 Claude/MyCC skill 目录的 `SKILL.md` 包。镜像预置列表由技能注册表控制：
 
-- 沙盒专属 skill：`browser-use`
-- MyCC base skills：从 `mycc-backend/src/skills/catalog` 同步到沙盒模板
+- 在 `mycc-backend/src/skills/skill-registry.ts` 中标记 `preloadInImage: true`
+- 在 `mycc-backend/src/skills/image-preload-skills.json` 中维护给 sandbox 读取的同步 manifest
+- `npm run skills:sync` 从 `mycc-backend/src/skills/catalog` 复制这些技能到 sandbox 模板，并生成 `skills/.mycc-preload-skills.json`
+
+模板 contract 会读取 `.mycc-preload-skills.json`，检查每个预置 skill 都已经进入 `/home/mycc/.claude/skills`。`~/.claude` 是沙盒内 Claude 用户级配置和内置 skill 的唯一落点；workspace 只保存项目文件。
 
 | Skill | 路径 | 触发场景 | 依赖能力 |
 | --- | --- | --- | --- |
-| `browser-use` | `/home/mycc/.claude/skills/browser-use/SKILL.md` 和 `/home/mycc/.mycc/skills/browser-use/SKILL.md` | Agent 需要在沙盒内操作真实浏览器、跑 Playwright 或使用 browser-use 做浏览器导航 | Python venv、Playwright、browser-use、Chromium、可选 GNU desktop display |
-| `browser` | `/home/mycc/.claude/skills/browser/SKILL.md` 和 `/home/mycc/.mycc/skills/browser/SKILL.md` | 用 Playwright 测试/调试本地 Web 应用、截图、查看浏览器日志 | Playwright、Chromium、Node/Python |
-| `pdf` | `/home/mycc/.claude/skills/pdf/SKILL.md` 和 `/home/mycc/.mycc/skills/pdf/SKILL.md` | PDF 阅读、提取、表单、转换和视觉校验 | Python、PDF helper scripts |
-| `docx` | `/home/mycc/.claude/skills/docx/SKILL.md` 和 `/home/mycc/.mycc/skills/docx/SKILL.md` | Word 文档创建、编辑、批注、修订处理 | Python、Office helper scripts |
-| `xlsx` | `/home/mycc/.claude/skills/xlsx/SKILL.md` 和 `/home/mycc/.mycc/skills/xlsx/SKILL.md` | Excel/电子表格读取、编辑、重算和分析 | Python、spreadsheet helper scripts |
-| `pptx` | `/home/mycc/.claude/skills/pptx/SKILL.md` 和 `/home/mycc/.mycc/skills/pptx/SKILL.md` | PPT 创建、编辑、清理、缩略图和结构化演示稿处理 | Python、presentation helper scripts |
-| `data-analysis` | `/home/mycc/.claude/skills/data-analysis/SKILL.md` 和 `/home/mycc/.mycc/skills/data-analysis/SKILL.md` | CSV/表格数据分析、可视化、报告 | Python、数据分析运行时 |
-| `deep-research` | `/home/mycc/.claude/skills/deep-research/SKILL.md` 和 `/home/mycc/.mycc/skills/deep-research/SKILL.md` | 深度调研、证据追踪、格式可控研究报告 | 搜索/资料收集工具、workspace |
-| `skill-installer` | `/home/mycc/.claude/skills/skill-installer/SKILL.md` 和 `/home/mycc/.mycc/skills/skill-installer/SKILL.md` | 从策展仓库安装/管理更多 skills | GitHub/network、workspace |
-| `skill-creator` | `/home/mycc/.claude/skills/skill-creator/SKILL.md` 和 `/home/mycc/.mycc/skills/skill-creator/SKILL.md` | 创建和验证自定义 skill | Python、workspace |
+| `browser-use` | `/home/mycc/.claude/skills/browser-use/SKILL.md` | Agent 需要在沙盒内操作真实浏览器、跑 Playwright 或使用 browser-use 做浏览器导航 | Python venv、Playwright、browser-use、Chromium、可选 GNU desktop display |
+| `browser` | `/home/mycc/.claude/skills/browser/SKILL.md` | 用 Playwright 测试/调试本地 Web 应用、截图、查看浏览器日志 | Playwright、Chromium、Node/Python |
+| `pdf` | `/home/mycc/.claude/skills/pdf/SKILL.md` | PDF 阅读、提取、表单、转换和视觉校验 | Python、PDF helper scripts |
+| `docx` | `/home/mycc/.claude/skills/docx/SKILL.md` | Word 文档创建、编辑、批注、修订处理 | Python、Office helper scripts |
+| `xlsx` | `/home/mycc/.claude/skills/xlsx/SKILL.md` | Excel/电子表格读取、编辑、重算和分析 | Python、spreadsheet helper scripts |
+| `pptx` | `/home/mycc/.claude/skills/pptx/SKILL.md` | PPT 创建、编辑、清理、缩略图和结构化演示稿处理 | Python、presentation helper scripts |
+| `data-analysis` | `/home/mycc/.claude/skills/data-analysis/SKILL.md` | CSV/表格数据分析、可视化、报告 | Python、数据分析运行时 |
+| `deep-research` | `/home/mycc/.claude/skills/deep-research/SKILL.md` | 深度调研、证据追踪、格式可控研究报告 | 搜索/资料收集工具、workspace |
+| `skill-installer` | `/home/mycc/.claude/skills/skill-installer/SKILL.md` | 从策展仓库安装/管理更多 skills | GitHub/network、workspace |
+| `skill-creator` | `/home/mycc/.claude/skills/skill-creator/SKILL.md` | 创建和验证自定义 skill | Python、workspace |
 
 `browser-use` skill 建议默认值：
 
@@ -328,22 +331,22 @@ Chat Workbench 右侧栏第一阶段包含三个入口：
 
 右上角浮动小图标负责切换、锁回浏览器主页态、全屏和关闭。桌面端右栏默认使用 `clamp(640px, 52vw, 880px)`，配合沙箱默认 `1440x900` 桌面和 `1360,820` Chromium 窗口，避免浏览器画面挤成角标。VNC iframe 在切换 tab 或收起右栏时保持挂载，避免每次都冷启动 noVNC。iframe 允许同源 `postMessage` 辅助切回主页态、聚焦或切换 tab；这只改变 MyCC UI 状态，不负责打开具体网页。
 
-## CCR 对接
+## Claude Provider 对接
 
-CCR 在用户镜像内，由 MyCC 后端启动并注入环境变量。推荐形状：
+筑基已直接提供 Claude-compatible 模型时，优先直连，不需要先启动 CCR。推荐形状：
 
 ```text
-MYCC_PROVIDER_BASE_URL
-MYCC_PROVIDER_API_KEY
-MYCC_CCR_AUTH_TOKEN
-MYCC_CCR_MODEL
+MYCC_CLAUDE_BASE_URL
+MYCC_CLAUDE_AUTH_TOKEN
+MYCC_E2B_AGENT_SDK_MODEL
+MYCC_E2B_CLAUDE_MODEL
 ```
 
 要求：
 
-- `mycc-start-ccr` 生成的配置引用环境变量，不把明文 secret 写进命令行参数。
-- Claude CLI / Agent SDK bridge 默认访问 sandbox-local CCR。
+- MyCC 后端把 `MYCC_CLAUDE_*` 映射成 Claude runtime 需要的 `ANTHROPIC_*`，不把明文 secret 写进命令行参数。
 - provider base URL/token 不返回浏览器，不写普通日志。
+- CCR 保留为可选路由层；只有需要多 provider、限流、审计或统一路由时，再启用 `MYCC_CCR_*` 与 `mycc-start-ccr`。
 
 ## 联调命令
 
@@ -430,7 +433,6 @@ mycc-sandbox/templates/e2b-assistant-sandbox/skills/<skill-name>/SKILL.md
 
 ```text
 /opt/mycc/skills
-/home/mycc/.mycc/skills
 /home/mycc/.claude/skills
 ```
 

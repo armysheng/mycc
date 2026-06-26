@@ -4,6 +4,8 @@ set -euo pipefail
 MYCC_DESKTOP_DISPLAY="${MYCC_DESKTOP_DISPLAY:-:99}"
 MYCC_DESKTOP_CHROMIUM_PROFILE="${MYCC_DESKTOP_CHROMIUM_PROFILE:-/tmp/mycc-desktop/chromium-profile}"
 MYCC_DESKTOP_BROWSER_WINDOW_SIZE="${MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900}"
+MYCC_DESKTOP_BROWSER_CDP_HOST="${MYCC_DESKTOP_BROWSER_CDP_HOST:-127.0.0.1}"
+MYCC_DESKTOP_BROWSER_CDP_PORT="${MYCC_DESKTOP_BROWSER_CDP_PORT:-9222}"
 
 if [ "${1:-}" = "--version" ]; then
   exec chromium --version
@@ -26,6 +28,8 @@ exec chromium \
   --disable-default-apps \
   --password-store=basic \
   --start-maximized \
+  --remote-debugging-address="$MYCC_DESKTOP_BROWSER_CDP_HOST" \
+  --remote-debugging-port="$MYCC_DESKTOP_BROWSER_CDP_PORT" \
   --user-data-dir="$MYCC_DESKTOP_CHROMIUM_PROFILE" \
   --window-size="$MYCC_DESKTOP_BROWSER_WINDOW_SIZE" \
   --new-window \
