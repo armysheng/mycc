@@ -15,7 +15,7 @@ Current public preview:
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Deployed commit after the latest landing maintenance pass: `136ead0a45217b93024d55d42c64b9849683c05e`
+- Deployed commit after the latest landing maintenance pass: `84d5b8c6006368682149b7c3af3222731e177e4c`
 
 Current no-side-effect production evidence from 2026-06-27 CST:
 
@@ -23,6 +23,7 @@ Current no-side-effect production evidence from 2026-06-27 CST:
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
 - `POST https://daoyou.iaigc.fun/api/auth/login` with a random nonexistent credential: `401`, generic `手机号/邮箱或密码错误`, no account-existence leak.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed on 2026-06-27 CST.
 - Production deploys now include `mycc-backend/scripts/guard-production-node.sh`; `npm ci/build` must use the same Node v20.19.5 toolchain as systemd.
 
 The core path is proven when all of these are true:
@@ -58,6 +59,8 @@ BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live -
 ```
 
 Use the actual staging or production internal backend URL for `BASE_URL`. Run no-side-effect auth privacy before any live smoke with side effects:
+
+Production runbook note: before running any `npm run smoke:*` or `npm run harness:verify` command in production, use the Node20 guard and make both local binaries and the guarded Node bin first-class PATH entries, for example `NODE_BIN_DIR="$(./scripts/guard-production-node.sh --print-bin-dir)"` followed by `export PATH="$PWD/node_modules/.bin:$NODE_BIN_DIR:$PATH"`, to avoid `tsx: not found`.
 
 ```bash
 BASE_URL=http://localhost:8080 npm run smoke:auth-privacy

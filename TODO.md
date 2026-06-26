@@ -6,6 +6,30 @@
 |--------|------|------|----------------|------|
 | +8613800138000 | test123456 | 测试对话用户 | mycc_u18 | free |
 
+## 2026-06-27 Landing 产品验收 Backlog
+
+命名口径：产品名为 `道友 AI`，公司名为 `念头通达`。
+
+### P0 - 内测前必须闭环
+
+- [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态都符合道友 AI 的产品气质。
+- [ ] **初始化称呼和参考资料清理** - 初始化写入内容、模板、参考资料不再出现早期内测称呼或不适合公开内测的上下文。
+- [ ] **初始化过程不暴露内部会话** - 用户完成初始化时不看到隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹。
+- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
+- [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
+
+### P1 - 内测体验增强
+
+- [ ] **邮箱/手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
+- [ ] **Google/GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
+- [ ] **注册入口控制** - 明确邀请码、灰度名单或开关注入方式，避免生产注册入口失控。
+- [ ] **产品报错验收样例库** - 沉淀登录、初始化、IDE、desktop、Agent SDK workspace 等常见失败态的产品化报错样例。
+
+### P2 - 长期运营能力
+
+- [ ] **内测反馈闭环模板** - 固化反馈字段、优先级、复现材料、负责人和回访状态。
+- [ ] **长期账号安全能力** - 规划 refresh token/session 表、设备列表、退出全部设备、MFA/passkey/captcha、异常 IP 和爆破告警。
+
 ## Landing P0 - 内测前
 
 - [x] **公网预览环境** - `https://daoyou.iaigc.fun` 已部署到 current core，HTTPS 可访问。
