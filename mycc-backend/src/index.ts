@@ -10,10 +10,12 @@ import { automationsRoutes } from './routes/automations.js';
 import { onboardingRoutes } from './routes/onboarding.js';
 import { workspaceRoutes } from './routes/workspace.js';
 import { ideRoutes } from './routes/ide.js';
+import { registerReadinessRoutes } from './routes/readiness.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
 import { shouldInitializeSshAtStartup, shouldStartAutomationScheduler } from './startup/ssh-startup.js';
+import { requireProductionStartupSecrets } from './startup/readiness.js';
 import { validateRegistry } from './skills/skill-registry.js';
 import { AutomationScheduler } from './automations/scheduler.js';
 import * as path from 'path';
@@ -42,34 +44,7 @@ await fastify.register(cors, {
   allowedHeaders: ['Content-Type', 'Authorization'],
 });
 
-// 健康检查
-fastify.get('/health', async () => {
-  if (!shouldInitializeSshAtStartup()) {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: 'skipped'
-    };
-  }
-
-  try {
-    // 测试 SSH 连接
-    const sshPool = getSSHPool();
-    const sshOk = await sshPool.testConnection();
-
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: sshOk ? 'connected' : 'disconnected'
-    };
-  } catch (err) {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      vps: 'not_initialized'
-    };
-  }
-});
+await fastify.register(registerReadinessRoutes);
 
 // 注册路由
 await fastify.register(authRoutes);
@@ -85,6 +60,8 @@ await fastify.register(ideRoutes);
 // 启动服务器
 async function start() {
   try {
+    requireProductionStartupSecrets();
+
     // 测试数据库连接
     await pool.query('SELECT NOW()');
     console.log('✅ 数据库连接成功');
