@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, resolve(__dirname, ".."), "");
   const appEnv = loadEnv(mode, __dirname, "");
   const env = { ...rootEnv, ...appEnv };
-  const apiPort = env.PORT || "8080";
+  const apiPort = env.VITE_API_PORT || env.MYCC_API_PORT || "8081";
 
   return {
     plugins: [react(), tailwindcss()],

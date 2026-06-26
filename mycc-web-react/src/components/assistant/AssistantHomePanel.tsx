@@ -4,6 +4,7 @@ import type {
   AssistantHomeData,
   AssistantTaskCard,
 } from "../../types";
+import { PRODUCT_COPY, toProjectSpaceLabel } from "../../utils/productCopy";
 
 type AssistantHomePanelProps = {
   assistantName: string;
@@ -38,13 +39,16 @@ export function AssistantHomePanel({
   const rawDeliverables = data?.deliverables ?? [];
   const deliverables = (data?.deliverables ?? []).filter(isReadyDeliverable);
   const primaryDeliverable = deliverables[0] ?? null;
-  const hasUnreadyDeliverables = deliverables.length === 0
-    && rawDeliverables.some((deliverable) => deliverable.status !== "ready");
-  const memoryAvailable = (data?.memory.sources ?? []).some((source) => source.status !== "missing");
+  const hasUnreadyDeliverables =
+    deliverables.length === 0 &&
+    rawDeliverables.some((deliverable) => deliverable.status !== "ready");
+  const memoryAvailable = (data?.memory.sources ?? []).some(
+    (source) => source.status !== "missing",
+  );
   const workspaceChip =
     workspaceLabel ||
     workspaceName ||
-    toProductWorkspaceLabel(data?.workspace?.label) ||
+    toProjectSpaceLabel(data?.workspace?.label) ||
     "当前项目";
   const headline = workspaceName
     ? `我们应该在 ${workspaceName} 中构建什么？`
@@ -54,13 +58,14 @@ export function AssistantHomePanel({
     <section className="mx-auto flex min-h-[min(640px,70vh)] w-full max-w-5xl flex-col items-center justify-center px-2 py-10 text-center sm:px-6 sm:py-14">
       <div className="w-full max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
-          MyCC 个人助理
+          {PRODUCT_COPY.brandName} 个人助理
         </p>
         <h2 className="mt-5 text-3xl font-semibold tracking-[-0.035em] text-slate-950 dark:text-slate-50 sm:text-4xl md:text-5xl">
           {headline}
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-          直接描述你想完成的事，{assistantName} 会帮你拆解、执行，并在需要时打开成果空间让你查看和编辑。
+          直接描述你想完成的事，{assistantName} 会帮你拆解、执行，并在需要时打开
+          {PRODUCT_COPY.resultsSpace}让你查看和编辑。
         </p>
 
         <div className="mt-8">
@@ -80,11 +85,15 @@ export function AssistantHomePanel({
             onClick={onOpenWorkspace}
             className="rounded-full border border-slate-200 bg-white/75 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-slate-50"
           >
-            打开成果空间
+            打开{PRODUCT_COPY.resultsSpace}
           </button>
         </div>
 
-        {(tasks.length > 0 || primaryDeliverable || hasUnreadyDeliverables || loading || error) && (
+        {(tasks.length > 0 ||
+          primaryDeliverable ||
+          hasUnreadyDeliverables ||
+          loading ||
+          error) && (
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             {tasks.slice(0, 3).map((task) => (
               <button
@@ -126,7 +135,9 @@ export function AssistantHomePanel({
         {deliverables.length > 1 && (
           <div className="mx-auto mt-5 w-full max-w-3xl rounded-[24px] border border-slate-200/80 bg-white/55 p-3 text-left shadow-sm shadow-slate-200/30 dark:border-slate-700/80 dark:bg-slate-900/45 dark:shadow-none">
             <div className="mb-2 flex items-center justify-between gap-3 px-1">
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">最近成果</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                最近成果
+              </span>
               <button
                 type="button"
                 onClick={onOpenWorkspace}
@@ -181,14 +192,14 @@ function DeliverableProgressPill({
         成果还在整理
       </span>
       <span className="hidden text-slate-400 sm:inline">
-        完成后会出现在成果空间。
+        完成后会出现在{PRODUCT_COPY.resultsSpace}。
       </span>
       <button
         type="button"
         onClick={onOpenWorkspace}
         className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
       >
-        查看成果空间
+        查看{PRODUCT_COPY.resultsSpace}
       </button>
     </div>
   );
@@ -220,7 +231,9 @@ function DeliverablePill({
         打开成果
       </button>
       {deliverable.updatedAt && (
-        <span className="sr-only">{formatDeliverableTime(deliverable.updatedAt)}</span>
+        <span className="sr-only">
+          {formatDeliverableTime(deliverable.updatedAt)}
+        </span>
       )}
     </div>
   );
@@ -243,13 +256,9 @@ function getDeliverableKindLabel(kind: AssistantDeliverableCard["kind"]) {
 }
 
 function getDeliverableSourceLabel(source: AssistantDeliverableCard["source"]) {
-  if (source === "current_workspace") return "来自当前文件空间";
+  if (source === "current_workspace")
+    return `来自当前${PRODUCT_COPY.projectFiles}`;
   return "来自当前对话";
-}
-
-function toProductWorkspaceLabel(label?: string | null) {
-  if (!label) return "";
-  return label.replace(/工作区/g, "项目空间");
 }
 
 function isUserVisibleTask(task: AssistantTaskCard) {
@@ -266,7 +275,8 @@ function isUserVisibleTask(task: AssistantTaskCard) {
 
   if (!title) return false;
   if (lowerTitle === "continue" || lowerTitle === "accept") return false;
-  if (hiddenMarkers.some((marker) => lowerTitle.includes(marker.toLowerCase()))) return false;
+  if (hiddenMarkers.some((marker) => lowerTitle.includes(marker.toLowerCase())))
+    return false;
 
   return true;
 }

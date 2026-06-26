@@ -8,7 +8,9 @@ import type {
   TodoMessage,
   TodoItem,
   HooksMessage,
+  AbortMessage,
 } from "../types";
+import { isInternalSystemTelemetryMessage } from "../types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
@@ -28,6 +30,7 @@ import {
   isBashToolUseResult,
 } from "../utils/contentUtils";
 import { getToolActivityLabel } from "../utils/toolDisplayMapper";
+import { PRODUCT_COPY } from "../utils/productCopy";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -125,7 +128,7 @@ function isHooksMessage(
   );
 }
 
-function isAbortMessage(message: SystemMessage): boolean {
+function isAbortMessage(message: SystemMessage): message is AbortMessage {
   return (
     message.type === "system" &&
     "subtype" in message &&
@@ -143,10 +146,7 @@ function getAbortGuidance(message: SystemMessage): string {
       ? message.status
       : "paused";
   if (status === "ended") {
-    return [
-      title,
-      "你可以重新发送，或补充说明后再尝试。",
-    ].join("\n");
+    return [title, "你可以重新发送，或补充说明后再尝试。"].join("\n");
   }
   if (status === "failed") {
     return [
@@ -157,7 +157,7 @@ function getAbortGuidance(message: SystemMessage): string {
   return [
     title,
     "你可以补充说明后继续，或重新尝试这次任务。",
-    "右侧工作区会保留已经整理出的内容，方便你接着查看和接管。",
+    `${PRODUCT_COPY.resultsSpace}会保留已经整理出的内容，方便你接着查看和接管。`,
   ].join("\n");
 }
 
@@ -256,7 +256,10 @@ export function ChatMessageComponent({
               aria-label={copyLabel}
               title={copyTitle}
             >
-              <ClipboardDocumentIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <ClipboardDocumentIcon
+                className="h-3.5 w-3.5"
+                aria-hidden="true"
+              />
             </MessageActionButton>
           </MessageActionBar>
         </div>
@@ -368,6 +371,10 @@ interface SystemMessageComponentProps {
 export function SystemMessageComponent({
   message,
 }: SystemMessageComponentProps) {
+  if (isInternalSystemTelemetryMessage(message)) {
+    return null;
+  }
+
   // Generate details based on message type and subtype
   const getDetails = () => {
     if (isAbortMessage(message)) {
@@ -429,26 +436,26 @@ export function SystemMessageComponent({
         border: "border-red-200 dark:border-red-700",
         bg: "bg-red-50/80 dark:bg-red-900/20 border border-red-200 dark:border-red-800",
       }
-      : isResult
+    : isResult
+      ? {
+          header: "text-emerald-800 dark:text-emerald-300",
+          content: "text-emerald-700 dark:text-emerald-300",
+          border: "border-emerald-200 dark:border-emerald-700",
+          bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        }
+      : isAbort
         ? {
-            header: "text-emerald-800 dark:text-emerald-300",
-            content: "text-emerald-700 dark:text-emerald-300",
-            border: "border-emerald-200 dark:border-emerald-700",
-            bg: "bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+            header: "text-amber-800 dark:text-amber-200",
+            content: "text-amber-800 dark:text-amber-100",
+            border: "border-amber-200 dark:border-amber-700",
+            bg: "bg-amber-50/90 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800",
           }
-        : isAbort
-          ? {
-              header: "text-amber-800 dark:text-amber-200",
-              content: "text-amber-800 dark:text-amber-100",
-              border: "border-amber-200 dark:border-amber-700",
-              bg: "bg-amber-50/90 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800",
-            }
-          : {
-              header: "text-blue-800 dark:text-blue-300",
-              content: "text-blue-700 dark:text-blue-300",
-              border: "border-blue-200 dark:border-blue-700",
-              bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
-            };
+        : {
+            header: "text-blue-800 dark:text-blue-300",
+            content: "text-blue-700 dark:text-blue-300",
+            border: "border-blue-200 dark:border-blue-700",
+            bg: "bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800",
+          };
 
   return (
     <CollapsibleDetails

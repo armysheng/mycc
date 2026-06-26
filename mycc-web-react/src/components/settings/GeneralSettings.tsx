@@ -115,8 +115,9 @@ export function GeneralSettings() {
     setAssistantNameDraft(user?.assistant_name || "");
   }, [user?.assistant_name]);
 
-  const accountName = user?.email || user?.phone || user?.linux_user || "未登录用户";
   const assistantDisplayName = user?.assistant_name?.trim() || "cc";
+  const accountName = user?.email || user?.phone || "未登录用户";
+  const accountSubtitle = user?.email || user?.phone ? `助手：${assistantDisplayName}` : "账号信息待完善";
   const avatarChar = accountName.charAt(0).toUpperCase();
 
   const handleSaveProfile = async () => {
@@ -316,7 +317,7 @@ export function GeneralSettings() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{accountName}</p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.linux_user || "local-user"}</p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{accountSubtitle}</p>
             </div>
           </div>
 

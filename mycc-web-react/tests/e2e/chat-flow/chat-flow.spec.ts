@@ -120,6 +120,40 @@ test("[CHAT-001] 真实浏览器输入发送后，重试会继承当前会话", 
   });
 });
 
+test("[CHAT-006] 内部 API 重试遥测不会显示成处理动态 JSON", async ({ page }) => {
+  await page.route("**/api/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse([
+        {
+          type: "system",
+          subtype: "api_retry",
+          attempt: 2,
+          delay_ms: 1000,
+        },
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "重试后正常回复 OK" }],
+          },
+        },
+        { type: "done", sessionId: "e2e-api-retry-session" },
+      ]),
+    });
+  });
+
+  await bootstrapAuthenticatedChat(page);
+
+  await chatInput(page).fill("触发一次内部重试");
+  await page.getByRole("button", { name: "发送" }).click();
+
+  await expect(page.getByText("重试后正常回复 OK")).toBeVisible();
+  await expect(page.getByText("api_retry")).toHaveCount(0);
+  await expect(page.getByText('"type": "system"')).toHaveCount(0);
+  await expect(page.getByText("处理动态")).toHaveCount(0);
+});
+
 test("[CHAT-002] 暂停长任务后显示用户可理解的状态，并可继续发送新任务", async ({
   page,
 }) => {
@@ -236,8 +270,14 @@ test("[CHAT-005] 任务运行中可继续输入，后续消息会排队接上", 
   await chatInput(page).fill("长任务结束后继续做这个");
   await page.getByRole("button", { name: "发送" }).click();
 
-  await expect(page.getByText("长任务结束后继续做这个")).toBeVisible();
-  await expect(page.getByText(/已接住/)).toBeVisible();
+  await expect(
+    page
+      .getByTestId("queued-message-float")
+      .getByText("长任务结束后继续做这个"),
+  ).toBeVisible();
+  await expect(page.getByTestId("queued-message-float")).toContainText(
+    "等待接上",
+  );
   expect(chatRequests).toHaveLength(1);
 
   releaseFirstResponse?.();

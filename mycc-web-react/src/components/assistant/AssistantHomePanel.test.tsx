@@ -56,10 +56,10 @@ const baseData: AssistantHomeData = {
   capabilities: [
     {
       id: "workbench",
-      label: "工作间",
+      label: "编辑器",
       status: "available",
       description: "高级接管入口。需要深度编辑代码时再打开。",
-      actionLabel: "打开工作间",
+      actionLabel: "打开编辑器",
     },
   ],
 };
@@ -96,8 +96,8 @@ describe("AssistantHomePanel", () => {
     expect(screen.getByText("mycc-main")).toBeInTheDocument();
     expect(screen.queryByText("最近可以继续")).not.toBeInTheDocument();
     expect(screen.queryByText("助理记忆")).not.toBeInTheDocument();
-    expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
-    expect(screen.queryByText("工作间")).not.toBeInTheDocument();
+    expect(screen.queryByText("高级编辑器")).not.toBeInTheDocument();
+    expect(screen.queryByText("编辑器")).not.toBeInTheDocument();
   });
 
   it("does not present unsupported durable task states", () => {
@@ -265,7 +265,7 @@ describe("AssistantHomePanel", () => {
 
     expect(screen.getByText("Claude UI 调研报告")).toBeInTheDocument();
     expect(screen.getByText("报告")).toBeInTheDocument();
-    expect(screen.getByText("来自当前文件空间")).toBeInTheDocument();
+    expect(screen.getByText("来自当前项目文件")).toBeInTheDocument();
     expect(screen.queryByText("/docs/research-report.md")).not.toBeInTheDocument();
     expect(screen.queryByText("current_workspace")).not.toBeInTheDocument();
 
@@ -320,7 +320,7 @@ describe("AssistantHomePanel", () => {
     expect(screen.getByText("Agent run log")).toBeInTheDocument();
     expect(screen.getByText("Homepage screenshot")).toBeInTheDocument();
     expect(screen.queryByText("还没有制品")).not.toBeInTheDocument();
-    expect(screen.queryByText("高级工作间")).not.toBeInTheDocument();
+    expect(screen.queryByText("高级编辑器")).not.toBeInTheDocument();
   });
 
   it("shows only ready deliverables on the assistant home surface", () => {

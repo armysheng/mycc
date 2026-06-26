@@ -149,6 +149,24 @@ export function isSystemMessage(message: AllMessage): message is SystemMessage {
   );
 }
 
+const INTERNAL_SYSTEM_TELEMETRY_SUBTYPES = new Set(["api_retry"]);
+
+type InternalSystemTelemetryMessage = SystemMessage & {
+  type: "system";
+  subtype: string;
+};
+
+export function isInternalSystemTelemetryMessage(
+  message: AllMessage,
+): message is InternalSystemTelemetryMessage {
+  return (
+    message.type === "system" &&
+    "subtype" in message &&
+    typeof message.subtype === "string" &&
+    INTERNAL_SYSTEM_TELEMETRY_SUBTYPES.has(message.subtype)
+  );
+}
+
 export function isToolMessage(message: AllMessage): message is ToolMessage {
   return message.type === "tool";
 }

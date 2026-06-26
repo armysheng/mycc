@@ -7,8 +7,8 @@ type Fixtures = {
 };
 
 export const test = base.extend<Fixtures>({
-  account: async ({}, use, testInfo) => {
-    await use(resolveCaseAccount(testInfo));
+  account: async (_fixtures, setupAccount, testInfo) => {
+    await setupAccount(resolveCaseAccount(testInfo));
   },
 });
 

@@ -1,3 +1,5 @@
+import { PRODUCT_COPY } from "./productCopy";
+
 interface ApiErrorBody {
   error?: string;
   message?: string;
@@ -13,16 +15,16 @@ export interface ParsedApiError {
 
 function toUserFacingBackendError(error: string): string {
   return error
-    .replace(/\bE2B\b/gi, "工作区")
+    .replace(/\bE2B\b/gi, PRODUCT_COPY.projectFiles)
     .replace(/\bCCR\b/gi, "模型连接")
     .replace(/\bAgent SDK\b/gi, "助理能力")
-    .replace(/\bcode-server\b/gi, "工作间")
-    .replace(/\bGNU\b/gi, "远程桌面")
-    .replace(/\bsandbox\b/gi, "工作区")
+    .replace(/\bcode-server\b/gi, "编辑器")
+    .replace(/\bGNU\b/gi, "助理桌面")
+    .replace(/\bsandbox\b/gi, PRODUCT_COPY.projectSpace)
     .replace(/\bsessions?\b/gi, "对话")
     .replace(/\btokens?\b/gi, "额度")
     .replace(/\bbase URL\b/gi, "服务地址")
-    .replace(/沙盒/g, "工作区");
+    .replace(/沙盒/g, PRODUCT_COPY.projectSpace);
 }
 
 export async function parseApiErrorResponse(

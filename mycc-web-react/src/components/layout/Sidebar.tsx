@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationSummary } from "../../types";
-import { getChatSessionsUrl, getChatSessionRenameUrl, getAuthHeaders } from "../../config/api";
+import {
+  getChatSessionsUrl,
+  getChatSessionRenameUrl,
+  getAuthHeaders,
+} from "../../config/api";
 import { useAuth } from "../../contexts/AuthContext";
+import { PRODUCT_COPY } from "../../utils/productCopy";
 
 interface SidebarProps {
   onNewChat: () => void;
@@ -15,6 +20,14 @@ interface SidebarProps {
 }
 
 const UNTITLED_CONVERSATION_LABEL = "未命名对话";
+
+type ChatSessionRow = {
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
+  title?: string | null;
+};
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -61,9 +74,9 @@ export function Sidebar({
       });
       if (res.ok) {
         const data = await res.json();
-        const rows = data?.data?.conversations || [];
+        const rows = (data?.data?.conversations || []) as ChatSessionRow[];
         setConversations(
-          rows.map((item: any) => ({
+          rows.map((item) => ({
             sessionId: item.sessionId,
             startTime: item.createdAt,
             lastTime: item.updatedAt,
@@ -103,36 +116,42 @@ export function Sidebar({
     onClose();
   };
 
-  const handleRename = useCallback(async (sessionId: string) => {
-    const trimmed = editTitle.trim();
-    if (!trimmed || !token) {
-      setEditingId(null);
-      return;
-    }
-    try {
-      const res = await fetch(getChatSessionRenameUrl(sessionId), {
-        method: "PUT",
-        headers: getAuthHeaders(token),
-        body: JSON.stringify({ title: trimmed }),
-      });
-      if (res.ok) {
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.sessionId === sessionId ? { ...c, customTitle: trimmed } : c
-          )
-        );
+  const handleRename = useCallback(
+    async (sessionId: string) => {
+      const trimmed = editTitle.trim();
+      if (!trimmed || !token) {
+        setEditingId(null);
+        return;
       }
-    } catch {
-      // 静默失败
-    }
-    setEditingId(null);
-  }, [editTitle, token]);
+      try {
+        const res = await fetch(getChatSessionRenameUrl(sessionId), {
+          method: "PUT",
+          headers: getAuthHeaders(token),
+          body: JSON.stringify({ title: trimmed }),
+        });
+        if (res.ok) {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.sessionId === sessionId ? { ...c, customTitle: trimmed } : c,
+            ),
+          );
+        }
+      } catch {
+        // 静默失败
+      }
+      setEditingId(null);
+    },
+    [editTitle, token],
+  );
 
   // 点击外部关闭用户菜单
   useEffect(() => {
     if (!userMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(e.target as Node)
+      ) {
         setUserMenuOpen(false);
       }
     };
@@ -140,9 +159,10 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", handler);
   }, [userMenuOpen]);
 
-  const userInitial = user?.email?.charAt(0)?.toUpperCase() || user?.phone?.charAt(0) || "U";
+  const userInitial =
+    user?.email?.charAt(0)?.toUpperCase() || user?.phone?.charAt(0) || "U";
   const userDisplayName =
-    user?.email || user?.phone || user?.linux_user || "用户";
+    user?.email || user?.phone || "用户";
 
   const sidebarContent = (
     <>
@@ -151,7 +171,9 @@ export function Sidebar({
         <div className="flex items-center gap-3 mb-4">
           <div
             className="w-9 h-9 rounded-xl text-white flex items-center justify-center text-base font-bold tracking-tight shadow-sm"
-            style={{ background: "linear-gradient(135deg, var(--accent), #7c3aed)" }}
+            style={{
+              background: "linear-gradient(135deg, var(--accent), #7c3aed)",
+            }}
           >
             C
           </div>
@@ -202,7 +224,7 @@ export function Sidebar({
             }}
             className="flex-1 px-2 py-1.5 text-xs rounded-md border panel-surface hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
-            📂 工作区
+            📂 {PRODUCT_COPY.resultsSpace}
           </button>
         </div>
       </div>
@@ -211,20 +233,22 @@ export function Sidebar({
       <div className="p-4 flex-1 overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-  <span className="text-xs text-slate-500 dark:text-slate-400">历史对话</span>
-{onShowHistory && (
-   <button
-     type="button"
-    onClick={() => {
-       onShowHistory();
-        onClose();
-      }}
-          className="text-xs text-[var(--accent)] hover:underline"
-    >
-      查看全部
-        </button>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              历史对话
+            </span>
+            {onShowHistory && (
+              <button
+                type="button"
+                onClick={() => {
+                  onShowHistory();
+                  onClose();
+                }}
+                className="text-xs text-[var(--accent)] hover:underline"
+              >
+                查看全部
+              </button>
             )}
-       </div>
+          </div>
           <button
             type="button"
             onClick={handleRefresh}
@@ -283,7 +307,9 @@ export function Sidebar({
                         className="w-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none"
                       />
                     ) : (
-                      conv.customTitle || conv.lastMessagePreview || "未命名对话"
+                      conv.customTitle ||
+                      conv.lastMessagePreview ||
+                      "未命名对话"
                     )}
                   </div>
                   {editingId !== conv.sessionId && (
@@ -292,7 +318,9 @@ export function Sidebar({
                       onClick={(e) => {
                         e.stopPropagation();
                         setEditingId(conv.sessionId);
-                        setEditTitle(conv.customTitle || conv.lastMessagePreview || "");
+                        setEditTitle(
+                          conv.customTitle || conv.lastMessagePreview || "",
+                        );
                       }}
                       className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity shrink-0"
                     >
@@ -301,9 +329,7 @@ export function Sidebar({
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 text-slate-400 dark:text-slate-500">
-                  <span>
-                    {formatTime(conv.lastTime || conv.startTime)}
-                  </span>
+                  <span>{formatTime(conv.lastTime || conv.startTime)}</span>
                   <span>{conv.messageCount} 条</span>
                 </div>
               </div>
@@ -355,8 +381,10 @@ export function Sidebar({
         <div
           role="button"
           tabIndex={0}
-          onClick={() => setUserMenuOpen(v => !v)}
-          onKeyDown={(e) => { if (e.key === "Enter") setUserMenuOpen(v => !v); }}
+          onClick={() => setUserMenuOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setUserMenuOpen((v) => !v);
+          }}
           className="flex items-center gap-3 cursor-pointer rounded-lg p-1 -m-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <div
@@ -370,8 +398,18 @@ export function Sidebar({
               {userDisplayName}
             </div>
           </div>
-          <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+          <svg
+            className="w-4 h-4 text-slate-400 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 9l4-4 4 4m0 6l-4 4-4-4"
+            />
           </svg>
         </div>
       </div>
@@ -380,17 +418,17 @@ export function Sidebar({
 
   return (
     <>
-    {/* 桌面端固定 Sidebar：宽度过渡折叠，内层固定宽度防止收起时内容 reflow */}
+      {/* 桌面端固定 Sidebar：宽度过渡折叠，内层固定宽度防止收起时内容 reflow */}
       <aside
         className="panel-surface hidden lg:block shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out"
         style={{ width: desktopVisible ? "var(--sidebar-width)" : "0px" }}
-   >
+      >
         <div
-   className="flex h-full flex-col border-r"
+          className="flex h-full flex-col border-r"
           style={{ width: "var(--sidebar-width)" }}
         >
-        {sidebarContent}
- </div>
+          {sidebarContent}
+        </div>
       </aside>
 
       {/* 移动端抽屉 */}

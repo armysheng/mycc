@@ -31,7 +31,7 @@ function renderPermissionContent(patterns: string[]): JSX.Element {
   );
 }
 
-function renderPermanentButtonText(_patterns: string[]): string {
+function renderPermanentButtonText(): string {
   return "始终允许这类操作";
 }
 
@@ -189,7 +189,7 @@ export function PermissionInputPanel({
           )}
         >
           <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-            {renderPermanentButtonText(patterns)}
+              {renderPermanentButtonText()}
           </span>
         </button>
 
