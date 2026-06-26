@@ -208,7 +208,9 @@ const checks: Check[] = [
     label: 'landing checklist documents ship/no-ship criteria',
     file: 'docs/landing-readiness.md',
     snippets: [
-      'Status: P2 complete, landing candidate.',
+      'Status: public staging preview live; guided friendly-test candidate, not unrestricted public launch.',
+      'https://daoyou.iaigc.fun',
+      'GET https://daoyou.iaigc.fun/readyz/deep',
       'Backend tests pass.',
       'Product-facing frontend tests pass.',
       'npm run harness:verify -- --target=landing --no-write',
