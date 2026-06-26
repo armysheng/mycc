@@ -22,7 +22,7 @@ function normalizeVersion(input: unknown): { version: string; legacy: boolean } 
 }
 
 function userSkillsDir(linuxUser: string): string {
-  return `/home/${linuxUser}/workspace/.claude/skills`;
+  return `/home/${linuxUser}/.claude/skills`;
 }
 
 function runAsLinuxUserCommand(linuxUser: string, command: string): string {

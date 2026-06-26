@@ -4,9 +4,11 @@ import {
   getSkillEnableUrl,
   getSkillInstallUrl,
   getSkillsUrl,
+  getSkillSubscribeUrl,
   getSkillUninstallUrl,
   getSkillUpgradeUrl,
   getSkillUseUrl,
+  getSkillDetailUrl,
   getSkillsDebugUrl,
 } from "../config/api";
 
@@ -14,9 +16,11 @@ export type SkillStatus = "installed" | "available" | "disabled";
 
 export interface SkillItem {
   id: string;
+  assistantSkillName?: string;
   name: string;
   description: string;
   trigger: string;
+  triggers?: string[];
   icon: string;
   status: SkillStatus;
   installed: boolean;
@@ -27,6 +31,10 @@ export interface SkillItem {
   legacy: boolean;
   enabled: boolean;
   upgradable: boolean;
+  category?: string;
+  owner?: string;
+  preloadInImage?: boolean;
+  imageRequired?: boolean;
   stats?: SkillStats;
 }
 
@@ -41,6 +49,30 @@ export interface SkillsListResult {
   skills: SkillItem[];
   total: number;
   catalogAvailable: boolean;
+  installRootPath?: string;
+}
+
+export interface SkillDetailResult {
+  skill: SkillItem;
+  installTargetPath: string;
+  definition?: {
+    builtin: boolean;
+    readiness: "L1" | "L2" | "L3";
+    riskLevel: "low" | "medium" | "high";
+    deps: string[];
+    defaultEnabled: boolean;
+    mdPath: string;
+    sourceUrl: string;
+    originType: "official" | "community" | "internal-verified";
+    validationNote: string;
+    lastVerifiedAt: string;
+  };
+  contentPreview: {
+    source: "catalog" | "generated";
+    path: string;
+    content: string;
+    truncated: boolean;
+  };
 }
 
 export interface SkillInstallResult {
@@ -67,23 +99,33 @@ export interface SkillDebugSnapshot {
   installedCount: number;
   availableCount: number;
   upgradableCount: number;
-  skills: Array<Pick<
-    SkillItem,
-    | "id"
-    | "name"
-    | "source"
-    | "status"
-    | "installed"
-    | "enabled"
-    | "version"
-    | "installedVersion"
-    | "latestVersion"
-    | "upgradable"
-    | "stats"
-  >>;
+  imagePreloadCount: number;
+  imageRequiredCount: number;
+  skills: Array<
+    Pick<
+      SkillItem,
+      | "id"
+      | "name"
+      | "triggers"
+      | "source"
+      | "status"
+      | "installed"
+      | "enabled"
+      | "version"
+      | "installedVersion"
+      | "latestVersion"
+      | "upgradable"
+      | "preloadInImage"
+      | "imageRequired"
+      | "stats"
+    >
+  >;
 }
 
-async function parseJsonOrThrow<T>(response: Response, fallbackError: string): Promise<T> {
+async function parseJsonOrThrow<T>(
+  response: Response,
+  fallbackError: string,
+): Promise<T> {
   const json = await response.json().catch(() => ({}));
   if (!response.ok || !json?.success) {
     throw new Error(json?.error || fallbackError);
@@ -111,15 +153,42 @@ export async function listSkills(token: string): Promise<SkillsListResult> {
   return parseJsonOrThrow<SkillsListResult>(response, "加载技能失败");
 }
 
-export async function installSkill(token: string, skillId: string): Promise<SkillInstallResult> {
+export async function getSkillDetail(
+  token: string,
+  skillId: string,
+): Promise<SkillDetailResult> {
+  const response = await fetch(getSkillDetailUrl(skillId), {
+    headers: getAuthHeaders(token),
+  });
+  return parseJsonOrThrow<SkillDetailResult>(response, "获取技能详情失败");
+}
+
+export async function installSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillInstallResult> {
   return postSkillAction<SkillInstallResult>(
     token,
     getSkillInstallUrl(skillId),
-    "安装技能失败",
+    "添加技能失败",
   );
 }
 
-export async function updateSkill(token: string, skillId: string): Promise<SkillActionResult> {
+export async function subscribeSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillInstallResult> {
+  return postSkillAction<SkillInstallResult>(
+    token,
+    getSkillSubscribeUrl(skillId),
+    "添加技能失败",
+  );
+}
+
+export async function updateSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillActionResult> {
   return postSkillAction<SkillActionResult>(
     token,
     getSkillUpgradeUrl(skillId),
@@ -127,7 +196,10 @@ export async function updateSkill(token: string, skillId: string): Promise<Skill
   );
 }
 
-export async function enableSkill(token: string, skillId: string): Promise<SkillActionResult> {
+export async function enableSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillActionResult> {
   return postSkillAction<SkillActionResult>(
     token,
     getSkillEnableUrl(skillId),
@@ -135,7 +207,10 @@ export async function enableSkill(token: string, skillId: string): Promise<Skill
   );
 }
 
-export async function disableSkill(token: string, skillId: string): Promise<SkillActionResult> {
+export async function disableSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillActionResult> {
   return postSkillAction<SkillActionResult>(
     token,
     getSkillDisableUrl(skillId),
@@ -143,15 +218,21 @@ export async function disableSkill(token: string, skillId: string): Promise<Skil
   );
 }
 
-export async function uninstallSkill(token: string, skillId: string): Promise<SkillActionResult> {
+export async function uninstallSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillActionResult> {
   return postSkillAction<SkillActionResult>(
     token,
     getSkillUninstallUrl(skillId),
-    "卸载技能失败",
+    "移除技能失败",
   );
 }
 
-export async function useSkill(token: string, skillId: string): Promise<SkillActionResult> {
+export async function useSkill(
+  token: string,
+  skillId: string,
+): Promise<SkillActionResult> {
   return postSkillAction<SkillActionResult>(
     token,
     getSkillUseUrl(skillId),
@@ -159,7 +240,9 @@ export async function useSkill(token: string, skillId: string): Promise<SkillAct
   );
 }
 
-export async function getSkillDebugSnapshot(token: string): Promise<SkillDebugSnapshot> {
+export async function getSkillDebugSnapshot(
+  token: string,
+): Promise<SkillDebugSnapshot> {
   const response = await fetch(getSkillsDebugUrl(), {
     headers: getAuthHeaders(token),
   });

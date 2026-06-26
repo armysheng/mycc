@@ -1,10 +1,13 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { validateLinuxUsername } from '../utils/validation.js';
 import { SkillsError } from './errors.js';
 import { RemoteSkillStore } from './remote-skill-store.js';
-import { getMarketSkills as registryMarketSkills, getReadySkills as registryReadySkills, getVersionForSkill } from './skill-registry.js';
+import { getAssistantSkillNameForSkill, getImageMetadataForSkill, getMarketSkills as registryMarketSkills, getReadySkills as registryReadySkills, getSkillById, getTriggersForSkill, getVersionForSkill } from './skill-registry.js';
 import { getSkillStatsMap, recordSkillEvent } from './skill-events.js';
 import type { ISkillsService } from './contracts.js';
-import type { InstallSkillResult, SkillActionResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition, SkillEventType, SkillStats } from './types.js';
+import type { InstallSkillResult, SkillActionResult, SkillDetailResult, SkillsContext, SkillsListResult, SkillInfo, SkillDefinition, SkillEventType, SkillStats } from './types.js';
 
 const LIST_TIMEOUT_MS = 20_000;
 const ACTION_TIMEOUT_MS = 30_000;
@@ -14,10 +17,16 @@ const parsedSkillsListCacheTtl = Number.parseInt(process.env.SKILLS_LIST_CACHE_T
 const LIST_CACHE_TTL_MS = Number.isFinite(parsedSkillsListCacheTtl) && parsedSkillsListCacheTtl > 0
   ? parsedSkillsListCacheTtl
   : 10_000;
+const DETAIL_CONTENT_MAX_CHARS = 16_000;
+const runtimeCatalogDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'catalog');
 
 type CachedListResult = {
   data: SkillsListResult;
   expiresAt: number;
+};
+
+type SkillsServiceOptions = {
+  resolveInstallLinuxUser?: (context: SkillsContext) => string;
 };
 
 const ZERO_SKILL_STATS: SkillStats = {
@@ -31,7 +40,10 @@ export class SkillsService implements ISkillsService {
   private static listInFlight = new Map<string, Promise<SkillsListResult>>();
   private static listCache = new Map<string, CachedListResult>();
 
-  constructor(private readonly store: RemoteSkillStore) {}
+  constructor(
+    private readonly store: RemoteSkillStore,
+    private readonly options: SkillsServiceOptions = {},
+  ) {}
 
   getMarketSkills(): SkillDefinition[] {
     return registryMarketSkills();
@@ -40,7 +52,7 @@ export class SkillsService implements ISkillsService {
   async ensureBuiltinSkills(context: SkillsContext): Promise<number> {
     this.validateContext(context);
     const seeded = await this.executeSkillOperation(
-      () => this.store.ensureBuiltinSkills(context.linuxUser),
+      () => this.store.ensureBuiltinSkills(context),
       ACTION_TIMEOUT_MS,
       '内置技能初始化超时，请稍后重试'
     );
@@ -62,7 +74,7 @@ export class SkillsService implements ISkillsService {
     }
 
     const pending = this.executeSkillOperation(
-      () => this.store.listSkillInfos(context.linuxUser),
+      () => this.store.listSkillInfos(context),
       LIST_TIMEOUT_MS,
       '技能列表加载超时，请稍后重试'
     )
@@ -77,10 +89,12 @@ export class SkillsService implements ISkillsService {
         const data = {
           skills: result.skills.map((skill) => ({
             ...skill,
+            ...getImageMetadataForSkill(skill.id),
             stats: statsMap.get(skill.id) || ZERO_SKILL_STATS,
           })),
           total: result.skills.length,
           catalogAvailable: result.catalogAvailable,
+          installRootPath: this.getInstallRootPath(context),
         };
         SkillsService.listCache.set(cacheKey, {
           data,
@@ -93,7 +107,7 @@ export class SkillsService implements ISkillsService {
           throw err;
         }
 
-        const data = this.buildRegistryFallbackList();
+        const data = this.buildRegistryFallbackList(context);
         SkillsService.listCache.set(cacheKey, {
           data,
           expiresAt: Date.now() + LIST_CACHE_TTL_MS,
@@ -108,6 +122,44 @@ export class SkillsService implements ISkillsService {
     return pending;
   }
 
+  async getSkillDetail(context: SkillsContext, skillId: string): Promise<SkillDetailResult> {
+    this.validateContext(context);
+    this.validateSkillId(skillId);
+
+    const list = await this.listSkills(context);
+    const skill = list.skills.find((item) => item.id === skillId);
+    const definition = getSkillById(skillId);
+
+    if (!skill && !definition) {
+      throw new SkillsError(404, '技能不存在');
+    }
+
+    const resolvedSkill = skill || this.buildRegistrySkillInfo(definition!);
+    const preview = await this.readSkillContentPreview(definition, resolvedSkill);
+
+    return {
+      skill: resolvedSkill,
+      installTargetPath: this.getInstallTargetPath(context, skillId),
+      ...(definition
+        ? {
+            definition: {
+              builtin: definition.builtin,
+              readiness: definition.readiness,
+              riskLevel: definition.riskLevel,
+              deps: definition.deps,
+              defaultEnabled: definition.defaultEnabled,
+              mdPath: definition.mdPath,
+              sourceUrl: definition.source_url,
+              originType: definition.origin_type,
+              validationNote: definition.validation_note,
+              lastVerifiedAt: definition.last_verified_at,
+            },
+          }
+        : {}),
+      contentPreview: preview,
+    };
+  }
+
   async searchSkills(context: SkillsContext, query: string): Promise<SkillInfo[]> {
     this.validateContext(context);
     return this.executeSkillOperation(
@@ -115,6 +167,10 @@ export class SkillsService implements ISkillsService {
       LIST_TIMEOUT_MS,
       '搜索技能超时，请稍后重试'
     );
+  }
+
+  async subscribeSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult> {
+    return this.installSkill(context, skillId);
   }
 
   async installSkill(context: SkillsContext, skillId: string): Promise<InstallSkillResult> {
@@ -130,7 +186,7 @@ export class SkillsService implements ISkillsService {
     let result;
     try {
       result = await this.executeSkillOperation(
-        () => this.store.installSkill(context.linuxUser, skillId),
+        () => this.store.installSkill(context, skillId),
         ACTION_TIMEOUT_MS,
         '安装技能超时，请稍后重试'
       );
@@ -167,7 +223,7 @@ export class SkillsService implements ISkillsService {
     let result;
     try {
       result = await this.executeSkillOperation(
-        () => this.store.upgradeSkill(context.linuxUser, skillId),
+        () => this.store.upgradeSkill(context, skillId),
         ACTION_TIMEOUT_MS,
         '升级技能超时，请稍后重试'
       );
@@ -202,7 +258,7 @@ export class SkillsService implements ISkillsService {
     this.validateContext(context);
     this.validateSkillId(skillId);
     await this.executeSkillOperation(
-      () => this.store.setSkillEnabled(context.linuxUser, skillId, true),
+      () => this.store.setSkillEnabled(context, skillId, true),
       ACTION_TIMEOUT_MS,
       '启用技能超时，请稍后重试'
     );
@@ -214,7 +270,7 @@ export class SkillsService implements ISkillsService {
     this.validateContext(context);
     this.validateSkillId(skillId);
     await this.executeSkillOperation(
-      () => this.store.setSkillEnabled(context.linuxUser, skillId, false),
+      () => this.store.setSkillEnabled(context, skillId, false),
       ACTION_TIMEOUT_MS,
       '禁用技能超时，请稍后重试'
     );
@@ -226,7 +282,7 @@ export class SkillsService implements ISkillsService {
     this.validateContext(context);
     this.validateSkillId(skillId);
     await this.executeSkillOperation(
-      () => this.store.uninstallSkill(context.linuxUser, skillId),
+      () => this.store.uninstallSkill(context, skillId),
       ACTION_TIMEOUT_MS,
       '卸载技能超时，请稍后重试'
     );
@@ -256,6 +312,15 @@ export class SkillsService implements ISkillsService {
     SkillsService.listInFlight.delete(linuxUser);
   }
 
+  private getInstallTargetPath(context: SkillsContext, skillId: string): string {
+    return `${this.getInstallRootPath(context)}/${getAssistantSkillNameForSkill(skillId)}`;
+  }
+
+  private getInstallRootPath(context: SkillsContext): string {
+    const installLinuxUser = this.options.resolveInstallLinuxUser?.(context) || context.linuxUser;
+    return `/home/${installLinuxUser}/.claude/skills`;
+  }
+
   private validateContext(context: SkillsContext): void {
     if (!context.userId || !context.linuxUser) {
       throw new SkillsError(400, '用户上下文不完整');
@@ -271,12 +336,15 @@ export class SkillsService implements ISkillsService {
     }
   }
 
-  private buildRegistryFallbackList(): SkillsListResult {
+  private buildRegistryFallbackList(context: SkillsContext): SkillsListResult {
     const skills: SkillInfo[] = registryReadySkills().map((skill) => ({
       id: skill.id,
+      assistantSkillName: getAssistantSkillNameForSkill(skill.id),
       name: skill.name,
       description: skill.description,
       trigger: skill.trigger,
+      triggers: getTriggersForSkill(skill.id),
+      ...getImageMetadataForSkill(skill.id),
       icon: skill.icon,
       status: 'available',
       installed: false,
@@ -287,6 +355,8 @@ export class SkillsService implements ISkillsService {
       legacy: false,
       enabled: false,
       upgradable: false,
+      category: skill.category,
+      owner: skill.owner,
       stats: ZERO_SKILL_STATS,
     }));
 
@@ -294,6 +364,70 @@ export class SkillsService implements ISkillsService {
       skills,
       total: skills.length,
       catalogAvailable: false,
+      installRootPath: this.getInstallRootPath(context),
+    };
+  }
+
+  private buildRegistrySkillInfo(skill: SkillDefinition): SkillInfo {
+    return {
+      id: skill.id,
+      assistantSkillName: getAssistantSkillNameForSkill(skill.id),
+      name: skill.name,
+      description: skill.description,
+      trigger: skill.trigger,
+      triggers: getTriggersForSkill(skill.id),
+      ...getImageMetadataForSkill(skill.id),
+      icon: skill.icon,
+      status: 'available',
+      installed: false,
+      version: getVersionForSkill(skill.id),
+      installedVersion: null,
+      latestVersion: getVersionForSkill(skill.id),
+      source: 'registry',
+      legacy: false,
+      enabled: false,
+      upgradable: false,
+      category: skill.category,
+      owner: skill.owner,
+      stats: ZERO_SKILL_STATS,
+    };
+  }
+
+  private async readSkillContentPreview(
+    definition: SkillDefinition | undefined,
+    skill: SkillInfo,
+  ): Promise<SkillDetailResult['contentPreview']> {
+    if (definition) {
+      const safePath = path.normalize(definition.mdPath);
+      const absolutePath = path.join(runtimeCatalogDir, safePath);
+      if (absolutePath.startsWith(runtimeCatalogDir)) {
+        try {
+          const content = await readFile(absolutePath, 'utf8');
+          return {
+            source: 'catalog',
+            path: definition.mdPath,
+            content: content.slice(0, DETAIL_CONTENT_MAX_CHARS),
+            truncated: content.length > DETAIL_CONTENT_MAX_CHARS,
+          };
+        } catch {
+          // Fall through to a generated preview when catalog content is unavailable.
+        }
+      }
+    }
+
+    return {
+      source: 'generated',
+      path: `${skill.assistantSkillName || skill.id}/SKILL.md`,
+      content: [
+        `name: ${skill.name}`,
+        '',
+        'description',
+        skill.description || '暂无说明',
+        '',
+        'triggers',
+        ...(skill.triggers?.length ? skill.triggers : [skill.trigger]).map((trigger) => `- ${trigger}`),
+      ].join('\n'),
+      truncated: false,
     };
   }
 
@@ -402,11 +536,13 @@ export class SkillsService implements ISkillsService {
 
   private isSshRuntimeUnavailableError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
+    const lowerMsg = msg.toLowerCase();
     return (
       msg.includes(SSH_RUNTIME_UNAVAILABLE_MESSAGE) ||
       msg.includes('SSH 连接池未初始化') ||
       msg.includes('initSSHPool') ||
-      (msg.includes('SSH') && msg.includes('not initialized'))
+      (msg.includes('SSH') && msg.includes('not initialized')) ||
+      (lowerMsg.includes('sandbox') && lowerMsg.includes('not found'))
     );
   }
 
