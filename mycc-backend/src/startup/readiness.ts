@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+import type { IncomingHttpHeaders } from 'node:http';
 import { requireSafeJwtSecret } from '../auth/service.js';
 import { shouldInitializeSshAtStartup } from './ssh-startup.js';
 
@@ -20,6 +22,19 @@ export type ReadinessResponse = {
   };
 };
 
+export type DeepReadinessAuthDecision =
+  | { authorized: true }
+  | {
+      authorized: false;
+      statusCode: 401;
+      body: {
+        error: 'readyz_deep_unauthorized';
+        status: 'unauthorized';
+      };
+    };
+
+export const READYZ_DEEP_TOKEN_HEADER = 'x-mycc-readyz-deep-token';
+
 export function requireProductionStartupSecrets(env: NodeJS.ProcessEnv = process.env): void {
   requireSafeJwtSecret(env);
 }
@@ -30,6 +45,64 @@ export function buildHealthResponse(now: Date = new Date()) {
     service: 'mycc-backend',
     timestamp: now.toISOString(),
   };
+}
+
+export function authorizeDeepReadinessRequest(params: {
+  env?: NodeJS.ProcessEnv;
+  headers?: IncomingHttpHeaders | Record<string, string | string[] | undefined>;
+}): DeepReadinessAuthDecision {
+  const env = params.env ?? process.env;
+  const configuredToken = env.MYCC_READYZ_DEEP_TOKEN?.trim();
+
+  if (!configuredToken) {
+    return deepReadinessUnauthorized();
+  }
+
+  const candidateToken = extractDeepReadinessToken(params.headers ?? {});
+  if (candidateToken && secureStringEquals(candidateToken, configuredToken)) {
+    return { authorized: true };
+  }
+
+  return deepReadinessUnauthorized();
+}
+
+function deepReadinessUnauthorized(): DeepReadinessAuthDecision {
+  return {
+    authorized: false,
+    statusCode: 401,
+    body: {
+      error: 'readyz_deep_unauthorized',
+      status: 'unauthorized',
+    },
+  };
+}
+
+function extractDeepReadinessToken(
+  headers: IncomingHttpHeaders | Record<string, string | string[] | undefined>,
+): string | undefined {
+  const authorization = firstHeaderValue(headers.authorization);
+  const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  return firstHeaderValue(headers[READYZ_DEEP_TOKEN_HEADER])?.trim();
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
+function secureStringEquals(candidate: string, expected: string): boolean {
+  const candidateBuffer = Buffer.from(candidate);
+  const expectedBuffer = Buffer.from(expected);
+  if (candidateBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(candidateBuffer, expectedBuffer);
 }
 
 export async function buildReadinessResponse(params: {

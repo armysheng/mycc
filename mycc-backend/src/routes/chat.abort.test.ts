@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { chatRoutes } from "./chat.js";
 import { InMemoryIdeSessionStore } from "../ide/session-store.js";
+import { makeTestUser, makeTestUserLookup } from "../test/auth-mocks.js";
 
 const mocks = vi.hoisted(() => ({
   appendConversationMessages: vi.fn(),
@@ -86,6 +87,7 @@ async function buildApp() {
 describe("chat abort route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
   });
 
   it("persists user and assistant message snapshots after a successful chat turn", async () => {
@@ -164,10 +166,9 @@ describe("chat abort route", () => {
     mocks.appendConversationMessages.mockResolvedValue(undefined);
     mocks.checkQuota.mockResolvedValue({ allowed: true, remaining: 1000 });
     mocks.createAgentRuntime.mockReturnValue({ chat: mocks.runtimeChat });
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: "tester",
-    });
+    }));
     mocks.getConversationMessageSnapshots.mockImplementation(
       async (_userId: number, _sessionId: string, _limit: number) =>
         (mocks.appendConversationMessages.mock.calls[0]?.[0]?.messages || [])

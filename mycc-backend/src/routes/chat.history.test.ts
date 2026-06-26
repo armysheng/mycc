@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeTestUser, makeTestUserLookup } from '../test/auth-mocks.js';
 import { chatRoutes } from './chat.js';
 
 const mocks = vi.hoisted(() => ({
@@ -55,6 +56,7 @@ async function buildApp(options: Parameters<typeof chatRoutes>[1] = {}) {
 describe('chat history route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
     mocks.getConversationMessageSnapshots.mockResolvedValue([]);
   });
 
@@ -93,10 +95,9 @@ describe('chat history route', () => {
       }),
     ].join('\n');
     mocks.userOwnsConversation.mockResolvedValue(true);
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: 'tester',
-    });
+    }));
     mocks.getSSHPool.mockReturnValue({
       acquire: vi.fn().mockResolvedValue(connection),
       exec: vi.fn().mockResolvedValue({
@@ -184,10 +185,9 @@ describe('chat history route', () => {
       stderr: '',
     });
     mocks.userOwnsConversation.mockResolvedValue(true);
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: 'tester',
-    });
+    }));
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error('SSH should not be used for E2B history loading');
     });
@@ -256,10 +256,9 @@ describe('chat history route', () => {
       stderr: 'history workspace is unavailable',
     });
     mocks.userOwnsConversation.mockResolvedValue(true);
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: 'tester',
-    });
+    }));
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error('SSH should not be used for E2B history loading');
     });
@@ -329,10 +328,9 @@ describe('chat history route', () => {
       },
     ]);
     mocks.userOwnsConversation.mockResolvedValue(true);
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: 'tester',
-    });
+    }));
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error('SSH should not be used for E2B history loading');
     });
@@ -392,10 +390,9 @@ describe('chat history route', () => {
       findExpiredRunning: vi.fn(),
     };
     mocks.userOwnsConversation.mockResolvedValue(true);
-    mocks.findUserById.mockResolvedValue({
-      id: 42,
+    mocks.findUserById.mockResolvedValue(makeTestUser({
       linux_user: 'tester',
-    });
+    }));
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error('SSH should not be used for E2B history loading');
     });

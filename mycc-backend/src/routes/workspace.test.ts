@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isWorkspaceExecEnabled,
   normalizeWorkspacePath,
@@ -9,8 +9,32 @@ import {
   type WorkspaceRoutesOptions,
 } from './workspace.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../ide/session-store.js';
+import { makeTestUserLookup } from '../test/auth-mocks.js';
 
 const TEST_JWT_SECRET = 'your_jwt_secret_change_in_production';
+
+const mocks = vi.hoisted(() => ({
+  findUserById: vi.fn(),
+}));
+
+vi.mock('../db/client.js', () => ({
+  appendConversationMessages: vi.fn(),
+  checkQuota: vi.fn(),
+  createUser: vi.fn(),
+  findUserByCredential: vi.fn(),
+  findUserById: mocks.findUserById,
+  getConversationMessageSnapshots: vi.fn(),
+  getSubscription: vi.fn(),
+  getUserConversations: vi.fn(),
+  logUsage: vi.fn(),
+  markUserInitialized: vi.fn(),
+  pool: { query: vi.fn() },
+  renameConversation: vi.fn(),
+  updateConversationStats: vi.fn(),
+  updateUserProfile: vi.fn(),
+  upsertConversation: vi.fn(),
+  userOwnsConversation: vi.fn(),
+}));
 
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
@@ -47,6 +71,11 @@ async function buildApp(options: WorkspaceRoutesOptions = {}) {
 }
 
 describe('workspace route helpers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
+  });
+
   afterEach(() => {
     delete process.env.WORKSPACE_EXEC_ENABLED;
   });

@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chatRoutes } from "./chat.js";
 import { InMemoryIdeSessionStore } from "../ide/session-store.js";
+import { makeTestUserLookup } from "../test/auth-mocks.js";
 import {
   __resetOnboardingBootstrapTicketStoreForTests,
   issueOnboardingBootstrapTicket,
@@ -81,7 +82,7 @@ describe("chat E2B project context injection", () => {
     mocks.appendConversationMessages.mockResolvedValue(undefined);
     mocks.checkQuota.mockResolvedValue({ allowed: true, remaining: 1000 });
     mocks.createAgentRuntime.mockReturnValue({ chat: mocks.runtimeChat });
-    mocks.findUserById.mockResolvedValue(null);
+    mocks.findUserById.mockImplementation(makeTestUserLookup());
     mocks.getConversationMessageSnapshots.mockResolvedValue([]);
     mocks.getSSHPool.mockImplementation(() => {
       throw new Error("SSH 连接池未初始化，请先调用 initSSHPool()");

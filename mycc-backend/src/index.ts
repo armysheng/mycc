@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
-import { Template } from 'e2b';
 import { authRoutes } from './routes/auth.js';
 import { chatRoutes } from './routes/chat.js';
 import { assistantRoutes } from './routes/assistant.js';
@@ -11,18 +10,13 @@ import { automationsRoutes } from './routes/automations.js';
 import { onboardingRoutes } from './routes/onboarding.js';
 import { workspaceRoutes } from './routes/workspace.js';
 import { ideRoutes } from './routes/ide.js';
+import { registerReadinessRoutes } from './routes/readiness.js';
 import { pool } from './db/client.js';
 import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
 import { shouldInitializeSshAtStartup, shouldStartAutomationScheduler } from './startup/ssh-startup.js';
-import {
-  buildHealthResponse,
-  buildReadinessResponse,
-  type ReadinessCheck,
-  requireProductionStartupSecrets,
-} from './startup/readiness.js';
+import { requireProductionStartupSecrets } from './startup/readiness.js';
 import { validateRegistry } from './skills/skill-registry.js';
-import { buildE2bAgentPreflightReport } from './ide/e2b-preflight.js';
 import { AutomationScheduler } from './automations/scheduler.js';
 import {
   shouldStartIdeSessionKeepalive,
@@ -62,61 +56,7 @@ function getRuntimeCatalogPath(): string {
   return process.env.SKILLS_CATALOG_DIR || path.join(__dirname, 'skills', 'catalog');
 }
 
-async function checkRuntimeReadiness(): Promise<ReadinessCheck> {
-  const report = await buildE2bAgentPreflightReport({
-    env: process.env,
-    templateExists: (templateName, apiKey) => Template.exists(templateName, { apiKey }),
-  });
-  if (report.ok) {
-    return {
-      status: 'pass',
-      message: 'E2B Agent preflight ready',
-    };
-  }
-  const failing = report.checks
-    .filter((check) => check.status === 'error')
-    .map((check) => check.label)
-    .join(', ');
-  return {
-    status: 'fail',
-    message: failing ? `E2B Agent preflight failed: ${failing}` : 'E2B Agent preflight failed',
-  };
-}
-
-// 存活检查：只证明进程可响应，不代表依赖已就绪。
-fastify.get('/health', async () => buildHealthResponse());
-
-// 就绪检查：用于发布、负载均衡和运维排障。
-fastify.get('/readyz', async (_request, reply) => {
-  const readiness = await buildReadinessResponse({
-    checkDatabase: () => pool.query('SELECT NOW()'),
-    checkSsh: async () => {
-      const sshPool = getSSHPool();
-      return sshPool.testConnection();
-    },
-    validateSkills: () => validateRegistry(getRuntimeCatalogPath()),
-  });
-  if (!readiness.ready) {
-    return reply.status(503).send(readiness);
-  }
-  return readiness;
-});
-
-fastify.get('/readyz/deep', async (_request, reply) => {
-  const readiness = await buildReadinessResponse({
-    checkDatabase: () => pool.query('SELECT NOW()'),
-    checkRuntime: checkRuntimeReadiness,
-    checkSsh: async () => {
-      const sshPool = getSSHPool();
-      return sshPool.testConnection();
-    },
-    validateSkills: () => validateRegistry(getRuntimeCatalogPath()),
-  });
-  if (!readiness.ready) {
-    return reply.status(503).send(readiness);
-  }
-  return readiness;
-});
+await fastify.register(registerReadinessRoutes);
 
 // 注册路由
 await fastify.register(authRoutes);

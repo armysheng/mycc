@@ -2,10 +2,15 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+type SnippetRequirement = string | {
+  label: string;
+  anyOf: string[];
+};
+
 type Check = {
   label: string;
   file: string;
-  snippets: string[];
+  snippets: SnippetRequirement[];
   forbiddenSnippets?: string[];
 };
 
@@ -118,11 +123,51 @@ const checks: Check[] = [
     ],
   },
   {
-    label: 'deep readiness probes E2B Agent runtime preflight',
+    label: 'backend index registers readiness routes',
     file: 'src/index.ts',
     snippets: [
+      "import { registerReadinessRoutes } from './routes/readiness.js';",
+      'await fastify.register(registerReadinessRoutes);',
+    ],
+  },
+  {
+    label: 'deep readiness route exposes protected readiness probes',
+    file: 'src/routes/readiness.ts',
+    snippets: [
       "fastify.get('/readyz/deep'",
-      'checkRuntime: checkRuntimeReadiness',
+      'buildReadinessResponse({',
+      'checkRuntime,',
+    ],
+  },
+  {
+    label: 'deep readiness route requires operator authorization',
+    file: 'src/routes/readiness.ts',
+    snippets: [
+      "fastify.get('/readyz/deep'",
+      'request.headers',
+      {
+        label: 'authorizeDeepReadinessRequest or token protection',
+        anyOf: [
+          'authorizeDeepReadinessRequest({',
+          'MYCC_READYZ_DEEP_TOKEN',
+          'READYZ_DEEP_TOKEN_HEADER',
+        ],
+      },
+      {
+        label: 'unauthorized response',
+        anyOf: [
+          'reply.status(auth.statusCode).send(auth.body)',
+          'reply.status(401)',
+          'readyz_deep_unauthorized',
+        ],
+      },
+    ],
+  },
+  {
+    label: 'deep readiness probes E2B Agent runtime preflight',
+    file: 'src/routes/readiness.ts',
+    snippets: [
+      'checkRuntimeReadiness',
       'buildE2bAgentPreflightReport',
       'Template.exists',
     ],
@@ -281,16 +326,6 @@ const checks: Check[] = [
     ],
   },
   {
-    label: 'deep readiness probes E2B Agent runtime preflight',
-    file: 'src/index.ts',
-    snippets: [
-      "fastify.get('/readyz/deep'",
-      'checkRuntime: checkRuntimeReadiness',
-      'buildE2bAgentPreflightReport',
-      'Template.exists',
-    ],
-  },
-  {
     label: 'IDE sessions are reused by sandbox workspace identity',
     file: 'src/ide/session-store.ts',
     snippets: [
@@ -406,7 +441,14 @@ let failureCount = 0;
 for (const check of checks) {
   const filePath = path.join(backendRoot, check.file);
   const source = readFileSync(filePath, 'utf8');
-  const missing = check.snippets.filter((snippet) => !source.includes(snippet));
+  const missing = check.snippets
+    .map((snippet) => {
+      if (typeof snippet === 'string') {
+        return source.includes(snippet) ? null : snippet;
+      }
+      return snippet.anyOf.some((candidate) => source.includes(candidate)) ? null : snippet.label;
+    })
+    .filter((snippet): snippet is string => snippet !== null);
   const forbidden = (check.forbiddenSnippets ?? []).filter((snippet) => source.includes(snippet));
   if (missing.length > 0 || forbidden.length > 0) {
     failureCount += 1;
