@@ -32,4 +32,20 @@ describe('user workspace template mapping', () => {
     expect(decode(workspaceClaude!.contentBase64)).toContain('~/.claude/about-me/');
     expect(decode(workspaceClaude!.contentBase64)).not.toContain('0-System/about-me');
   });
+
+  it('personalizes Claude home memory files without bootstrap or legacy persona copy', () => {
+    const files = listUserClaudeHomeTemplateFiles({
+      assistantName: '道友 AI',
+      ownerName: '测试用户',
+    });
+    const byPath = new Map(files.map((file) => [file.path, decode(file.contentBase64)]));
+    const combined = [...byPath.values()].join('\n');
+
+    expect(byPath.has('about-me/BOOTSTRAP.md')).toBe(false);
+    expect(byPath.get('about-me/IDENTITY.md')).toContain('名称：道友 AI');
+    expect(byPath.get('about-me/USER.md')).toContain('称呼方式：测试用户');
+    expect(byPath.get('about-me/MEMORY.md')).toContain('助手名称：道友 AI');
+    expect(byPath.get('about-me/MEMORY.md')).toContain('对用户称呼：测试用户');
+    expect(combined).not.toMatch(/大辉哥|老板|主人|\bcc\b/);
+  });
 });

@@ -30,7 +30,7 @@ vi.mock("./layout/Sidebar", () => ({
 vi.mock("../contexts/AuthContext", () => ({
   useAuth: () => ({
     logout: vi.fn(),
-    refreshUser: vi.fn(),
+    refreshUser: vi.fn(() => Promise.resolve()),
     token: "test-token",
     user: {
       assistant_name: "cc",
@@ -105,7 +105,9 @@ function SessionSwitchProbe({ to }: { to: string }) {
 }
 
 function renderChatPage(
-  initialEntry = "/projects/demo",
+  initialEntry:
+    | string
+    | { pathname: string; search?: string; state?: unknown } = "/projects/demo",
   switchToEntry?: string,
 ) {
   render(
@@ -262,6 +264,33 @@ describe("ChatPage workbench dock", () => {
       writable: true,
       value: originalInnerWidth,
     });
+  });
+
+  it("ignores legacy onboarding bootstrap state without sending a hidden chat request", async () => {
+    renderChatPage({
+      pathname: "/projects/demo",
+      state: {
+        onboardingBootstrapPrompt: "旧后端返回的初始化提示",
+      },
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/demo");
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/chat" && init?.method === "POST",
+        ),
+    ).toBe(false);
+    expect(
+      screen.queryByText(/正在为你启动初始化流程/),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the mirrored browser in the chat right dock through the MyCC proxy", async () => {

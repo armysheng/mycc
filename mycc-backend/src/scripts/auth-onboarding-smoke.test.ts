@@ -69,7 +69,7 @@ describe('auth smoke gates', () => {
         return jsonResponse(200, {
           success: true,
           data: {
-            bootstrapPrompt: '初始化完成',
+            status: 'ready',
           },
         });
       }
@@ -121,5 +121,62 @@ describe('auth smoke gates', () => {
       baseUrl: 'http://127.0.0.1:8080',
       fetch: fetchMock,
     })).rejects.toThrow(/internal auth detail/i);
+  });
+
+  it('onboarding smoke rejects camelCase linux user details and legacy bootstrap prompts', async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/register')) {
+        return jsonResponse(201, {
+          success: true,
+          data: {
+            token: 'jwt-token',
+            user: { id: 18, email: 'smoke@example.test', is_initialized: false },
+          },
+        });
+      }
+      if (url.endsWith('/api/onboarding/initialize')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            linuxUser: 'mycc_u18',
+            bootstrapPrompt: '请调用 /api/chat 完成初始化',
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await expect(runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    })).rejects.toThrow(/internal auth detail/i);
+  });
+
+  it('onboarding smoke rejects legacy bootstrap-only initialize responses', async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/register')) {
+        return jsonResponse(201, {
+          success: true,
+          data: {
+            token: 'jwt-token',
+            user: { id: 18, email: 'smoke@example.test', is_initialized: false },
+          },
+        });
+      }
+      if (url.endsWith('/api/onboarding/initialize')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            bootstrapPrompt: '初始化完成',
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await expect(runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    })).rejects.toThrow(/ready status/i);
   });
 });

@@ -8,9 +8,13 @@ type SmokeOptions = {
 };
 
 type JsonObject = Record<string, unknown>;
+type OnboardingInitializeData = {
+  status?: unknown;
+  bootstrapPrompt?: unknown;
+};
 
 const GENERIC_LOGIN_ERROR = '手机号/邮箱或密码错误';
-const INTERNAL_DETAIL_PATTERN = /linux_user|mycc_u\d+|用户不存在/i;
+const INTERNAL_DETAIL_PATTERN = /linux_user|mycc_u\d+|用户不存在|linuxUser/i;
 
 function resolveBaseUrl(baseUrl?: string): string {
   return (baseUrl || process.env.BASE_URL || process.env.MYCC_AUTH_SMOKE_BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
@@ -80,6 +84,12 @@ function readToken(body: JsonObject): string {
   return data.token;
 }
 
+function readInitializeData(body: JsonObject): OnboardingInitializeData {
+  const data = body.data;
+  if (!data || typeof data !== 'object') return {};
+  return data as OnboardingInitializeData;
+}
+
 export async function runAuthPrivacySmoke(options: SmokeOptions = {}): Promise<void> {
   const baseUrl = resolveBaseUrl(options.baseUrl);
   const fetchImpl = resolveFetch(options.fetch);
@@ -122,6 +132,13 @@ export async function runAuthOnboardingSmoke(options: SmokeOptions = {}): Promis
   }, token);
   if (!initialized.response.ok || initialized.json.success !== true) {
     throw new Error(`onboarding initialize failed status=${initialized.response.status}`);
+  }
+  const initializedData = readInitializeData(initialized.json);
+  if (initializedData.status !== 'ready') {
+    throw new Error('onboarding initialize response did not report ready status');
+  }
+  if (initializedData.bootstrapPrompt !== undefined) {
+    throw new Error('onboarding initialize response exposed a bootstrap prompt');
   }
 
   const currentUser = await getJson(fetchImpl, baseUrl, '/api/auth/me', token);

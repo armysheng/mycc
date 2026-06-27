@@ -47,11 +47,9 @@ import {
   getNetworkErrorMessage,
   parseApiErrorResponse,
 } from "../utils/apiError";
-import { clearOnboardingBootstrapPendingIfInitialized } from "../utils/onboardingBootstrapState";
 import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
 import { PRODUCT_COPY, toProjectSpaceLabel } from "../utils/productCopy";
 
-const ONBOARDING_BOOTSTRAP_TIMEOUT_MS = 120_000;
 const DEFAULT_WORKSPACE_REQUEST_PATH = "~/workspace";
 const DEFAULT_WORKSPACE_LABEL = PRODUCT_COPY.defaultProjectSpace;
 
@@ -145,8 +143,7 @@ export function ChatPage() {
   );
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
   const slashSkillsFetchInFlightRef = useRef(false);
-  const { token, user, refreshUser } = useAuth();
-  const onboardingBootstrapStartedRef = useRef(false);
+  const { token, user } = useAuth();
 
   const assistantDisplayName =
     user?.assistant_name?.trim() || PRODUCT_COPY.assistantNameFallback;
@@ -1091,84 +1088,6 @@ export function ChatPage() {
     // 旧对话正文读不出来时，保留上下文入口，但后续发送从新会话接上。
     setCurrentSessionId(null);
   }, [sessionId, historyError, historyErrorStatus, setCurrentSessionId]);
-
-  useEffect(() => {
-    const state = location.state as {
-      onboardingBootstrapPrompt?: string;
-    } | null;
-    const bootstrapPrompt =
-      typeof state?.onboardingBootstrapPrompt === "string"
-        ? state.onboardingBootstrapPrompt.trim()
-        : "";
-    if (!bootstrapPrompt) return;
-    if (onboardingBootstrapStartedRef.current) return;
-    if (isHistoryView || historyLoading || isLoading) return;
-    if (sessionId || currentSessionId) return;
-    if (messages.length > 0) return;
-
-    onboardingBootstrapStartedRef.current = true;
-    navigate(location.pathname + location.search, {
-      replace: true,
-      state: null,
-    });
-    addMessage({
-      type: "chat",
-      role: "assistant",
-      content:
-        "正在为你启动初始化流程。你现在可以继续对话，我会在这个会话里完成配置。",
-      timestamp: Date.now(),
-    });
-    void (async () => {
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      try {
-        await Promise.race([
-          sendMessage(bootstrapPrompt, undefined, true),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              reject(new Error("onboarding_bootstrap_timeout"));
-            }, ONBOARDING_BOOTSTRAP_TIMEOUT_MS);
-          }),
-        ]);
-      } catch (err) {
-        console.error(
-          "[OnboardingBootstrap] send bootstrap prompt failed:",
-          err,
-        );
-        addMessage({
-          type: "chat",
-          role: "assistant",
-          content:
-            "初始化提示发送超时或失败，但你可以继续对话；只要 CLAUDE.md 里的初始化标识还在，助手会继续完成初始化。",
-          timestamp: Date.now(),
-        });
-        return;
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-      void refreshUser()
-        .then(clearOnboardingBootstrapPendingIfInitialized)
-        .catch((err) => {
-          console.error(
-            "[OnboardingBootstrap] refresh user after initialize failed:",
-            err,
-          );
-        });
-    })();
-  }, [
-    location.state,
-    location.pathname,
-    location.search,
-    navigate,
-    isHistoryView,
-    historyLoading,
-    isLoading,
-    sessionId,
-    currentSessionId,
-    messages.length,
-    addMessage,
-    sendMessage,
-    refreshUser,
-  ]);
 
   const isAssistantHomeView =
     !isHistoryView && messages.length === 0 && !isLoadedConversation;
