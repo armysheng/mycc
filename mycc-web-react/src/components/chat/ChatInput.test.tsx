@@ -34,11 +34,13 @@ describe("ChatInput", () => {
   it("renders a focused hero composer for the new-chat surface", () => {
     renderChatInput({
       variant: "hero",
-      placeholder: "描述你想完成的事，MyCC 会帮你拆解并执行…",
+      placeholder: "描述你想完成的事，道友 AI 会帮你拆解并执行…",
     });
 
     expect(
-      screen.getByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…"),
+      screen.getByPlaceholderText(
+        "描述你想完成的事，道友 AI 会帮你拆解并执行…",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "自动执行" }),

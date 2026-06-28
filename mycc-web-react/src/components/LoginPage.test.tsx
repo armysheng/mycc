@@ -20,7 +20,7 @@ describe("LoginPage", () => {
   it("uses personal-assistant copy without implementation terminology", () => {
     render(<LoginPage />);
 
-    expect(screen.getByText("MyCC Personal Assistant")).toBeInTheDocument();
+    expect(screen.getByText("道友 AI 个人助理")).toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 });

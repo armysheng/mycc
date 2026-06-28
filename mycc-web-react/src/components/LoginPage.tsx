@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
 import { login as apiLogin, register as apiRegister } from "../api/auth";
+import { PRODUCT_COPY } from "../utils/productCopy";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -90,7 +91,7 @@ export function LoginPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-[var(--text-secondary)]">
               <SparklesIcon className="h-4 w-4" />
-              MyCC Personal Assistant
+              {PRODUCT_COPY.brandName} 个人助理
             </div>
             <h1
               className="mt-6 text-4xl font-semibold tracking-tight text-[var(--text-primary)]"
@@ -105,16 +106,28 @@ export function LoginPage() {
 
           <div className="grid grid-cols-3 gap-3 mt-8">
             <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">多用户</div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">个人空间彼此独立</div>
+              <div className="text-lg font-semibold text-[var(--text-primary)]">
+                多用户
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-muted)]">
+                个人空间彼此独立
+              </div>
             </div>
             <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">技能化</div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">工具能力可配置</div>
+              <div className="text-lg font-semibold text-[var(--text-primary)]">
+                技能化
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-muted)]">
+                工具能力可配置
+              </div>
             </div>
             <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">可运营</div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">额度与权限策略</div>
+              <div className="text-lg font-semibold text-[var(--text-primary)]">
+                可运营
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-muted)]">
+                额度与权限策略
+              </div>
             </div>
           </div>
         </section>
@@ -135,16 +148,18 @@ export function LoginPage() {
                   "linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)",
               }}
             >
-              cc
+              道友
             </div>
             <div>
               <div
                 className="text-base font-semibold text-[var(--text-primary)]"
                 style={{ fontFamily: "var(--font-display)" }}
               >
-                MyCC
+                {PRODUCT_COPY.brandName}
               </div>
-              <div className="text-xs text-[var(--text-muted)]">你的多用户助手入口</div>
+              <div className="text-xs text-[var(--text-muted)]">
+                {PRODUCT_COPY.companyName}出品
+              </div>
             </div>
           </div>
 

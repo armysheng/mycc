@@ -252,16 +252,18 @@ describe("SkillsPage", () => {
     expect(
       await screen.findByRole("heading", { name: "技能市场" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "我的技能" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "我的技能" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("可见浏览器自动化")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "在 MyCC 右侧助理浏览器里打开、检查、登录和自动操作网页",
+        "在 道友 AI 右侧助理浏览器里打开、检查、登录和自动操作网页",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/CC 电脑/)).not.toBeInTheDocument();
     expect(screen.getByText("PDF 工具")).toBeInTheDocument();
-    expect(screen.getAllByText("作者 MyCC").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("作者 道友 AI").length).toBeGreaterThan(0);
     expect(screen.getAllByText("内置").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/可完成/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/试试/).length).toBeGreaterThan(0);
@@ -321,7 +323,9 @@ describe("SkillsPage", () => {
 
     expect(await screen.findByText("技能运行环境未就绪")).toBeInTheDocument();
     expect(
-      screen.getByText(/可以先浏览技能说明；添加、更新和移除会在运行环境恢复后可用/),
+      screen.getByText(
+        /可以先浏览技能说明；添加、更新和移除会在运行环境恢复后可用/,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("添加位置")).toBeInTheDocument();
     expect(screen.getByText("助理技能库/{skillName}")).toBeInTheDocument();
@@ -395,7 +399,9 @@ describe("SkillsPage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看 PDF 工具 详情" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看 PDF 工具 详情" }),
+    );
 
     expect(await screen.findByText("技能运行环境未就绪")).toBeInTheDocument();
     expect(screen.getByText(/当前可以查看技能说明/)).toBeInTheDocument();
@@ -431,7 +437,9 @@ describe("SkillsPage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /添加 PDF 工具/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /添加 PDF 工具/ }),
+    );
 
     await waitFor(() =>
       expect(installSkill).toHaveBeenCalledWith("token-1", "pdf"),
@@ -443,7 +451,9 @@ describe("SkillsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "立即试用 PDF 工具" }));
 
-    await waitFor(() => expect(useSkill).toHaveBeenCalledWith("token-1", "pdf"));
+    await waitFor(() =>
+      expect(useSkill).toHaveBeenCalledWith("token-1", "pdf"),
+    );
   });
 
   it("opens a product-facing skill detail page without raw runtime content", async () => {
@@ -474,7 +484,9 @@ describe("SkillsPage", () => {
     expect(
       screen.getByRole("button", { name: "能力说明" }),
     ).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain("Browser Use In MyCC Sandbox");
+    expect(document.body.textContent).not.toContain(
+      "Browser Use In MyCC Sandbox",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "使用要求" }));
 

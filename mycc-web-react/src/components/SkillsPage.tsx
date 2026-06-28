@@ -23,11 +23,11 @@ import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { InlineAlert } from "./ui/InlineAlert";
 import { useAuth } from "../contexts/AuthContext";
 import {
-	  installSkill,
-	  listSkills,
-	  uninstallSkill,
-	  updateSkill,
-	  useSkill as recordSkillUse,
+  installSkill,
+  listSkills,
+  uninstallSkill,
+  updateSkill,
+  useSkill as recordSkillUse,
   type SkillActionResult,
   type SkillDetailResult,
   type SkillDebugSnapshot,
@@ -116,7 +116,11 @@ function skillCategory(skill: SkillItem): CategoryKey {
     return "document";
   if (/(data|csv|table|sheet|chart|数据|表格|可视化|分析)/i.test(text))
     return "data";
-  if (/(code|dev|cli|api|debug|test|qa|开发|代码|运行|解释器|检查|诊断|creator|installer)/i.test(text))
+  if (
+    /(code|dev|cli|api|debug|test|qa|开发|代码|运行|解释器|检查|诊断|creator|installer)/i.test(
+      text,
+    )
+  )
     return "develop";
   return "all";
 }
@@ -197,7 +201,10 @@ function skillRuntimeLabel(skill: SkillItem) {
   return "标准技能";
 }
 
-function skillDependencyLabel(skill: SkillItem, detail: SkillDetailResult | null) {
+function skillDependencyLabel(
+  skill: SkillItem,
+  detail: SkillDetailResult | null,
+) {
   if (skill.imageRequired) return "需要专用能力支持";
   if (detail?.definition?.deps?.length) return "已内置所需工具";
   return "无需额外准备";
@@ -241,7 +248,7 @@ function sortSkills(skills: SkillItem[]) {
 }
 
 function authorLabel(skill: SkillItem) {
-  if (skill.owner === "system") return "MyCC";
+  if (skill.owner === "system") return PRODUCT_COPY.brandName;
   return skill.owner || sourceLabel(skill.source);
 }
 
@@ -584,7 +591,9 @@ function CapabilityOverview({
   compact?: boolean;
 }) {
   const installedSkills = sortSkills(skills.filter((skill) => skill.installed));
-  const availableSkills = sortSkills(skills.filter((skill) => !skill.installed));
+  const availableSkills = sortSkills(
+    skills.filter((skill) => !skill.installed),
+  );
   const featured = installedSkills.slice(0, compact ? 2 : 3);
 
   if (installedSkills.length === 0) return null;
@@ -647,7 +656,8 @@ function CapabilityOverview({
                     {skillDisplayName(skill)}
                   </div>
                   <div className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    {skill.installed ? "已启用" : "可添加"} · {categoryLabel(skill)}
+                    {skill.installed ? "已启用" : "可添加"} ·{" "}
+                    {categoryLabel(skill)}
                   </div>
                 </div>
               </div>
@@ -909,7 +919,7 @@ function SkillDetailTabContent({
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-subtle)] text-[11px] font-semibold text-[var(--accent)]">
                   3
                 </span>
-                <span>cc 会按需调用技能，并把结果回到当前对话。</span>
+                <span>助理会按需调用技能，并把结果回到当前对话。</span>
               </li>
             </ol>
           </section>
@@ -922,7 +932,7 @@ function SkillDetailTabContent({
             </p>
             <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">
               {skill.installed
-                ? `已添加到${PRODUCT_COPY.assistantSkillLibrary}，cc 会在合适的对话中按需使用。`
+                ? `已添加到${PRODUCT_COPY.assistantSkillLibrary}，助理会在合适的对话中按需使用。`
                 : runtimeReady
                   ? `添加后会进入${PRODUCT_COPY.assistantSkillLibrary}。`
                   : `当前只能浏览说明，运行环境恢复后会添加到${PRODUCT_COPY.assistantSkillLibrary}。`}
@@ -970,15 +980,9 @@ function SkillDetailTabContent({
           label="默认状态"
           value={detail?.definition?.defaultEnabled ? "是" : "否"}
         />
-        <DetailMetaItem
-          label="能力准备"
-          value={skillRuntimeLabel(skill)}
-        />
+        <DetailMetaItem label="能力准备" value={skillRuntimeLabel(skill)} />
         <DetailMetaItem label="来源" value={sourceLabel(skill.source)} />
-        <DetailMetaItem
-          label="检查状态"
-          value={skillValidationLabel(detail)}
-        />
+        <DetailMetaItem label="检查状态" value={skillValidationLabel(detail)} />
       </div>
     );
   }
@@ -1167,8 +1171,9 @@ export function SkillsPage() {
   const [activeView, setActiveView] = useState<ViewKey>("market");
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] =
-    useState<SkillActionMessage | null>(null);
+  const [actionMessage, setActionMessage] = useState<SkillActionMessage | null>(
+    null,
+  );
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState<string | null>(null);
@@ -1181,8 +1186,7 @@ export function SkillsPage() {
   );
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [activeDetailTab, setActiveDetailTab] =
-    useState<DetailTabKey>("usage");
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTabKey>("usage");
   const [uninstallTarget, setUninstallTarget] = useState<SkillItem | null>(
     null,
   );
@@ -1298,8 +1302,8 @@ export function SkillsPage() {
   const handleUseSkill = useCallback(
     async (skill: SkillItem) => {
       if (token) {
-	        try {
-	          await recordSkillUse(token, skill.id);
+        try {
+          await recordSkillUse(token, skill.id);
         } catch {
           // 使用埋点失败不阻断跳转，用户的主动作是进入聊天试用。
         }
@@ -1395,7 +1399,7 @@ export function SkillsPage() {
   const viewSubtitle =
     activeView === "market"
       ? `浏览技能市场；已启用的技能会保留状态，未启用的可以添加到${PRODUCT_COPY.assistantSkillLibrary}。`
-      : `管理已经启用的技能，cc 会在合适的对话中使用它们。`;
+      : `管理已经启用的技能，助理会在合适的对话中使用它们。`;
   const showCapabilityOverview =
     !selectedSkill && !loading && activeView === "installed";
   const assistantSkillRoot = skillLibraryRoot();
@@ -1420,10 +1424,10 @@ export function SkillsPage() {
                 {PRODUCT_COPY.assistantSkillLibrary}
               </h1>
               <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-	                给 cc 添加可用能力；添加后进入{" "}
-	                <code className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-xs">
-	                  {assistantSkillRoot}
-	                </code>
+                给助理添加可用能力；添加后进入{" "}
+                <code className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-xs">
+                  {assistantSkillRoot}
+                </code>
                 ，已启用的技能会在对话中按需使用。
               </p>
             </div>
@@ -1524,10 +1528,10 @@ export function SkillsPage() {
               <div className="mt-3 flex flex-col gap-2 rounded-md border bg-[var(--bg-elevated)]/45 px-3 py-2 text-xs text-[var(--text-secondary)] sm:flex-row sm:items-center sm:justify-between">
                 <span className="inline-flex items-center gap-1.5 font-medium text-[var(--text-primary)]">
                   <ShieldCheckIcon className="h-3.5 w-3.5 text-[var(--accent)]" />
-	                  添加位置
-	                  <code className="font-mono text-[var(--text-secondary)]">
-	                    {skillLibraryPath("{skillName}")}
-	                  </code>
+                  添加位置
+                  <code className="font-mono text-[var(--text-secondary)]">
+                    {skillLibraryPath("{skillName}")}
+                  </code>
                 </span>
                 <span
                   className={`inline-flex items-center gap-1.5 font-medium ${
@@ -1540,8 +1544,8 @@ export function SkillsPage() {
                   {catalogAvailable ? "运行环境已连接" : "当前只读浏览"}
                 </span>
               </div>
-              </section>
-            )}
+            </section>
+          )}
 
           {error && (
             <InlineAlert severity="error" title="系统错误">

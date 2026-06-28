@@ -1,6 +1,7 @@
 export const PRODUCT_COPY = {
-  brandName: "MyCC",
-  assistantNameFallback: "cc",
+  brandName: "道友 AI",
+  companyName: "念头通达",
+  assistantNameFallback: "道友 AI",
   resultsSpace: "成果空间",
   assistantBrowser: "助理浏览器",
   processingActivity: "处理动态",
@@ -23,6 +24,14 @@ export function toProjectSpaceLabel(label?: string | null): string {
     .replace(/工作区/g, PRODUCT_COPY.projectSpace);
 }
 
+export function toAssistantDisplayName(name?: string | null): string {
+  const trimmed = name?.trim();
+  if (!trimmed || /^(cc|mycc)$/i.test(trimmed)) {
+    return PRODUCT_COPY.assistantNameFallback;
+  }
+  return trimmed;
+}
+
 export function toUserFacingWorkspaceCopy(message: string): string {
   return message
     .replace(/默认工作区/g, PRODUCT_COPY.defaultProjectSpace)
@@ -37,6 +46,7 @@ export function toUserFacingWorkspaceCopy(message: string): string {
 
 export function toUserFacingSkillCopy(message: string): string {
   return toUserFacingWorkspaceCopy(message)
+    .replace(/\bMyCC\b/g, PRODUCT_COPY.brandName)
     .replace(/\bE2B\b/gi, PRODUCT_COPY.projectFiles)
     .replace(/\bAgent SDK\b/gi, "助理能力")
     .replace(/\bcode-server\b/gi, "编辑器")

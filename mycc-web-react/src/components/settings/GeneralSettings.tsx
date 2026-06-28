@@ -21,6 +21,7 @@ import {
   type BillingPlansResponse,
   type BillingSubscription,
 } from "../../api/billing";
+import { toAssistantDisplayName } from "../../utils/productCopy";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
 
@@ -35,7 +36,13 @@ function toUserFacingBillingError(text: string) {
     .replace(/\btoken\b/gi, "额度");
 }
 
-function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
+function SectionTitle({
+  icon,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+}) {
   return (
     <div className="mb-3 flex items-center gap-2">
       <div className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -67,8 +74,12 @@ function ToggleRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</div>
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</div>
+          <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            {title}
+          </div>
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {description}
+          </div>
         </div>
         <span
           className={`mt-0.5 inline-flex h-5 w-9 rounded-full p-[2px] transition-colors ${
@@ -101,23 +112,32 @@ export function GeneralSettings() {
   } = useSettings();
   const { user, token, refreshUser } = useAuth();
 
-  const [assistantNameDraft, setAssistantNameDraft] = useState(user?.assistant_name || "");
+  const [assistantNameDraft, setAssistantNameDraft] = useState(
+    user?.assistant_name || "",
+  );
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState("");
   const [profileSaveSuccess, setProfileSaveSuccess] = useState("");
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
-  const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [subscription, setSubscription] = useState<BillingSubscription | null>(
+    null,
+  );
   const [plansData, setPlansData] = useState<BillingPlansResponse | null>(null);
-  const [upgradingPlan, setUpgradingPlan] = useState<"basic" | "pro" | null>(null);
+  const [upgradingPlan, setUpgradingPlan] = useState<"basic" | "pro" | null>(
+    null,
+  );
 
   useEffect(() => {
     setAssistantNameDraft(user?.assistant_name || "");
   }, [user?.assistant_name]);
 
-  const assistantDisplayName = user?.assistant_name?.trim() || "cc";
+  const assistantDisplayName = toAssistantDisplayName(user?.assistant_name);
   const accountName = user?.email || user?.phone || "未登录用户";
-  const accountSubtitle = user?.email || user?.phone ? `助手：${assistantDisplayName}` : "账号信息待完善";
+  const accountSubtitle =
+    user?.email || user?.phone
+      ? `助手：${assistantDisplayName}`
+      : "账号信息待完善";
   const avatarChar = accountName.charAt(0).toUpperCase();
 
   const handleSaveProfile = async () => {
@@ -165,7 +185,11 @@ export function GeneralSettings() {
         }
       } catch (error) {
         if (!cancelled) {
-          setBillingError(error instanceof Error ? toUserFacingBillingError(error.message) : "加载套餐信息失败");
+          setBillingError(
+            error instanceof Error
+              ? toUserFacingBillingError(error.message)
+              : "加载套餐信息失败",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -194,7 +218,11 @@ export function GeneralSettings() {
       setPlansData(plans);
       await refreshUser();
     } catch (error) {
-      setBillingError(error instanceof Error ? toUserFacingBillingError(error.message) : "升级失败，请稍后重试");
+      setBillingError(
+        error instanceof Error
+          ? toUserFacingBillingError(error.message)
+          : "升级失败，请稍后重试",
+      );
     } finally {
       setUpgradingPlan(null);
     }
@@ -203,10 +231,15 @@ export function GeneralSettings() {
   return (
     <div className="space-y-6">
       <section>
-        <SectionTitle icon={<BanknotesIcon className="h-4 w-4" />} title="套餐与额度" />
+        <SectionTitle
+          icon={<BanknotesIcon className="h-4 w-4" />}
+          title="套餐与额度"
+        />
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/65">
           {billingLoading && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">正在加载套餐信息...</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              正在加载套餐信息...
+            </p>
           )}
           {billingError && (
             <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
@@ -222,7 +255,9 @@ export function GeneralSettings() {
                     当前套餐：{subscription.plan_name}
                   </p>
                   <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                    本月剩余额度 {subscription.tokens_remaining.toLocaleString()} / {subscription.tokens_limit.toLocaleString()}
+                    本月剩余额度{" "}
+                    {subscription.tokens_remaining.toLocaleString()} /{" "}
+                    {subscription.tokens_limit.toLocaleString()}
                   </p>
                 </div>
                 <div className="text-right">
@@ -237,11 +272,14 @@ export function GeneralSettings() {
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                 <div
                   className="h-full rounded-full bg-amber-500"
-                  style={{ width: `${Math.min(100, Math.max(0, subscription.usage_percentage))}%` }}
+                  style={{
+                    width: `${Math.min(100, Math.max(0, subscription.usage_percentage))}%`,
+                  }}
                 />
               </div>
               <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                额度重置时间：{new Date(subscription.reset_at).toLocaleString("zh-CN")}
+                额度重置时间：
+                {new Date(subscription.reset_at).toLocaleString("zh-CN")}
               </p>
             </div>
           )}
@@ -263,7 +301,9 @@ export function GeneralSettings() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{plan.name}</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {plan.name}
+                        </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">
                           {toUserFacingQuotaText(plan.description)}
                         </p>
@@ -285,12 +325,18 @@ export function GeneralSettings() {
                     </p>
                     <ul className="mt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
                       {plan.highlights.slice(0, 2).map((highlight) => (
-                        <li key={highlight}>- {toUserFacingQuotaText(highlight)}</li>
+                        <li key={highlight}>
+                          - {toUserFacingQuotaText(highlight)}
+                        </li>
                       ))}
                     </ul>
                     <button
                       type="button"
-                      disabled={!plan.can_upgrade || plan.is_current || upgradingPlan === plan.id}
+                      disabled={
+                        !plan.can_upgrade ||
+                        plan.is_current ||
+                        upgradingPlan === plan.id
+                      }
                       onClick={() => handleUpgradePlan(plan.id)}
                       className={`mt-3 w-full rounded-md px-3 py-1.5 text-xs font-semibold transition ${
                         plan.can_upgrade && !plan.is_current
@@ -298,7 +344,11 @@ export function GeneralSettings() {
                           : "cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
                       }`}
                     >
-                      {plan.is_current ? "当前套餐" : upgradingPlan === plan.id ? "升级中..." : "升级到此套餐"}
+                      {plan.is_current
+                        ? "当前套餐"
+                        : upgradingPlan === plan.id
+                          ? "升级中..."
+                          : "升级到此套餐"}
                     </button>
                   </div>
                 ))}
@@ -309,19 +359,28 @@ export function GeneralSettings() {
       </section>
 
       <section>
-        <SectionTitle icon={<UserCircleIcon className="h-4 w-4" />} title="个人信息" />
+        <SectionTitle
+          icon={<UserCircleIcon className="h-4 w-4" />}
+          title="个人信息"
+        />
         <div className="rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/65">
           <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200/70 bg-gradient-to-r from-amber-50 to-stone-50 p-3 dark:border-amber-800/40 dark:from-amber-950/20 dark:to-slate-900">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white dark:bg-amber-100 dark:text-slate-900">
               {avatarChar || "U"}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{accountName}</p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{accountSubtitle}</p>
+              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                {accountName}
+              </p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                {accountSubtitle}
+              </p>
             </div>
           </div>
 
-          <label className="mb-1 mt-3 block text-xs font-medium text-slate-600 dark:text-slate-300">助手名称</label>
+          <label className="mb-1 mt-3 block text-xs font-medium text-slate-600 dark:text-slate-300">
+            助手名称
+          </label>
           <input
             value={assistantNameDraft}
             onChange={(event) => setAssistantNameDraft(event.target.value)}
@@ -347,13 +406,18 @@ export function GeneralSettings() {
             <p className="mt-2 text-[11px] text-red-500">{profileSaveError}</p>
           )}
           {profileSaveSuccess && (
-            <p className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">{profileSaveSuccess}</p>
+            <p className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+              {profileSaveSuccess}
+            </p>
           )}
         </div>
       </section>
 
       <section>
-        <SectionTitle icon={<CommandLineIcon className="h-4 w-4" />} title="对话偏好" />
+        <SectionTitle
+          icon={<CommandLineIcon className="h-4 w-4" />}
+          title="对话偏好"
+        />
         <div className="space-y-2">
           <ToggleRow
             title="发送方式"
@@ -400,17 +464,23 @@ export function GeneralSettings() {
                 {theme === "light" ? "浅色模式" : "深色模式"}
               </span>
             </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">点击切换</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              点击切换
+            </span>
           </button>
 
           <div className="rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-            <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">字号</div>
+            <div className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+              字号
+            </div>
             <div className="grid grid-cols-3 gap-2">
-              {([
-                ["sm", "小"],
-                ["md", "中"],
-                ["lg", "大"],
-              ] as [FontSize, string][]).map(([size, label]) => (
+              {(
+                [
+                  ["sm", "小"],
+                  ["md", "中"],
+                  ["lg", "大"],
+                ] as [FontSize, string][]
+              ).map(([size, label]) => (
                 <button
                   key={size}
                   type="button"
@@ -430,19 +500,31 @@ export function GeneralSettings() {
       </section>
 
       <section>
-        <SectionTitle icon={<InformationCircleIcon className="h-4 w-4" />} title="关于" />
+        <SectionTitle
+          icon={<InformationCircleIcon className="h-4 w-4" />}
+          title="关于"
+        />
         <div className="space-y-1 rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
-          <p>MyCC Web</p>
+          <p>道友 AI Web</p>
           <p>Version: {APP_VERSION}</p>
-          <p className="text-slate-500 dark:text-slate-400">面向个人助理协作的多用户前端。</p>
+          <p className="text-slate-500 dark:text-slate-400">
+            面向个人助理协作的多用户前端。
+          </p>
         </div>
       </section>
 
       <section>
-        <SectionTitle icon={<WrenchScrewdriverIcon className="h-4 w-4" />} title="无障碍提示" />
-        <div aria-live="polite" className="rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
+        <SectionTitle
+          icon={<WrenchScrewdriverIcon className="h-4 w-4" />}
+          title="无障碍提示"
+        />
+        <div
+          aria-live="polite"
+          className="rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
+        >
           当前主题：{theme === "light" ? "浅色" : "深色"}；发送方式：
-          {enterBehavior === "send" ? "Enter 发送" : "Enter 换行"}；字号：{fontSize}
+          {enterBehavior === "send" ? "Enter 发送" : "Enter 换行"}；字号：
+          {fontSize}
         </div>
       </section>
     </div>

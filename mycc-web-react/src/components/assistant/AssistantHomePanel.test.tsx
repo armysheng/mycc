@@ -74,7 +74,7 @@ describe("AssistantHomePanel", () => {
       />,
     );
 
-    expect(screen.getByText("MyCC 个人助理")).toBeInTheDocument();
+    expect(screen.getByText("道友 AI 个人助理")).toBeInTheDocument();
     expect(screen.getByText("今天想让 小麦 帮你做什么？")).toBeInTheDocument();
     expect(screen.queryByText(/mycc-main/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Personal Assistant/i)).not.toBeInTheDocument();
@@ -90,9 +90,13 @@ describe("AssistantHomePanel", () => {
       />,
     );
 
-    expect(screen.getByText("我们应该在 mycc-main 中构建什么？")).toBeInTheDocument();
+    expect(
+      screen.getByText("我们应该在 mycc-main 中构建什么？"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("home-input-slot")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开成果空间" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开成果空间" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("mycc-main")).toBeInTheDocument();
     expect(screen.queryByText("最近可以继续")).not.toBeInTheDocument();
     expect(screen.queryByText("助理记忆")).not.toBeInTheDocument();
@@ -104,7 +108,9 @@ describe("AssistantHomePanel", () => {
     render(<AssistantHomePanel assistantName="小麦" data={baseData} />);
 
     expect(screen.queryByText("最近会话")).not.toBeInTheDocument();
-    expect(screen.queryByText(/blocked|completed|failed|verified/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/blocked|completed|failed|verified/i),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("已完成")).not.toBeInTheDocument();
     expect(screen.queryByText("失败")).not.toBeInTheDocument();
   });
@@ -120,7 +126,8 @@ describe("AssistantHomePanel", () => {
               id: "session_bootstrap",
               source: "conversation",
               status: "recent",
-              title: "你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。",
+              title:
+                "你正在执行用户工作区首次初始化。请直接在文件系统中完成，不要只输出建议。",
               messageCount: 1,
               description: "最近会话，可继续让助理接着处理。",
             },
@@ -161,10 +168,16 @@ describe("AssistantHomePanel", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "继续：整理当前项目状态" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "继续：整理当前项目状态" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/首次初始化/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "继续：continue" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "继续：accept" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "继续：continue" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "继续：accept" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/初始化流程执行失败/)).not.toBeInTheDocument();
   });
 
@@ -212,9 +225,15 @@ describe("AssistantHomePanel", () => {
       />,
     );
 
-    expect(screen.getAllByRole("button", { name: "继续：整理当前项目状态" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "继续：总结今天产品进展" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "继续：最近会话" })).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "继续：整理当前项目状态" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: "继续：总结今天产品进展" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "继续：最近会话" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the selected recent conversation instead of turning it into a new prompt", () => {
@@ -229,12 +248,16 @@ describe("AssistantHomePanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "继续：调研 Claude Code UI" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "继续：调研 Claude Code UI" }),
+    );
 
-    expect(onContinueTask).toHaveBeenCalledWith(expect.objectContaining({
-      id: "session_abc",
-      source: "conversation",
-    }));
+    expect(onContinueTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "session_abc",
+        source: "conversation",
+      }),
+    );
     expect(onStartPrompt).not.toHaveBeenCalled();
   });
 
@@ -266,14 +289,18 @@ describe("AssistantHomePanel", () => {
     expect(screen.getByText("Claude UI 调研报告")).toBeInTheDocument();
     expect(screen.getByText("报告")).toBeInTheDocument();
     expect(screen.getByText("来自当前项目文件")).toBeInTheDocument();
-    expect(screen.queryByText("/docs/research-report.md")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("/docs/research-report.md"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("current_workspace")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "打开成果" }));
-    expect(onOpenDeliverable).toHaveBeenCalledWith(expect.objectContaining({
-      id: "workspace:/docs/research-report.md",
-      path: "/docs/research-report.md",
-    }));
+    expect(onOpenDeliverable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "workspace:/docs/research-report.md",
+        path: "/docs/research-report.md",
+      }),
+    );
   });
 
   it("shows a compact recent deliverables tray without taking over the new-chat surface", () => {
@@ -407,7 +434,7 @@ describe("AssistantHomePanel", () => {
   });
 
   it("does not render raw launch URLs or secret-like provider fields", () => {
-    const unsafeData = ({
+    const unsafeData = {
       ...baseData,
       capabilities: [
         {
@@ -419,7 +446,7 @@ describe("AssistantHomePanel", () => {
           providerUrl: "https://provider.example.com/secret-route",
         },
       ],
-    } as unknown) as AssistantHomeData;
+    } as unknown as AssistantHomeData;
 
     render(<AssistantHomePanel assistantName="小麦" data={unsafeData} />);
 
@@ -427,8 +454,12 @@ describe("AssistantHomePanel", () => {
     expect(screen.queryByText(/token=/)).not.toBeInTheDocument();
     expect(screen.queryByText(/sbx_secret_123/)).not.toBeInTheDocument();
     expect(screen.queryByText(/e2b\.app/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/e2b_live_secret_123456/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/provider\.example\.com/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/e2b_live_secret_123456/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/provider\.example\.com/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/\be2b\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\bsandbox\b/i)).not.toBeInTheDocument();
   });
