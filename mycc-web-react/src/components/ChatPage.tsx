@@ -48,7 +48,11 @@ import {
   parseApiErrorResponse,
 } from "../utils/apiError";
 import { resolveDeliverableOpenTarget } from "../utils/deliverableNavigation";
-import { PRODUCT_COPY, toProjectSpaceLabel } from "../utils/productCopy";
+import {
+  PRODUCT_COPY,
+  toAssistantDisplayName,
+  toProjectSpaceLabel,
+} from "../utils/productCopy";
 
 const DEFAULT_WORKSPACE_REQUEST_PATH = "~/workspace";
 const DEFAULT_WORKSPACE_LABEL = PRODUCT_COPY.defaultProjectSpace;
@@ -145,8 +149,7 @@ export function ChatPage() {
   const slashSkillsFetchInFlightRef = useRef(false);
   const { token, user } = useAuth();
 
-  const assistantDisplayName =
-    user?.assistant_name?.trim() || PRODUCT_COPY.assistantNameFallback;
+  const assistantDisplayName = toAssistantDisplayName(user?.assistant_name);
   const assistantAvatarText =
     assistantDisplayName.trim().slice(0, 2) ||
     PRODUCT_COPY.assistantNameFallback;
@@ -992,7 +995,7 @@ export function ChatPage() {
         showPermissionModeControl={false}
         placeholder={
           variant === "hero"
-            ? "描述你想完成的事，MyCC 会帮你拆解并执行…"
+            ? `描述你想完成的事，${PRODUCT_COPY.brandName} 会帮你拆解并执行…`
             : undefined
         }
       />

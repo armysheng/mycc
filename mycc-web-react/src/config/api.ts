@@ -1,4 +1,6 @@
 // API configuration - uses relative paths with Vite proxy in development
+import { PRODUCT_COPY } from "../utils/productCopy";
+
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 const withBase = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
 
@@ -117,27 +119,40 @@ export const getAutomationRunUrl = (automationId: string) => {
   return `${API_CONFIG.ENDPOINTS.AUTOMATIONS}/${encodeURIComponent(automationId)}/run`;
 };
 
-const withOptionalIdeSessionId = (url: string, ideSessionId?: string | null) => {
+const withOptionalIdeSessionId = (
+  url: string,
+  ideSessionId?: string | null,
+) => {
   if (!ideSessionId) return url;
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}ideSessionId=${encodeURIComponent(ideSessionId)}`;
 };
 
-export const getWorkspaceTreeUrl = (path = "/", depth = 3, ideSessionId?: string | null) => {
+export const getWorkspaceTreeUrl = (
+  path = "/",
+  depth = 3,
+  ideSessionId?: string | null,
+) => {
   return withOptionalIdeSessionId(
     `${API_CONFIG.ENDPOINTS.WORKSPACE}/tree?path=${encodeURIComponent(path)}&depth=${depth}`,
     ideSessionId,
   );
 };
 
-export const getWorkspaceFileUrl = (path: string, ideSessionId?: string | null) => {
+export const getWorkspaceFileUrl = (
+  path: string,
+  ideSessionId?: string | null,
+) => {
   return withOptionalIdeSessionId(
     `${API_CONFIG.ENDPOINTS.WORKSPACE}/file?path=${encodeURIComponent(path)}`,
     ideSessionId,
   );
 };
 
-export const getWorkspacePreviewUrl = (path: string, ideSessionId?: string | null) => {
+export const getWorkspacePreviewUrl = (
+  path: string,
+  ideSessionId?: string | null,
+) => {
   return withOptionalIdeSessionId(
     `${API_CONFIG.ENDPOINTS.WORKSPACE}/preview?path=${encodeURIComponent(path)}`,
     ideSessionId,
@@ -145,11 +160,17 @@ export const getWorkspacePreviewUrl = (path: string, ideSessionId?: string | nul
 };
 
 export const getWorkspaceSaveFileUrl = (ideSessionId?: string | null) => {
-  return withOptionalIdeSessionId(`${API_CONFIG.ENDPOINTS.WORKSPACE}/file`, ideSessionId);
+  return withOptionalIdeSessionId(
+    `${API_CONFIG.ENDPOINTS.WORKSPACE}/file`,
+    ideSessionId,
+  );
 };
 
 export const getWorkspaceExecUrl = (ideSessionId?: string | null) => {
-  return withOptionalIdeSessionId(`${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`, ideSessionId);
+  return withOptionalIdeSessionId(
+    `${API_CONFIG.ENDPOINTS.WORKSPACE}/exec`,
+    ideSessionId,
+  );
 };
 
 export const getIdeConfigUrl = () => {
@@ -170,11 +191,11 @@ export const getIdeDesktopSessionUrl = (sessionId: string) => {
 
 export const resolveIdeOpenUrl = (openPath: string) => {
   if (/^https?:\/\//i.test(openPath)) {
-    throw new Error("IDE open path must be a MyCC proxy path");
+    throw new Error(`只能打开${PRODUCT_COPY.brandName}内部代理地址`);
   }
   const path = openPath.replace(/^\/+/, "");
   if (!path.startsWith("api/ide/sessions/")) {
-    throw new Error("IDE open path must be a MyCC proxy path");
+    throw new Error(`只能打开${PRODUCT_COPY.brandName}内部代理地址`);
   }
   return `${window.location.origin}/${path}`;
 };
@@ -216,10 +237,10 @@ export const getChatSessionRenameUrl = (sessionId: string) => {
 // Helper function to get auth headers
 export const getAuthHeaders = (token: string | null) => {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
 };

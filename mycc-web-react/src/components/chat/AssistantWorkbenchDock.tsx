@@ -582,7 +582,8 @@ export function AssistantWorkbenchDock({
                     {PRODUCT_COPY.assistantBrowser}
                   </h2>
                   <p className="mt-2 leading-6 text-slate-400">
-                    需要查看图形界面、网页或桌面任务时，可以从这里打开 cc
+                    需要查看图形界面、网页或桌面任务时，可以从这里打开
+                    {PRODUCT_COPY.brandName}
                     的浏览器。
                   </p>
                   <button
@@ -618,7 +619,8 @@ export function AssistantWorkbenchDock({
                     {PRODUCT_COPY.projectFiles}
                   </h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    查看 cc 整理出的文件，也可以快速预览当前选中的内容。
+                    查看{PRODUCT_COPY.brandName}
+                    整理出的文件，也可以快速预览当前选中的内容。
                   </p>
                 </header>
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -667,7 +669,6 @@ export function AssistantWorkbenchDock({
             )}
           </section>
         )}
-
       </div>
     </aside>
   );

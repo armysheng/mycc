@@ -161,8 +161,7 @@ export function Sidebar({
 
   const userInitial =
     user?.email?.charAt(0)?.toUpperCase() || user?.phone?.charAt(0) || "U";
-  const userDisplayName =
-    user?.email || user?.phone || "用户";
+  const userDisplayName = user?.email || user?.phone || "用户";
 
   const sidebarContent = (
     <>
@@ -175,12 +174,14 @@ export function Sidebar({
               background: "linear-gradient(135deg, var(--accent), #7c3aed)",
             }}
           >
-            C
+            道
           </div>
           <div>
-            <div className="text-sm font-bold tracking-tight">MyCC</div>
+            <div className="text-sm font-bold tracking-tight">
+              {PRODUCT_COPY.brandName}
+            </div>
             <div className="text-[11px] text-slate-400 dark:text-slate-500">
-              你的 AI 搭档
+              {PRODUCT_COPY.companyName}出品
             </div>
           </div>
         </div>

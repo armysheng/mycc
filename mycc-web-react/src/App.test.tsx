@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
@@ -13,7 +19,12 @@ global.fetch = vi.fn();
 
 function WorkspaceLocationProbe() {
   const location = useLocation();
-  return <div data-testid="workspace-location">{location.pathname}{location.search}</div>;
+  return (
+    <div data-testid="workspace-location">
+      {location.pathname}
+      {location.search}
+    </div>
+  );
 }
 
 describe("App Routing", () => {
@@ -61,7 +72,7 @@ describe("App Routing", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getAllByText("MyCC").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("道友 AI").length).toBeGreaterThan(0);
       expect(screen.getAllByText("test-path").length).toBeGreaterThan(0);
     });
   });
@@ -82,51 +93,63 @@ describe("App Routing", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("今天想让 cc 帮你做什么？")).toBeInTheDocument();
+      expect(
+        screen.getByText("今天想让 道友 AI 帮你做什么？"),
+      ).toBeInTheDocument();
     });
-    expect(screen.getAllByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…")).toHaveLength(1);
+    expect(
+      screen.getAllByPlaceholderText(
+        "描述你想完成的事，道友 AI 会帮你拆解并执行…",
+      ),
+    ).toHaveLength(1);
     expect(screen.queryByText(/mycc-main/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Return to new chat in /")).not.toBeInTheDocument();
-    expect(screen.queryByText(/首次初始化|bootstrap|continue|最近会话|继续：/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Return to new chat in /"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/首次初始化|bootstrap|continue|最近会话|继续：/i),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 
   it("keeps project chat routes mounted after authentication", async () => {
     window.history.pushState({}, "", "/projects/demo");
     localStorage.setItem("token", "test-token");
-    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
-      key === "token" ? "test-token" : null
-    ));
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) =>
+      key === "token" ? "test-token" : null,
+    );
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
       const url = String(input);
       if (url.endsWith("/api/auth/me")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: {
-              id: 42,
-              email: "tester@example.com",
-              assistant_name: "cc",
-              plan: "free",
-              is_initialized: true,
-            },
-          }),
+          json: () =>
+            Promise.resolve({
+              success: true,
+              data: {
+                id: 42,
+                email: "tester@example.com",
+                assistant_name: "cc",
+                plan: "free",
+                is_initialized: true,
+              },
+            }),
         });
       }
       if (url.endsWith("/api/assistant/home")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: {
-              assistant: { name: "cc", initialized: true },
-              tasks: [],
-              deliverables: [],
-              memory: { sources: [] },
-              capabilities: [],
-            },
-          }),
+          json: () =>
+            Promise.resolve({
+              success: true,
+              data: {
+                assistant: { name: "cc", initialized: true },
+                tasks: [],
+                deliverables: [],
+                memory: { sources: [] },
+                capabilities: [],
+              },
+            }),
         });
       }
       return Promise.resolve({
@@ -151,14 +174,15 @@ describe("App Routing", () => {
   it("shows a product-facing empty state when an old conversation has no readable messages", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          sessionId: "old-session",
-          messages: [],
-          total: 0,
-        },
-      }),
+      json: () =>
+        Promise.resolve({
+          success: true,
+          data: {
+            sessionId: "old-session",
+            messages: [],
+            total: 0,
+          },
+        }),
     });
 
     await act(async () => {
@@ -199,10 +223,11 @@ describe("App Routing", () => {
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
-        json: () => Promise.resolve({
-          success: false,
-          error: "Failed to load messages",
-        }),
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: "Failed to load messages",
+          }),
       });
     });
 
@@ -226,21 +251,25 @@ describe("App Routing", () => {
     expect(screen.getByText(/原记录不会被删除/)).toBeInTheDocument();
     const input = screen.getByPlaceholderText(/输入你的问题/);
     expect(input).toBeInTheDocument();
-    expect(screen.queryByText(/500|Internal Server Error|Failed to load messages/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/500|Internal Server Error|Failed to load messages/i),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "继续刚才的事" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      const chatCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
-        ([url]) => String(url) === "/api/chat",
-      );
+      const chatCall = (
+        global.fetch as ReturnType<typeof vi.fn>
+      ).mock.calls.find(([url]) => String(url) === "/api/chat");
       expect(chatCall).toBeDefined();
       expect(JSON.parse(String(chatCall?.[1]?.body))).toMatchObject({
         message: "继续刚才的事",
       });
-      expect(JSON.parse(String(chatCall?.[1]?.body))).not.toHaveProperty("sessionId");
+      expect(JSON.parse(String(chatCall?.[1]?.body))).not.toHaveProperty(
+        "sessionId",
+      );
     });
   });
 
@@ -264,7 +293,9 @@ describe("App Routing", () => {
     });
 
     expect(screen.getByText("正在读取旧对话...")).toBeInTheDocument();
-    expect(screen.queryByText(/Loading conversation history/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Loading conversation history/i),
+    ).not.toBeInTheDocument();
   });
 
   it("sends bypassPermissions as the default chat permission mode", async () => {
@@ -292,15 +323,20 @@ describe("App Routing", () => {
       );
     });
 
-    fireEvent.change(screen.getByPlaceholderText("描述你想完成的事，MyCC 会帮你拆解并执行…"), {
-      target: { value: "帮我检查项目" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText(
+        "描述你想完成的事，道友 AI 会帮你拆解并执行…",
+      ),
+      {
+        target: { value: "帮我检查项目" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      const chatCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
-        ([url]) => String(url) === "/api/chat",
-      );
+      const chatCall = (
+        global.fetch as ReturnType<typeof vi.fn>
+      ).mock.calls.find(([url]) => String(url) === "/api/chat");
       expect(chatCall).toBeDefined();
       expect(JSON.parse(String(chatCall?.[1]?.body))).toMatchObject({
         message: "帮我检查项目",
@@ -310,90 +346,98 @@ describe("App Routing", () => {
   });
 
   it("opens assistant deliverables in the right-side file space from the home surface", async () => {
-    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => (
-      key === "token" ? "test-token" : null
-    ));
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((input, init) => {
-      const url = String(input);
-      if (url.endsWith("/api/auth/me")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: {
-              id: 42,
-              email: "tester@example.com",
-              assistant_name: "小麦",
-              plan: "free",
-              is_initialized: true,
-            },
-          }),
-        });
-      }
-      if (url.endsWith("/api/assistant/home")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: {
-              assistant: { name: "小麦", initialized: true },
-              tasks: [],
-              deliverables: [
-                {
-                  id: "workspace:/reports/product-roadmap.md",
-                  kind: "report",
-                  title: "产品路线报告",
-                  source: "current_workspace",
-                  status: "ready",
-                  url: "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) =>
+      key === "token" ? "test-token" : null,
+    );
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/me")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: {
+                  id: 42,
+                  email: "tester@example.com",
+                  assistant_name: "小麦",
+                  plan: "free",
+                  is_initialized: true,
                 },
-              ],
-              memory: { sources: [] },
-              capabilities: [],
-            },
-          }),
-        });
-      }
-      if (url === "/api/ide/sessions" && init?.method === "POST") {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: { id: "ide_123", status: "running" },
-          }),
-        });
-      }
-      if (url === "/api/workspace/tree?path=%2F&depth=3&ideSessionId=ide_123") {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            success: true,
-            data: {
-              tree: {
-                id: "/",
-                name: "/",
-                path: "/",
-                type: "directory",
-                children: [
-                  {
-                    id: "/reports/product-roadmap.md",
-                    name: "product-roadmap.md",
-                    path: "/reports/product-roadmap.md",
-                    type: "file",
-                    size: 4096,
-                    mtime: new Date(0).toISOString(),
+              }),
+          });
+        }
+        if (url.endsWith("/api/assistant/home")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: {
+                  assistant: { name: "小麦", initialized: true },
+                  tasks: [],
+                  deliverables: [
+                    {
+                      id: "workspace:/reports/product-roadmap.md",
+                      kind: "report",
+                      title: "产品路线报告",
+                      source: "current_workspace",
+                      status: "ready",
+                      url: "/workspace?path=%2Freports%2Fproduct-roadmap.md&source=home",
+                    },
+                  ],
+                  memory: { sources: [] },
+                  capabilities: [],
+                },
+              }),
+          });
+        }
+        if (url === "/api/ide/sessions" && init?.method === "POST") {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: { id: "ide_123", status: "running" },
+              }),
+          });
+        }
+        if (
+          url === "/api/workspace/tree?path=%2F&depth=3&ideSessionId=ide_123"
+        ) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: {
+                  tree: {
+                    id: "/",
+                    name: "/",
+                    path: "/",
+                    type: "directory",
+                    children: [
+                      {
+                        id: "/reports/product-roadmap.md",
+                        name: "product-roadmap.md",
+                        path: "/reports/product-roadmap.md",
+                        type: "file",
+                        size: 4096,
+                        mtime: new Date(0).toISOString(),
+                      },
+                    ],
                   },
-                ],
-              },
-            },
-          }),
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { skills: [] } }),
         });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: { skills: [] } }),
-      });
-    });
+      },
+    );
 
     await act(async () => {
       render(

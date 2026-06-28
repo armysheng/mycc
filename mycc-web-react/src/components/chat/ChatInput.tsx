@@ -11,6 +11,7 @@ import { PermissionInputPanel } from "./PermissionInputPanel";
 import { PlanPermissionInputPanel } from "./PlanPermissionInputPanel";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { ChatImageAttachment, PermissionMode } from "../../types";
+import { PRODUCT_COPY } from "../../utils/productCopy";
 
 interface PermissionData {
   patterns: string[];
@@ -903,7 +904,7 @@ export function ChatInput({
       <ConfirmDialog
         isOpen={Boolean(pendingDangerousSubmission)}
         title="确认执行这个任务？"
-        description="这条指令看起来可能会删除、清空、重置或覆盖内容。确认后 MyCC 会继续执行。"
+        description={`这条指令看起来可能会删除、清空、重置或覆盖内容。确认后 ${PRODUCT_COPY.brandName} 会继续执行。`}
         confirmLabel="继续执行"
         variant="destructive"
         onConfirm={confirmDangerousSubmission}
