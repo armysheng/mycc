@@ -21,6 +21,7 @@ describe("LoginPage", () => {
     render(<LoginPage />);
 
     expect(screen.getByText("道友 AI 个人助理")).toBeInTheDocument();
+    expect(screen.getByText("念头通达出品 · 问清楚，再动手")).toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
 });

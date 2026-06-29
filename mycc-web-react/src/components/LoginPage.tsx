@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   ArrowRightIcon,
   ShieldCheckIcon,
-  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
 import { login as apiLogin, register as apiRegister } from "../api/auth";
@@ -68,65 +67,77 @@ export function LoginPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden flex items-center justify-center px-4 py-10">
-      <div className="absolute inset-0 bg-[var(--bg-base)]" />
       <div
-        className="absolute -top-32 -left-20 h-80 w-80 rounded-full opacity-40 blur-3xl"
-        style={{ background: "var(--accent-subtle)" }}
+        className="absolute inset-0 bg-[var(--bg-base)]"
+        style={{
+          backgroundImage:
+            "linear-gradient(120deg, rgba(18,26,45,0.08) 0 1px, transparent 1px 100%), linear-gradient(0deg, rgba(37,99,235,0.08) 0 1px, transparent 1px 100%)",
+          backgroundSize: "52px 52px, 100% 28px",
+        }}
       />
-      <div
-        className="absolute -bottom-24 -right-20 h-80 w-80 rounded-full opacity-35 blur-3xl"
-        style={{ background: "rgba(59,130,246,0.16)" }}
-      />
+      <div className="absolute inset-x-6 top-6 h-px bg-[var(--surface-border)]" />
+      <div className="absolute inset-y-6 left-6 w-px bg-[var(--surface-border)]" />
+      <div className="absolute inset-x-6 bottom-6 h-px bg-[var(--surface-border)]" />
+      <div className="absolute inset-y-6 right-6 w-px bg-[var(--surface-border)]" />
 
       <div className="relative z-10 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-5">
         <section
-          className="hidden lg:flex flex-col justify-between rounded-[24px] border p-8"
+          className="relative hidden overflow-hidden lg:flex flex-col justify-between rounded-[24px] border p-8"
           style={{
             background:
-              "linear-gradient(145deg, color-mix(in oklab, var(--bg-surface) 92%, black 8%) 0%, var(--bg-surface) 100%)",
+              "linear-gradient(145deg, color-mix(in oklab, var(--bg-surface) 96%, black 4%) 0%, var(--bg-surface) 100%)",
             borderColor: "var(--surface-border)",
             boxShadow: "var(--shadow-md)",
           }}
         >
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-[var(--text-secondary)]">
-              <SparklesIcon className="h-4 w-4" />
-              {PRODUCT_COPY.brandName} 个人助理
+          <div className="pointer-events-none absolute -right-8 top-8 text-[164px] font-semibold leading-none text-[var(--text-primary)] opacity-[0.04]">
+            道
+          </div>
+          <div className="relative">
+            <div className="inline-flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[var(--accent-border)] text-sm font-semibold text-[var(--accent)]">
+                问
+              </span>
+              <span>{PRODUCT_COPY.brandName} 个人助理</span>
             </div>
             <h1
-              className="mt-6 text-4xl font-semibold tracking-tight text-[var(--text-primary)]"
+              className="mt-6 max-w-xl text-4xl font-semibold text-[var(--text-primary)]"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              让每个用户都拥有自己的个人助理空间
+              问清楚，再动手。把念头落成结果。
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--text-secondary)]">
               登录后直接唤起你的专属助理，在个人上下文里使用技能、自动化与长期记忆。
+              保持清醒的问题意识，也保持马上推进的执行力。
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-8">
-            <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">
-                多用户
+          <div className="relative mt-8 grid grid-cols-3 gap-0 border-y border-[var(--surface-border)] text-left">
+            <div className="py-4 pr-4">
+              <div className="text-xs font-semibold text-[var(--accent)]">01</div>
+              <div className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
+                问道
               </div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">
-                个人空间彼此独立
-              </div>
-            </div>
-            <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">
-                技能化
-              </div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">
-                工具能力可配置
+              <div className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                对齐目标和上下文
               </div>
             </div>
-            <div className="rounded-xl border p-3">
-              <div className="text-lg font-semibold text-[var(--text-primary)]">
-                可运营
+            <div className="border-x border-[var(--surface-border)] px-4 py-4">
+              <div className="text-xs font-semibold text-[var(--accent)]">02</div>
+              <div className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
+                拆解
               </div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">
-                额度与权限策略
+              <div className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                把想法变成步骤
+              </div>
+            </div>
+            <div className="py-4 pl-4">
+              <div className="text-xs font-semibold text-[var(--accent)]">03</div>
+              <div className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
+                落地
+              </div>
+              <div className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                交付文件和结果
               </div>
             </div>
           </div>
@@ -142,13 +153,14 @@ export function LoginPage() {
         >
           <div className="flex items-center gap-2">
             <div
-              className="h-9 w-9 rounded-[10px] text-white flex items-center justify-center text-[13px] font-bold"
+              className="h-10 w-10 rounded-[10px] border flex items-center justify-center text-base font-bold"
               style={{
-                background:
-                  "linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)",
+                borderColor: "var(--accent-border)",
+                color: "var(--accent)",
+                background: "var(--accent-subtle)",
               }}
             >
-              道友
+              道
             </div>
             <div>
               <div
@@ -158,7 +170,7 @@ export function LoginPage() {
                 {PRODUCT_COPY.brandName}
               </div>
               <div className="text-xs text-[var(--text-muted)]">
-                {PRODUCT_COPY.companyName}出品
+                {PRODUCT_COPY.brandProofLine}
               </div>
             </div>
           </div>
