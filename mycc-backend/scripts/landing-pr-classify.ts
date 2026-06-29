@@ -60,6 +60,7 @@ const rules: Rule[] = [
       '.github/workflows/deploy-staging.yml',
       'scripts/dev-codex.sh',
       'scripts/**',
+      'TODO.md',
       'evals/agent/**',
       'evals/**',
       'docs/harness/**',
