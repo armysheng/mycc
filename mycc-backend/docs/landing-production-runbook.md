@@ -17,8 +17,10 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `7b2b4f2`
-- Current production state checked on 2026-06-29 CST:
+- Current deployed commit: verify live on the host before a release decision with
+  `cd /home/armysheng/mycc && git rev-parse --short HEAD`; do not hard-code it
+  as current in this runbook because docs-only maintenance deploys can change it.
+- Latest recorded no-side-effect production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
   - `GET /health`: `200`
@@ -32,13 +34,13 @@ database changes, or service restarts needs an explicit release decision.
   - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
-  - GitHub `CI` run `28370295997` passed for `7b2b4f2`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
-  - GitHub `Deploy Staging` run `28370370431` passed for `7b2b4f2`
+  - GitHub `CI` run `28373993080` passed for `82d2fec`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
+  - GitHub `Deploy Staging` run `28374057187` passed for `82d2fec`
   - Production Node guard: Node `v20.19.5`, matching systemd service toolchain
   - `npm run doctor:e2b-agent`: E2B Agent preflight ready
   - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
   - Playwright product-surface audit: desktop login, 390x844 mobile login, and registration closed state passed without forbidden public text or mobile horizontal overflow
-  - Latest no-side-effect maintenance added `npm run verify:rollback-preflight`; deployed `7b2b4f2` has `prod_dirty_count=0`, backend service `active`, public-surface smoke passed, and production `doctor:e2b-agent` reports E2B Agent preflight ready
+  - Latest no-side-effect maintenance through PR #121 has `prod_dirty_count=0`, backend service `active`, public-surface smoke passed, and production `doctor:e2b-agent` reports E2B Agent preflight ready
 
 Historical low-side-effect evidence:
 
@@ -252,7 +254,7 @@ Release gate id:
 Release owner:
 Operator:
 Target URL: https://daoyou.iaigc.fun
-Target deployed commit: <current deployed commit, for example 7b2b4f2>
+Target deployed commit: <verified deployed commit from git rev-parse on the host>
 Approval timestamp:
 Release window:
 Evidence path:
