@@ -44,4 +44,30 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('ssh-keyscan -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}"');
     expect(workflow).not.toContain('ssh-keyscan -t rsa');
   });
+
+  it('skips remote deploy work for docs-only main pushes', () => {
+    expect(workflow).toContain('id: deployment_impact');
+    expect(workflow).toContain('${{ github.event.workflow_run.head_sha }}');
+    expect(workflow).toContain('git diff --name-only HEAD^ HEAD');
+    expect(workflow).toContain('mycc-backend/docs/*');
+    expect(workflow).toContain('docs/*');
+    expect(workflow).toContain("should_deploy=false");
+    expect(workflow).toContain("should_deploy=true");
+
+    const deployGate = "steps.deployment_impact.outputs.should_deploy == 'true'";
+    expect(workflow).toContain(`if: ${deployGate}`);
+    expect(workflow.match(new RegExp(deployGate, 'g'))?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('can deploy frontend-only pushes without backend migrations or restarts', () => {
+    expect(workflow).toContain('deploy_frontend=');
+    expect(workflow).toContain('deploy_backend=');
+    expect(workflow).toContain('DEPLOY_FRONTEND=');
+    expect(workflow).toContain('DEPLOY_BACKEND=');
+    expect(workflow).toContain('mycc-web-react/*');
+    expect(workflow).toContain('if [ "${DEPLOY_FRONTEND}" = "true" ]; then');
+    expect(workflow).toContain('if [ "${DEPLOY_BACKEND}" = "true" ]; then');
+    expect(workflow).toContain("steps.deployment_impact.outputs.deploy_backend == 'true'");
+    expect(workflow).toContain("steps.deployment_impact.outputs.deploy_frontend == 'true' && env.STAGING_FRONTEND_URL != ''");
+  });
 });
