@@ -298,6 +298,7 @@ export function LoginPage() {
                   onChange={(e) => setPhone(e.target.value)}
                   className={inputClassName}
                   style={{ borderColor: "var(--surface-border)" }}
+                  disabled={registrationClosed}
                 />
               </div>
               <div>
@@ -311,6 +312,7 @@ export function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   className={inputClassName}
                   style={{ borderColor: "var(--surface-border)" }}
+                  disabled={registrationClosed}
                 />
               </div>
               <div>
@@ -326,6 +328,7 @@ export function LoginPage() {
                   style={{ borderColor: "var(--surface-border)" }}
                   required
                   minLength={6}
+                  disabled={registrationClosed}
                 />
               </div>
               {inviteRequired && (
@@ -345,6 +348,7 @@ export function LoginPage() {
                     className={inputClassName}
                     style={{ borderColor: "var(--surface-border)" }}
                     required
+                    disabled={registrationClosed}
                   />
                 </div>
               )}
