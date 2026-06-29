@@ -15,7 +15,8 @@
 - [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态都符合道友 AI 的产品气质。
 - [x] **初始化称呼和参考资料清理** - 初始化写入内容、用户 workspace 模板、预置浏览器 skill 已清理早期内测称呼和不适合公开内测的上下文。
 - [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹。
-- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
+- [x] **动态错误前台清洗** - 登录/注册、初始化、技能、工具结果、过程详情和系统 hook 的用户可见错误已增加产品化清洗与回归测试，避免 raw `MyCC/E2B/sandbox/token/mycc_u/linuxUser` 等内部细节直接进前台。
+- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成无副作用公网表面复核，剩余需授权 live smoke 和回滚演练。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
 
 ### P1 - 内测体验增强
@@ -46,7 +47,7 @@
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
-- [ ] **产品表面审计** - 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`，输出 P0/P1/P2 和是否适合邀请 1-3 人内测。
+- [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：强刷新后桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 新首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
 
 ## Landing P1 - 内测期
 

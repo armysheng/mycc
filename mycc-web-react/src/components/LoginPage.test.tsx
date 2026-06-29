@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 
@@ -100,5 +100,53 @@ describe("LoginPage", () => {
       expect(inviteCodeInput).toBeDisabled();
     }
     expect(screen.getByRole("button", { name: "邀请内测中" })).toBeDisabled();
+  });
+
+  it("does not display internal login errors", async () => {
+    authMocks.login.mockResolvedValueOnce({
+      success: false,
+      error:
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+    });
+
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("请输入手机号或邮箱"), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("请输入密码"), {
+      target: { value: "password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "进入工作空间" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("登录失败，请稍后重试")).toBeInTheDocument();
+    });
+    expect(document.body).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
+  it("does not display internal registration errors", async () => {
+    authMocks.register.mockResolvedValueOnce({
+      success: false,
+      error:
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+    });
+
+    render(<LoginPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+    fireEvent.change(screen.getByPlaceholderText("至少 6 位"), {
+      target: { value: "password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("注册失败，请稍后重试")).toBeInTheDocument();
+    });
+    expect(document.body).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
   });
 });

@@ -120,6 +120,27 @@ describe("skills api client", () => {
     await expect(installSkill("token-1", "missing-skill")).rejects.toThrow("技能不存在于目录中");
   });
 
+  it("throws productized errors when backend skill errors include internal details", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      errorJson(
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+      ) as Response,
+    );
+
+    let thrown: unknown;
+    try {
+      await installSkill("token-1", "missing-skill");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("添加技能失败，请稍后重试");
+    expect((thrown as Error).message).not.toMatch(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
   it("useSkill records a use event", async () => {
     const payload: SkillActionResult = {
       skillId: "deep-research",
