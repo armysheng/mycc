@@ -345,6 +345,9 @@ Notes:
   `sandboxRef`. Record those redacted references only; never paste raw E2B
   sandbox ids, hosts, traffic tokens, provider tokens, or noVNC/code-server
   direct URLs into PRs, screenshots, chat, or this runbook.
+- E2B smoke scripts always attempt cleanup. If both the smoke body and cleanup
+  fail, the original smoke failure remains the command failure and the cleanup
+  failure is printed separately as `[cleanup:error]`.
 
 Do not run `/api/chat` manually as a substitute for the smoke scripts unless the
 release owner explicitly authorizes model-consuming live validation.

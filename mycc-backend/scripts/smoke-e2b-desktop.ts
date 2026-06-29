@@ -5,6 +5,7 @@ import { pool } from '../src/db/client.js';
 import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { PostgresIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
+import { runSmokeWithCleanup } from '../src/scripts/smoke-cleanup.js';
 
 dotenv.config();
 
@@ -63,55 +64,59 @@ async function main() {
   }, JWT_SECRET, { expiresIn: '15m' });
   const authorization = `Bearer ${token}`;
 
-  try {
-    const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
-      headers: { authorization },
-    });
-    if (!config.data.enabled) {
-      throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
-    }
-    if (!config.data.desktopEnabled) {
-      throw new Error(`GNU desktop is not enabled by MyCC backend config: ${JSON.stringify(config.data)}`);
-    }
-    const templateName = FALLBACK_TEMPLATE_NAME;
-    const templateExists = await Template.exists(templateName, { apiKey });
-    if (!templateExists) {
-      throw new Error(`E2B template does not exist: ${templateName}`);
-    }
-
-    const created = await requestJson<IdeSessionResponse>('/api/ide/sessions', {
-      method: 'POST',
-      headers: { authorization },
-    });
-    sessionId = created.data.id;
-    assertNoProviderSecrets(created.data);
-
-    const desktop = await requestJsonWithHeaders<IdeSessionResponse>(`/api/ide/sessions/${sessionId}/desktop`, {
-      method: 'POST',
-      headers: { authorization },
-    });
-    assertNoProviderSecrets(desktop.body.data);
-    if (desktop.body.data.desktop?.status !== 'running' || !desktop.body.data.desktop.openPath) {
-      throw new Error(`GNU desktop did not start: ${JSON.stringify(desktop.body.data)}`);
-    }
-
-    const privateSession = await getPrivateDesktopSession(sessionId);
-    await assertDirectDesktopHostRejectsUnauthenticatedTraffic(privateSession);
-
-    const cookie = extractProxyCookie(desktop.headers);
-    const location = desktop.body.data.desktop.openPath;
-
-    await waitForNoVncProxy(location, cookie);
-    console.log(`[ok] E2B desktop smoke passed: session=${sessionId}, template=${templateName}`);
-  } finally {
-    try {
-      if (sessionId) {
-        await cleanupSession(sessionId, authorization);
+  await runSmokeWithCleanup({
+    label: 'E2B desktop smoke',
+    run: async () => {
+      const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
+        headers: { authorization },
+      });
+      if (!config.data.enabled) {
+        throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
       }
-    } finally {
-      await pool.end();
-    }
-  }
+      if (!config.data.desktopEnabled) {
+        throw new Error(`GNU desktop is not enabled by MyCC backend config: ${JSON.stringify(config.data)}`);
+      }
+      const templateName = FALLBACK_TEMPLATE_NAME;
+      const templateExists = await Template.exists(templateName, { apiKey });
+      if (!templateExists) {
+        throw new Error(`E2B template does not exist: ${templateName}`);
+      }
+
+      const created = await requestJson<IdeSessionResponse>('/api/ide/sessions', {
+        method: 'POST',
+        headers: { authorization },
+      });
+      sessionId = created.data.id;
+      assertNoProviderSecrets(created.data);
+
+      const desktop = await requestJsonWithHeaders<IdeSessionResponse>(`/api/ide/sessions/${sessionId}/desktop`, {
+        method: 'POST',
+        headers: { authorization },
+      });
+      assertNoProviderSecrets(desktop.body.data);
+      if (desktop.body.data.desktop?.status !== 'running' || !desktop.body.data.desktop.openPath) {
+        throw new Error(`GNU desktop did not start: ${JSON.stringify(desktop.body.data)}`);
+      }
+
+      const privateSession = await getPrivateDesktopSession(sessionId);
+      await assertDirectDesktopHostRejectsUnauthenticatedTraffic(privateSession);
+
+      const cookie = extractProxyCookie(desktop.headers);
+      const location = desktop.body.data.desktop.openPath;
+
+      await waitForNoVncProxy(location, cookie);
+      console.log(`[ok] E2B desktop smoke passed: session=${sessionId}, template=${templateName}`);
+    },
+    cleanup: async () => {
+      try {
+        if (sessionId) {
+          await cleanupSession(sessionId, authorization);
+        }
+      } finally {
+        await pool.end();
+      }
+    },
+  });
 }
 
 async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {

@@ -12,6 +12,7 @@ import {
 import { E2bSandboxProvider } from '../src/ide/e2b-provider.js';
 import { assertE2bTemplateContract } from '../src/ide/e2b-template-contract.js';
 import { InMemoryIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
+import { runSmokeWithCleanup } from '../src/scripts/smoke-cleanup.js';
 import { escapeShellArg } from '../src/utils/validation.js';
 
 dotenv.config();
@@ -51,31 +52,33 @@ async function main() {
   const store = new InMemoryIdeSessionStore();
   const runtime = createSmokeRuntime(store);
 
-  try {
-    await runAgentPrompt(runtime, [
-      '你正在 E2B smoke test 的工作区内。',
-      `请创建文件 ${AGENT_MARKER_FILE}，内容必须精确等于 ${MARKER}`,
-      '请直接完成文件写入，不要只解释。',
-    ].join('\n'));
-    session = await store.findReusableByUser(SMOKE_USER_ID) ?? undefined;
-    if (!session) {
-      throw new Error('E2B runtime did not persist a reusable IDE session');
-    }
+  await runSmokeWithCleanup({
+    label: 'E2B Agent+IDE workspace smoke',
+    run: async () => {
+      await runAgentPrompt(runtime, [
+        '你正在 E2B smoke test 的工作区内。',
+        `请创建文件 ${AGENT_MARKER_FILE}，内容必须精确等于 ${MARKER}`,
+        '请直接完成文件写入，不要只解释。',
+      ].join('\n'));
+      session = await store.findReusableByUser(SMOKE_USER_ID) ?? undefined;
+      if (!session) {
+        throw new Error('E2B runtime did not persist a reusable IDE session');
+      }
 
-    await assertTemplateContract(session);
-    await assertCodeServerLocalHealth(session);
-    await assertWorkspaceFileEquals(session, AGENT_MARKER_FILE, MARKER);
-    await writeWorkspaceFile(session, IDE_MARKER_FILE, MARKER);
-    await runAgentPrompt(runtime, [
-      '你正在 E2B smoke test 的工作区内。',
-      `请读取当前目录的 ${IDE_MARKER_FILE}，然后创建文件 ${AGENT_READBACK_FILE}，内容必须精确等于 ${MARKER}`,
-      '请直接完成文件写入，不要只解释。',
-    ].join('\n'));
-    await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
-    console.log(`[ok] E2B Agent+IDE workspace smoke passed: runtime=${AGENT_RUNTIME}, sandboxRef=${formatSmokeSandboxRef(session.sandboxId)}, marker=${MARKER}`);
-  } finally {
-    await cleanup();
-  }
+      await assertTemplateContract(session);
+      await assertCodeServerLocalHealth(session);
+      await assertWorkspaceFileEquals(session, AGENT_MARKER_FILE, MARKER);
+      await writeWorkspaceFile(session, IDE_MARKER_FILE, MARKER);
+      await runAgentPrompt(runtime, [
+        '你正在 E2B smoke test 的工作区内。',
+        `请读取当前目录的 ${IDE_MARKER_FILE}，然后创建文件 ${AGENT_READBACK_FILE}，内容必须精确等于 ${MARKER}`,
+        '请直接完成文件写入，不要只解释。',
+      ].join('\n'));
+      await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
+      console.log(`[ok] E2B Agent+IDE workspace smoke passed: runtime=${AGENT_RUNTIME}, sandboxRef=${formatSmokeSandboxRef(session.sandboxId)}, marker=${MARKER}`);
+    },
+    cleanup,
+  });
 }
 
 function createSmokeRuntime(store: InMemoryIdeSessionStore): AgentRuntime {
