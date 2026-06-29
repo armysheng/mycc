@@ -90,6 +90,15 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(await screen.findByText("当前为邀请内测阶段，请联系团队开通账号。")).toBeInTheDocument();
+    const optionalContactInputs = screen.getAllByPlaceholderText("选填");
+    expect(optionalContactInputs).toHaveLength(2);
+    expect(optionalContactInputs[0]).toBeDisabled();
+    expect(optionalContactInputs[1]).toBeDisabled();
+    expect(screen.getByPlaceholderText("至少 6 位")).toBeDisabled();
+    const inviteCodeInput = screen.queryByPlaceholderText("请输入邀请码");
+    if (inviteCodeInput) {
+      expect(inviteCodeInput).toBeDisabled();
+    }
     expect(screen.getByRole("button", { name: "邀请内测中" })).toBeDisabled();
   });
 });
