@@ -120,9 +120,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
+          cache: npm
+          cache-dependency-path: mycc-sandbox/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Health check sandbox package entrypoints
+        run: |
+          test -f package.json
+          test -f package-lock.json
+          test -f scripts/doctor-template.mjs
+          test -f test/sandbox-contract.test.mjs
 
       - name: Test sandbox contracts
         run: npm test

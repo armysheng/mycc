@@ -192,6 +192,7 @@ jobs:
           fi
 
           if [ "${DEPLOY_BACKEND}" = "true" ]; then
+            npm -C mycc-sandbox ci
             npm -C mycc-backend ci
             npm -C mycc-backend run db:migrate
             npm -C mycc-backend run build
