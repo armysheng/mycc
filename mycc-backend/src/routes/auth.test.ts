@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authRoutes } from './auth.js';
 
 const mocks = vi.hoisted(() => ({
@@ -25,6 +25,36 @@ async function buildApp() {
 describe('auth routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('exposes public registration gate config without invite codes', async () => {
+    vi.stubEnv('MYCC_REGISTRATION_MODE', 'invite');
+    vi.stubEnv('MYCC_REGISTRATION_INVITE_CODES', 'alpha,beta');
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/config',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+      data: {
+        registration: {
+          mode: 'invite',
+          enabled: true,
+          inviteRequired: true,
+        },
+      },
+    });
+    expect(response.body).not.toContain('alpha');
+    expect(response.body).not.toContain('beta');
+    await app.close();
   });
 
   it('does not expose internal registration errors', async () => {
@@ -82,6 +112,92 @@ describe('auth routes', () => {
       email: undefined,
       password: 'test123456',
     });
+    await app.close();
+  });
+
+  it('blocks registration when the public registration gate is closed', async () => {
+    vi.stubEnv('MYCC_REGISTRATION_MODE', 'closed');
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      remoteAddress: '203.0.113.20',
+      payload: {
+        email: 'closed@example.test',
+        password: 'test123456',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      success: false,
+      code: 'registration_closed',
+      error: '注册当前仅面向内测邀请开放，请联系团队开通账号',
+    });
+    expect(mocks.register).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('requires a valid invite code when registration is invite-only', async () => {
+    vi.stubEnv('MYCC_REGISTRATION_MODE', 'invite');
+    vi.stubEnv('MYCC_REGISTRATION_INVITE_CODES', 'valid-code');
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      remoteAddress: '203.0.113.21',
+      payload: {
+        email: 'invite-missing@example.test',
+        password: 'test123456',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      success: false,
+      code: 'registration_invite_required',
+      error: '注册当前仅面向内测邀请开放，请填写有效邀请码',
+    });
+    expect(mocks.register).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('accepts invite-only registration with a configured invite code', async () => {
+    vi.stubEnv('MYCC_REGISTRATION_MODE', 'invite');
+    vi.stubEnv('MYCC_REGISTRATION_INVITE_CODES', 'valid-code');
+    mocks.register.mockResolvedValue({
+      token: 'token',
+      user: {
+        id: 2,
+        phone: null,
+        email: 'invited@example.test',
+        assistant_name: 'cc',
+        plan: 'free',
+        is_initialized: false,
+      },
+    });
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      remoteAddress: '203.0.113.22',
+      payload: {
+        email: 'invited@example.test',
+        password: 'test123456',
+        inviteCode: 'valid-code',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(mocks.register).toHaveBeenCalledWith({
+      phone: undefined,
+      email: 'invited@example.test',
+      password: 'test123456',
+    });
+    expect(response.body).not.toContain('valid-code');
     await app.close();
   });
 
