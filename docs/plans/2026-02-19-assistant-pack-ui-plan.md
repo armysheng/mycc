@@ -589,11 +589,11 @@ git commit -m "feat: add session management sidebar"
 ```bash
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"phone":"+8613800138099","password":"test123456","nickname":"测试用户"}'
+  -d '{"phone":"<TEST_PHONE_FROM_ENV>","password":"<TEST_PASSWORD_FROM_ENV>","nickname":"测试用户"}'
 
-# 验证 VPS 上的文件
-ssh armysheng@VPS "sudo ls -la /home/mycc_uXX/workspace/"
-ssh armysheng@VPS "sudo cat /home/mycc_uXX/workspace/CLAUDE.md"
+# 验证测试用户工作区文件
+ssh armysheng@VPS "sudo ls -la <TEST_WORKSPACE_DIR>/"
+ssh armysheng@VPS "sudo cat <TEST_WORKSPACE_DIR>/CLAUDE.md"
 ```
 
 **Step 3: 启动前端，验证对话体验**

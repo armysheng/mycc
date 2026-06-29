@@ -24,4 +24,11 @@ describe("LoginPage", () => {
     expect(screen.getByText("念头通达出品 · 问清楚，再动手")).toBeInTheDocument();
     expect(screen.queryByText(FORBIDDEN_PRODUCT_TERMS)).not.toBeInTheDocument();
   });
+
+  it("does not autofill shared dev credentials by default", () => {
+    render(<LoginPage />);
+
+    expect(screen.getByPlaceholderText("请输入手机号或邮箱")).toHaveValue("");
+    expect(screen.getByPlaceholderText("请输入密码")).toHaveValue("");
+  });
 });
