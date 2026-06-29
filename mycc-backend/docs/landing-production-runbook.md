@@ -66,6 +66,8 @@ Needs explicit authorization:
   sandboxes and may consume model/provider resources.
 - `landing-live`, because it includes live E2B and auth/onboarding smokes.
 - Any `/api/chat` call.
+- `smoke:local-chat-flow` or any other model-consuming smoke against
+  `https://daoyou.iaigc.fun`.
 - Any account registration, onboarding, cleanup of active sessions, or test-user
   reset.
 
@@ -91,6 +93,9 @@ npm run landing:classify -- --fail-on-unclassified
 npm run verify:e2b-release
 npm run harness:verify -- --target=landing --no-write
 ```
+
+Also review the classifier summary before staging release files. The release
+branch should have no unexpected `needs-owner-review` or `do-not-stage` entries.
 
 Expected for a fully credentialed release shell:
 
@@ -243,6 +248,8 @@ Operator:
 Target URL: https://daoyou.iaigc.fun
 Target deployed commit: 23074b0
 Approval timestamp:
+Release window:
+Evidence path:
 Approved checks:
   [ ] smoke:auth-onboarding
   [ ] smoke:e2b-ide
@@ -255,13 +262,17 @@ Test identity label, not secret:
 Expected side effects:
   [ ] failed login audit/rate-limit event already accepted
   [ ] auth/onboarding writes
+  [ ] E2B smoke user DB upsert and users id sequence touch
   [ ] E2B IDE session
   [ ] E2B desktop service
   [ ] Agent SDK workspace marker files
   [ ] backend restart during rollback rehearsal
 Cleanup expectation:
+Cleanup owner:
+Cleanup deadline:
 Abort threshold:
 Evidence owner:
+Rollback owner:
 ```
 
 Run order once approved:
@@ -298,10 +309,16 @@ side effects, and cleanup expectation.
 | E2B IDE | `BASE_URL=https://daoyou.iaigc.fun npm run smoke:e2b-ide` | Provisions an E2B code-server session | Script should clean temporary session |
 | E2B desktop | `BASE_URL=https://daoyou.iaigc.fun npm run smoke:e2b-desktop` | Provisions desktop/noVNC sandbox services | Script should clean temporary session |
 | Agent SDK workspace | `BASE_URL=https://daoyou.iaigc.fun npm run smoke:e2b-agent-sdk-workspace` | Uses Agent SDK runtime in an E2B workspace | Script should clean temporary sandbox/session |
-| Full live gate | `BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=landing-live --no-write` | Includes auth onboarding plus E2B smokes | Review generated report and cleanup output |
+| Full live gate | `MYCC_LIVE_GATE_APPROVED=1 BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=landing-live --no-write` | Includes auth onboarding plus E2B smokes | Review generated report and cleanup output |
 
 Notes:
 
+- `--no-write` only means the harness does not write JSON/Markdown report files.
+  It does not make `landing-live` read-only, and the operator must still save a
+  redacted evidence record at the approved evidence path.
+- `MYCC_LIVE_GATE_APPROVED=1` is a deliberate operator acknowledgement. The
+  harness refuses live side-effect targets without it and without an explicit
+  `BASE_URL`.
 - `smoke:auth-onboarding` does not call `/api/chat`, but it does register or
   reuse an account and calls `/api/onboarding/initialize`; depending on the
   target workspace provider and account initialization state, that initialize
@@ -316,9 +333,14 @@ Notes:
 - On invite-only targets, provide `MYCC_AUTH_SMOKE_INVITE_CODE` so the smoke
   can still create a new test account before initializing onboarding.
 - `smoke:e2b-ide` may upsert the smoke user identified by
-  `MYCC_SMOKE_USER_ID`, defaulting to `42`.
+  `MYCC_SMOKE_USER_ID`, defaulting to `42`; this can also advance the users
+  sequence through the smoke setup query.
 - `smoke:e2b-agent-sdk-workspace` writes marker files in the sandbox workspace
   while proving that Agent SDK and the workspace surface share the same state.
+- E2B smoke evidence may include product session ids or a redacted
+  `sandboxRef`. Record those redacted references only; never paste raw E2B
+  sandbox ids, hosts, traffic tokens, provider tokens, or noVNC/code-server
+  direct URLs into PRs, screenshots, chat, or this runbook.
 
 Do not run `/api/chat` manually as a substitute for the smoke scripts unless the
 release owner explicitly authorizes model-consuming live validation.
@@ -442,6 +464,7 @@ Commands:
 Result: PASS / FAIL / BLOCKED
 Side effects:
 Cleanup:
+Redacted runtime refs:
 Evidence links or screenshots:
 Notes:
 ```

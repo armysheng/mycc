@@ -228,7 +228,7 @@ Run on the target staging environment:
 ```bash
 cd mycc-backend
 npm run db:migrate
-BASE_URL=<staging-backend-url> npm run harness:verify -- --target=landing-live --no-write
+MYCC_LIVE_GATE_APPROVED=1 BASE_URL=<staging-backend-url> npm run harness:verify -- --target=landing-live --no-write
 ```
 
 Manual checks:

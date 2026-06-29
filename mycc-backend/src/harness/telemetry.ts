@@ -26,6 +26,16 @@ const MAX_ATTRIBUTE_STRING_LENGTH = 512;
 const MAX_ATTRIBUTE_JSON_LENGTH = 1_000;
 const MAX_ATTRIBUTE_DEPTH = 6;
 const SECRET_KEY_PATTERN = /(api[-_]?key|auth|authorization|credential|password|proxy[-_]?token|secret|token|traffic[-_]?access)/i;
+const SECRET_TEXT_PATTERNS: Array<[RegExp, string]> = [
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]'],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]'],
+  [/(\bSet-Cookie\s*:\s*)[^\r\n]+/gi, '$1[REDACTED]'],
+  [/\bmycc_ide_[A-Za-z0-9_-]+=[^;\s,]+/g, 'mycc_ide_[REDACTED]=[REDACTED]'],
+  [/("[^"]*(?:trafficAccessToken|traffic_access_token|token|access_token|authorization|password|secret|apiKey|api_key)[^"]*"\s*:\s*)"[^"]*"/gi, '$1"[REDACTED]"'],
+  [/(\b(?:trafficAccessToken|traffic_access_token|token|access_token|authorization|password|secret|apiKey|api_key)\b\s*=\s*)[^\s,;]+/gi, '$1[REDACTED]'],
+  [/\b[0-9]{2,5}-sbx_[A-Za-z0-9_-]+\.e2b\.app\b/gi, '[REDACTED_E2B_HOST]'],
+  [/\b(?:sk-[A-Za-z0-9_-]{20,}|e2b(?:_live)?_[A-Za-z0-9_-]{16,}|claude_[A-Za-z0-9_-]{20,}|anthropic_[A-Za-z0-9_-]{20,})\b/gi, '[REDACTED_SECRET]'],
+];
 
 export function isHarnessTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.MYCC_HARNESS_OTEL !== 'false' && env.MYCC_OTEL_ENABLED !== 'false';
@@ -72,6 +82,14 @@ export function sanitizeHarnessAttributes(input: Record<string, unknown>): Attri
   }
 
   return output;
+}
+
+export function redactHarnessText(value: string): string {
+  let redacted = value;
+  for (const [pattern, replacement] of SECRET_TEXT_PATTERNS) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+  return redacted;
 }
 
 function sanitizeHarnessAttributeValue(

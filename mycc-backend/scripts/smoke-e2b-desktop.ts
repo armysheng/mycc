@@ -263,10 +263,10 @@ function extractProxyCookie(headers: Headers): string {
   const cookies = getSetCookie(headers);
   const proxyCookie = cookies.find((cookie) => cookie.includes('mycc_ide_'));
   if (!proxyCookie || !proxyCookie.includes('HttpOnly')) {
-    throw new Error(`Missing HttpOnly IDE proxy cookie: ${cookies.join(', ')}`);
+    throw new Error(`Missing HttpOnly IDE proxy cookie: cookieCount=${cookies.length}`);
   }
   if (!proxyCookie.includes('/desktop/proxy')) {
-    throw new Error(`Desktop proxy cookie is not scoped to the desktop proxy path: ${proxyCookie}`);
+    throw new Error('Desktop proxy cookie is not scoped to the desktop proxy path');
   }
   return proxyCookie.split(';')[0] || proxyCookie;
 }

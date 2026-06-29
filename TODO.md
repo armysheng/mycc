@@ -19,6 +19,10 @@
 - [x] **Live gate 授权包** - 生产 runbook 已补 live smoke / rollback rehearsal 的 release decision packet，要求记录 release owner、测试账号标签、副作用、cleanup、abort 条件和证据 owner 后才能开闸。
 - [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成 `23074b0` 无副作用公网表面复核、auth privacy、ops-only readiness、生产 Node/E2B/sandbox doctors，剩余需测试账号/E2B live smoke 和回滚演练。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
+  - [ ] 指定 release owner、operator、rollback owner 和 cleanup owner。
+  - [ ] 指定 1-3 位 friendly tester 标签与测试账号来源，不在文档里记录密码。
+  - [ ] 为每位 tester 建立验收记录：浏览器、账号标签、时间、PASS/FAIL/BLOCKED、截图/trace、问题清单。
+  - [ ] 在 live gate decision packet 填写 evidence path、release window、abort threshold 和 cleanup deadline。
 
 ### P1 - 内测体验增强
 
@@ -46,7 +50,7 @@
 - [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
 - [x] **公网无副作用表面 smoke gate** - `smoke:public-surface` 已固化 `/health`、`/readyz`、未授权 `/readyz/deep` 隐私、注册 gate、首页品牌、favicon 与静态资源检查。
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、auth privacy、授权 deep readiness、生产迁移 007/008、Node/E2B/sandbox doctors 已验证到 `23074b0`；登录初始化和 E2B live smokes 仍需 release 授权。
-- [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
+- [ ] **Release candidate live gate** - 对当前部署运行 `MYCC_LIVE_GATE_APPROVED=1 ... landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
 - [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`；移动端 `scrollWidth=390` 无横向溢出。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
 

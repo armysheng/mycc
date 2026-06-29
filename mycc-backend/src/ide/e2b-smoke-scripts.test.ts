@@ -31,6 +31,8 @@ describe('E2B workspace smoke scripts', () => {
     expect(source).toContain('Direct E2B host accepted unauthenticated traffic');
     expect(source).toContain('waitForProxyHealth');
     expect(source).toContain("headers: { cookie }");
+    expect(source).not.toContain('cookies.join');
+    expect(source).toContain('cookies.length');
   });
 
   it('keeps agent workspace smoke polling code-server health after command failures', () => {
@@ -39,6 +41,13 @@ describe('E2B workspace smoke scripts', () => {
     expect(source).toContain('assertCodeServerLocalHealth');
     expect(source).toContain('lastError = error instanceof Error ? error.message : String(error)');
     expect(source).toContain('code-server health check timed out');
+  });
+
+  it('keeps agent workspace smoke evidence from printing raw sandbox ids', () => {
+    const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-agent-workspace.ts'), 'utf8');
+
+    expect(source).not.toContain('sandbox=${session.sandboxId}');
+    expect(source).toContain('formatSmokeSandboxRef(session.sandboxId)');
   });
 
   it('keeps desktop smoke pinned to MyCC proxy-only E2B access', () => {
@@ -51,6 +60,8 @@ describe('E2B workspace smoke scripts', () => {
     expect(source).toContain("headers: { cookie }");
     expect(source).toContain('/desktop/proxy');
     expect(source).toContain('assertNoProviderSecrets');
+    expect(source).not.toContain('cookies.join');
+    expect(source).toContain('cookies.length');
   });
 });
 
