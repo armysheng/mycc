@@ -8,7 +8,7 @@ import {
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingOverlay } from "./OnboardingOverlay";
-import { initializeOnboarding } from "../api/auth";
+import { getOnboardingStatus, initializeOnboarding } from "../api/auth";
 
 vi.mock("../contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -17,6 +17,7 @@ vi.mock("../contexts/AuthContext", () => ({
 }));
 
 vi.mock("../api/auth", () => ({
+  getOnboardingStatus: vi.fn(),
   initializeOnboarding: vi.fn(),
 }));
 
@@ -58,6 +59,7 @@ describe("OnboardingOverlay", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.mocked(initializeOnboarding).mockReset();
+    vi.mocked(getOnboardingStatus).mockReset();
     HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
@@ -99,6 +101,46 @@ describe("OnboardingOverlay", () => {
       "/projects/demo?view=history",
     );
     expect(screen.getByTestId("location-state")).toHaveTextContent("null");
+  });
+
+  it("waits for asynchronous initialization to become ready before completing", async () => {
+    vi.mocked(initializeOnboarding).mockResolvedValue({
+      success: true,
+      data: {
+        status: "running",
+        jobId: "job-1",
+      },
+    });
+    vi.mocked(getOnboardingStatus).mockResolvedValue({
+      success: true,
+      data: {
+        status: "ready",
+      },
+    });
+    const { onComplete } = renderOverlay();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    const skip = screen.getByRole("button", {
+      name: "稍后设置，使用默认值",
+    });
+    await act(async () => {
+      fireEvent.click(skip);
+      await Promise.resolve();
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByText("正在准备你的专属工作空间...")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+      await Promise.resolve();
+    });
+
+    expect(getOnboardingStatus).toHaveBeenCalledWith("test-token");
+    expect(onComplete).toHaveBeenCalledOnce();
   });
 
   it("uses product copy instead of legacy assistant and owner examples", () => {

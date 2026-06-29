@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   onboardingRoutes,
+  shouldRunOnboardingAsync,
   shouldPrepareOnboardingWorkspaceWithSsh,
 } from './onboarding.js';
 import { InMemoryIdeSessionStore } from '../ide/session-store.js';
@@ -53,6 +54,12 @@ describe('onboarding initialize', () => {
       MYCC_IDE_PROVIDER: 'e2b',
       MYCC_WORKSPACE_PROVIDER: 'e2b',
     })).toBe(false);
+  });
+
+  it('runs onboarding synchronously by default and asynchronously only when enabled', () => {
+    expect(shouldRunOnboardingAsync({})).toBe(false);
+    expect(shouldRunOnboardingAsync({ MYCC_ONBOARDING_ASYNC: 'false' })).toBe(false);
+    expect(shouldRunOnboardingAsync({ MYCC_ONBOARDING_ASYNC: 'true' })).toBe(true);
   });
 
   it('seeds Claude home and workspace over SSH, then returns ready without a bootstrap prompt', async () => {
@@ -211,6 +218,88 @@ describe('onboarding initialize', () => {
     expect(mocks.markUserInitialized).toHaveBeenCalledWith({
       userId: 42,
       assistantName: '小满',
+    });
+    await app.close();
+  });
+
+  it('can start asynchronous onboarding and report readiness by status polling', async () => {
+    const user = {
+      id: 42,
+      email: 'new@example.test',
+      password_hash: 'hash',
+      linux_user: 'mycc_u42',
+      status: 'active',
+      is_initialized: false,
+      created_at: new Date('2026-05-30T00:00:00Z'),
+      updated_at: new Date('2026-05-30T00:00:00Z'),
+    };
+    mocks.findUserById.mockResolvedValue(user);
+    mocks.markUserInitialized.mockResolvedValue(true);
+
+    const connection = { id: 'ssh-async' };
+    const exec = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: 'ok',
+      stderr: '',
+    });
+    mocks.getSSHPool.mockReturnValue({
+      acquire: vi.fn().mockResolvedValue(connection),
+      exec,
+      release: vi.fn(),
+    });
+
+    const app = Fastify({ logger: false });
+    await app.register(onboardingRoutes, {
+      env: {
+        MYCC_WORKSPACE_PROVIDER: 'ssh',
+        MYCC_ONBOARDING_ASYNC: 'true',
+      },
+      ideSessionStore: new InMemoryIdeSessionStore(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding/initialize',
+      headers: { authorization: authHeader() },
+      payload: {
+        assistantName: '道友 AI',
+        ownerName: '测试用户',
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      success: true,
+      data: {
+        status: 'running',
+      },
+    });
+    expect(response.body).not.toContain('bootstrapPrompt');
+
+    await vi.waitFor(() => {
+      expect(mocks.markUserInitialized).toHaveBeenCalledWith({
+        userId: 42,
+        assistantName: '道友 AI',
+      });
+    });
+
+    mocks.findUserById.mockResolvedValue({
+      ...user,
+      is_initialized: true,
+    });
+
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/onboarding/status',
+      headers: { authorization: authHeader() },
+    });
+
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toEqual({
+      success: true,
+      data: {
+        status: 'ready',
+      },
     });
     await app.close();
   });

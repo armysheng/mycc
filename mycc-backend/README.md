@@ -158,6 +158,7 @@ Authorization: Bearer <token>
 | JWT_SECRET | JWT 签名密钥 | - |
 | MYCC_REGISTRATION_MODE | 注册入口控制：`open` 开放注册，`invite` 必须提供邀请码，`closed` 关闭新注册 | open |
 | MYCC_REGISTRATION_INVITE_CODES | 邀请码列表，逗号或换行分隔；仅 `MYCC_REGISTRATION_MODE=invite` 时使用 | - |
+| MYCC_ONBOARDING_ASYNC | 初始化异步化开关；设为 `true` 时初始化请求快速返回 `running`，前端轮询 `/api/onboarding/status` 到 `ready` | false |
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |

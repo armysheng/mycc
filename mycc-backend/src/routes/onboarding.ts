@@ -35,11 +35,23 @@ const initializeSchema = z.object({
 type InitializeSuccessResponse = {
   success: true;
   data: {
-    status: 'ready';
+    status: 'ready' | 'running' | 'idle' | 'failed';
+    jobId?: string;
+    error?: string;
   };
 };
 type OnboardingE2bProvider = Pick<E2bSandboxProvider, 'runCommandInSession'>
   & Partial<Pick<E2bSandboxProvider, 'startCodeServer'>>;
+type OnboardingUser = NonNullable<Awaited<ReturnType<typeof findUserById>>>;
+type OnboardingJobStatus = 'running' | 'ready' | 'failed';
+type OnboardingJob = {
+  jobId: string;
+  userId: number;
+  status: OnboardingJobStatus;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 export type OnboardingRoutesOptions = {
   env?: NodeJS.ProcessEnv;
@@ -47,6 +59,8 @@ export type OnboardingRoutesOptions = {
   ideSessionStore?: IdeSessionStore;
   templateRoot?: string;
 };
+
+const onboardingJobs = new Map<number, OnboardingJob>();
 
 function publicOnboardingFailureResponse() {
   return {
@@ -69,6 +83,10 @@ function classifyOnboardingFailure(err: unknown): string {
 
 export function shouldPrepareOnboardingWorkspaceWithSsh(env: NodeJS.ProcessEnv = process.env): boolean {
   return (env.MYCC_WORKSPACE_PROVIDER || 'ssh').trim() !== 'e2b';
+}
+
+export function shouldRunOnboardingAsync(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.MYCC_ONBOARDING_ASYNC || '').trim().toLowerCase() === 'true';
 }
 
 function resolveTemplateRoot(env: NodeJS.ProcessEnv, explicitRoot?: string): string {
@@ -276,6 +294,98 @@ async function prepareOnboardingWorkspaceWithE2b(params: {
   };
 }
 
+async function runOnboardingInitialization(params: {
+  routeOptions: Required<OnboardingRoutesOptions>;
+  user: OnboardingUser;
+  userId: number;
+  assistantName: string;
+  ownerName: string;
+}) {
+  const linuxUser = sanitizeLinuxUsername(params.user.linux_user);
+  const workspaceDir = `/home/${linuxUser}/workspace`;
+  const prepareWithSsh = shouldPrepareOnboardingWorkspaceWithSsh(params.routeOptions.env);
+
+  if (prepareWithSsh) {
+    await prepareOnboardingWorkspaceWithSsh({
+      env: params.routeOptions.env,
+      templateRoot: params.routeOptions.templateRoot || undefined,
+      sshLinuxUser: linuxUser,
+      workspaceDir,
+      assistantName: params.assistantName,
+      ownerName: params.ownerName,
+      userId: params.userId,
+    });
+  } else {
+    await prepareOnboardingWorkspaceWithE2b({
+      env: params.routeOptions.env,
+      e2bProvider: params.routeOptions.e2bProvider,
+      ideSessionStore: params.routeOptions.ideSessionStore,
+      templateRoot: params.routeOptions.templateRoot || undefined,
+      userId: params.userId,
+      linuxUser,
+      assistantName: params.assistantName,
+      ownerName: params.ownerName,
+    });
+  }
+
+  await markUserInitialized({
+    userId: params.userId,
+    assistantName: params.assistantName,
+  });
+}
+
+function startOnboardingJob(params: {
+  routeOptions: Required<OnboardingRoutesOptions>;
+  user: OnboardingUser;
+  userId: number;
+  assistantName: string;
+  ownerName: string;
+}): OnboardingJob {
+  const existing = onboardingJobs.get(params.userId);
+  if (existing?.status === 'running') {
+    return existing;
+  }
+
+  const now = Date.now();
+  const job: OnboardingJob = {
+    jobId: `onboarding_${params.userId}_${now.toString(36)}`,
+    userId: params.userId,
+    status: 'running',
+    createdAt: now,
+    updatedAt: now,
+  };
+  onboardingJobs.set(params.userId, job);
+
+  setTimeout(() => {
+    runOnboardingInitialization(params)
+      .then(() => {
+        job.status = 'ready';
+        job.updatedAt = Date.now();
+      })
+      .catch((err) => {
+        job.status = 'failed';
+        job.error = publicOnboardingFailureResponse().error;
+        job.updatedAt = Date.now();
+        console.error('❌ Onboarding 异步初始化失败: initialization_unavailable', {
+          reason: classifyOnboardingFailure(err),
+        });
+      });
+  }, 0);
+
+  return job;
+}
+
+function jobResponse(job: OnboardingJob): InitializeSuccessResponse {
+  return {
+    success: true,
+    data: {
+      status: job.status,
+      jobId: job.jobId,
+      ...(job.status === 'failed' ? { error: job.error || publicOnboardingFailureResponse().error } : {}),
+    },
+  };
+}
+
 export async function onboardingRoutes(fastify: FastifyInstance, options: OnboardingRoutesOptions = {}) {
   const routeOptions: Required<OnboardingRoutesOptions> = {
     env: options.env ?? process.env,
@@ -283,6 +393,45 @@ export async function onboardingRoutes(fastify: FastifyInstance, options: Onboar
     ideSessionStore: options.ideSessionStore ?? new PostgresIdeSessionStore(),
     templateRoot: options.templateRoot ?? '',
   };
+
+  fastify.get('/api/onboarding/status', {
+    preHandler: jwtAuthMiddleware,
+  }, async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ success: false, error: '未认证' });
+    }
+
+    const user = await findUserById(request.user.userId);
+    if (!user) {
+      return reply.status(404).send({
+        success: false,
+        error: '初始化暂时没完成，请重新登录后再试',
+        code: 'initialization_auth_unavailable',
+      });
+    }
+
+    if (user.is_initialized) {
+      onboardingJobs.delete(request.user.userId);
+      return reply.send({
+        success: true,
+        data: {
+          status: 'ready',
+        },
+      } satisfies InitializeSuccessResponse);
+    }
+
+    const job = onboardingJobs.get(request.user.userId);
+    if (!job) {
+      return reply.send({
+        success: true,
+        data: {
+          status: 'idle',
+        },
+      } satisfies InitializeSuccessResponse);
+    }
+
+    return reply.send(jobResponse(job));
+  });
 
   fastify.post('/api/onboarding/initialize', {
     preHandler: jwtAuthMiddleware,
@@ -303,6 +452,7 @@ export async function onboardingRoutes(fastify: FastifyInstance, options: Onboar
       }
 
       if (user.is_initialized) {
+        onboardingJobs.delete(request.user.userId);
         return reply.send({
           success: true,
           data: {
@@ -311,36 +461,26 @@ export async function onboardingRoutes(fastify: FastifyInstance, options: Onboar
         } satisfies InitializeSuccessResponse);
       }
 
-      const linuxUser = sanitizeLinuxUsername(user.linux_user);
-      const workspaceDir = `/home/${linuxUser}/workspace`;
-      const prepareWithSsh = shouldPrepareOnboardingWorkspaceWithSsh(routeOptions.env);
+      const assistantName = body.assistantName.trim();
+      const ownerName = body.ownerName.trim();
 
-      if (prepareWithSsh) {
-        await prepareOnboardingWorkspaceWithSsh({
-          env: routeOptions.env,
-          templateRoot: routeOptions.templateRoot || undefined,
-          sshLinuxUser: linuxUser,
-          workspaceDir,
-          assistantName: body.assistantName.trim(),
-          ownerName: body.ownerName.trim(),
+      if (shouldRunOnboardingAsync(routeOptions.env)) {
+        const job = startOnboardingJob({
+          routeOptions,
+          user,
           userId: request.user.userId,
+          assistantName,
+          ownerName,
         });
-      } else {
-        await prepareOnboardingWorkspaceWithE2b({
-          env: routeOptions.env,
-          e2bProvider: routeOptions.e2bProvider,
-          ideSessionStore: routeOptions.ideSessionStore,
-          templateRoot: routeOptions.templateRoot || undefined,
-          userId: request.user.userId,
-          linuxUser,
-          assistantName: body.assistantName.trim(),
-          ownerName: body.ownerName.trim(),
-        });
+        return reply.status(202).send(jobResponse(job));
       }
 
-      await markUserInitialized({
+      await runOnboardingInitialization({
+        routeOptions,
+        user,
         userId: request.user.userId,
-        assistantName: body.assistantName.trim(),
+        assistantName,
+        ownerName,
       });
 
       return reply.send({
