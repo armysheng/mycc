@@ -147,6 +147,9 @@ const checks: Check[] = [
       'Rollback preflight passes.',
       'credential-blocked, not product-passed',
     ],
+    forbiddenSnippets: [
+      'Current deployed commit: `',
+    ],
   },
   {
     label: 'backend index registers readiness routes',
