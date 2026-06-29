@@ -16,14 +16,14 @@ Current public preview:
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
 - Production operations runbook: `mycc-backend/docs/landing-production-runbook.md`
-- Deployed commit after the latest landing maintenance pass: `edff4b88d05750c4349c814b0b4319a841f684a7`
+- Deployed commit after the latest landing maintenance pass: `23074b069070652b9887e3a3e0c4f534f8d03365`
 
 Current no-side-effect production evidence from 2026-06-29 CST:
 
 - `GET https://daoyou.iaigc.fun/health`: `200`, `status=ok`.
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
-- Remote `/home/armysheng/mycc` is deployed at `edff4b8`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Remote `/home/armysheng/mycc` is deployed at `23074b0`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
 - `GET https://daoyou.iaigc.fun/api/auth/config`: `registration.mode=closed`, `enabled=false`, `inviteRequired=false`.
 - `GET https://daoyou.iaigc.fun/favicon.svg`: `200`, `content-type=image/svg+xml`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed; this is no-side-effect and covers public health, readiness, unauthenticated deep readiness privacy, auth registration mode, homepage brand, favicon, and built assets.
@@ -31,7 +31,7 @@ Current no-side-effect production evidence from 2026-06-29 CST:
 - Home HTML title is `道友 AI`, and the meta description includes `念头通达`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed after the latest brand deployment; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
 - Production deploys now include `mycc-backend/scripts/guard-production-node.sh`; `npm ci/build` must use the same Node v20.19.5 toolchain as systemd.
-- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed again on deployed commit `edff4b8`.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed again on deployed commit `23074b0`.
 - Browser product-surface audit of `https://daoyou.iaigc.fun/projects/demo?codex_audit=<timestamp>` passed on desktop and 390x844 mobile viewport after cache-busting navigation:
   - Login hero shows `问清楚，再动手。把念头落成结果。`, with `道友 AI` and `念头通达出品` visible.
   - Registration tab shows `当前为邀请内测阶段，请联系团队开通账号。`; phone, email, password, and submit button are disabled; submit text is `邀请内测中`.
@@ -44,6 +44,16 @@ Current ops-only production evidence from 2026-06-29 CST:
 - Deep readiness checks: `database=pass`, `skills=pass`, `runtime=pass` with `E2B Agent preflight ready`; `ssh=skipped` because the configured runtime does not initialize SSH at startup.
 - Public unauthenticated `GET https://daoyou.iaigc.fun/readyz/deep` still returns only `401 readyz_deep_unauthorized` and does not expose internal checks.
 - Production `schema_migrations` contains 8 applied migrations. Required landing migrations `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; both were recorded on 2026-06-26T08:34:28Z.
+
+Post-#111 production evidence from 2026-06-29 CST:
+
+- Main commit `23074b069070652b9887e3a3e0c4f534f8d03365` passed GitHub `CI` run `28364261338`: `frontend-ci`, `backend-ci`, and `sandbox-ci` all succeeded.
+- GitHub `Deploy Staging` run `28364322947` succeeded for commit `23074b069070652b9887e3a3e0c4f534f8d03365`, including backend health, deep readiness, and frontend endpoint verification.
+- Remote `/home/armysheng/mycc` is deployed at `23074b0`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Local production `GET /health` and `GET /readyz` over SSH returned success.
+- `mycc-sandbox npm run doctor:template` now passes on production: credentials are present and `e2b-template-exists` reports `Template mycc-assistant-sandbox-dev exists`.
+- Production Node guard passes with Node `v20.19.5`, and `npm run doctor:e2b-agent` reports E2B Agent preflight ready.
+- `curl -fsSIL https://daoyou.iaigc.fun` returned `HTTP/1.1 200 OK`, and `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface` passed.
 
 The core path is proven when all of these are true:
 
@@ -121,9 +131,9 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 
 | Category | Check | Current state | Authorization / side effect |
 | --- | --- | --- | --- |
-| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `edff4b8` | No extra authorization needed. |
+| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `23074b0` | No extra authorization needed. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed on 2026-06-29 after cache-busting navigation | No account action, no form submission. |
-| Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN` | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config | Requires ops token; do not expose internal checks publicly. |
+| Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
 | Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |
 | Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
 | E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |

@@ -16,7 +16,7 @@
 - [x] **初始化称呼和参考资料清理** - 初始化写入内容、用户 workspace 模板、预置浏览器 skill 已清理早期内测称呼和不适合公开内测的上下文。
 - [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹；异步上线前需专门验收“用户等待久”的感知是否被明显改善。
 - [x] **动态错误前台清洗** - 登录/注册、初始化、技能、工具结果、过程详情和系统 hook 的用户可见错误已增加产品化清洗与回归测试，避免 raw `MyCC/E2B/sandbox/token/mycc_u/linuxUser` 等内部细节直接进前台。
-- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成无副作用公网表面复核和 ops-only 授权 deep readiness，剩余需测试账号/E2B live smoke 和回滚演练。
+- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成 `23074b0` 无副作用公网表面复核、ops-only readiness、生产 Node/E2B/sandbox doctors，剩余需测试账号/E2B live smoke 和回滚演练。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
 
 ### P1 - 内测体验增强
@@ -44,7 +44,7 @@
 - [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
 - [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
 - [x] **公网无副作用表面 smoke gate** - `smoke:public-surface` 已固化 `/health`、`/readyz`、未授权 `/readyz/deep` 隐私、注册 gate、首页品牌、favicon 与静态资源检查。
-- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、授权 deep readiness 和生产迁移 007/008 已验证；登录初始化和 E2B live smokes 仍需 release 授权。
+- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、授权 deep readiness、生产迁移 007/008、Node/E2B/sandbox doctors 已验证到 `23074b0`；登录初始化和 E2B live smokes 仍需 release 授权。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
 - [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：强刷新后桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 新首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
