@@ -17,7 +17,7 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `edff4b8`
+- Current deployed commit: `23074b0`
 - Current production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
@@ -32,6 +32,11 @@ database changes, or service restarts needs an explicit release decision.
   - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
+  - GitHub `CI` run `28364261338` passed for `23074b0`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
+  - GitHub `Deploy Staging` run `28364322947` passed for `23074b0`
+  - Production Node guard: Node `v20.19.5`, matching systemd service toolchain
+  - `npm run doctor:e2b-agent`: E2B Agent preflight ready
+  - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
 
 Always use `systemctl --user` for backend service checks. System-level
 `systemctl status mycc-backend.service` can report a misleading inactive state
