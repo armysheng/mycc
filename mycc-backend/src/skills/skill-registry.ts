@@ -25,7 +25,7 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     mdPath: 'tell-me/SKILL.md',
     source_url: '',
     origin_type: 'internal-verified',
-    validation_note: 'MyCC 原创技能，从 .claude/skills/tell-me 迁入',
+    validation_note: '道友 AI 内置技能，已迁入助理技能库',
     last_verified_at: '2026-03-02',
   },
   {
@@ -45,13 +45,13 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     mdPath: 'scheduler/SKILL.md',
     source_url: '',
     origin_type: 'internal-verified',
-    validation_note: 'MyCC 原创技能，从 .claude/skills/scheduler 迁入',
+    validation_note: '道友 AI 内置技能，已迁入助理技能库',
     last_verified_at: '2026-03-02',
   },
   {
     id: 'browser-use',
     name: '可见浏览器自动化',
-    description: '在 MyCC 右侧 CC 电脑里打开、检查、登录和自动操作网页',
+    description: '在右侧助理浏览器里打开、检查、登录和自动操作网页',
     trigger: '/browser-use',
     triggers: ['/browser-use', '打开网页', '访问网站', '浏览器', '可见浏览器'],
     icon: '🌐',
@@ -67,7 +67,7 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     mdPath: 'browser-use/SKILL.md',
     source_url: '',
     origin_type: 'internal-verified',
-    validation_note: 'MyCC assistant sandbox 原创技能，约束可见浏览器和 browser-use 运行方式',
+    validation_note: '道友 AI 内置技能，约束可见浏览器和浏览器自动化运行方式',
     last_verified_at: '2026-06-02',
   },
   {
