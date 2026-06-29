@@ -164,6 +164,8 @@ const rules: Rule[] = [
       'mycc-web-react/src/components/LoginPage.test.tsx',
       'mycc-web-react/src/components/MessageComponents.tsx',
       'mycc-web-react/src/components/MessageComponents.test.tsx',
+      'mycc-web-react/src/components/OnboardingOverlay.tsx',
+      'mycc-web-react/src/components/OnboardingOverlay.test.tsx',
       'mycc-web-react/src/components/assistant/AssistantHomePanel.tsx',
       'mycc-web-react/src/components/assistant/AssistantHomePanel.test.tsx',
       'mycc-web-react/src/components/chat/**',

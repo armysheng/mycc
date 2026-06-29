@@ -43,7 +43,11 @@ export async function getCurrentUser(token: string): Promise<{ success: boolean;
 export async function initializeOnboarding(
   token: string,
   data: { assistantName: string; ownerName: string }
-): Promise<{ success: boolean; data?: { status?: string; bootstrapPrompt?: string }; error?: string }> {
+): Promise<{
+  success: boolean;
+  data?: { status?: 'idle' | 'running' | 'ready' | 'failed'; jobId?: string; bootstrapPrompt?: string; error?: string };
+  error?: string;
+}> {
   const res = await fetch(apiUrl('/api/onboarding/initialize'), {
     method: 'POST',
     headers: {
@@ -51,6 +55,21 @@ export async function initializeOnboarding(
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getOnboardingStatus(
+  token: string
+): Promise<{
+  success: boolean;
+  data?: { status?: 'idle' | 'running' | 'ready' | 'failed'; jobId?: string; error?: string };
+  error?: string;
+}> {
+  const res = await fetch(apiUrl('/api/onboarding/status'), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
   });
   return res.json();
 }

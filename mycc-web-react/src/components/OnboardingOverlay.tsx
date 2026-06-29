@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { initializeOnboarding } from '../api/auth';
+import { getOnboardingStatus, initializeOnboarding } from '../api/auth';
 
 interface OnboardingOverlayProps {
   onComplete: () => Promise<void>;
@@ -22,6 +22,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [error, setError] = useState('');
+  const [initializationStatus, setInitializationStatus] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [showButton, setShowButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -170,6 +171,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     if (!token || isSubmitting) return;
     setIsSubmitting(true);
     setError('');
+    setInitializationStatus('');
 
     try {
       const finalAssistantName = assistantName || defaultAssistantName;
@@ -178,10 +180,13 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         assistantName: finalAssistantName,
         ownerName: finalOwnerName,
       });
-      if (res.success) {
+      if (res.success && (!res.data?.status || res.data.status === 'ready')) {
         await onComplete();
+      } else if (res.success && res.data?.status === 'running') {
+        setInitializationStatus('正在准备你的专属工作空间...');
+        await waitForInitializationReady();
       } else {
-        setError(res.error || '初始化失败，请重试');
+        setError(res.data?.error || res.error || '初始化失败，请重试');
       }
     } catch {
       setError('网络错误，请重试');
@@ -194,6 +199,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     if (!token || isSubmitting) return;
     setIsSubmitting(true);
     setError('');
+    setInitializationStatus('');
 
     try {
       const finalAssistantName = defaultAssistantName;
@@ -202,16 +208,43 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         assistantName: finalAssistantName,
         ownerName: finalOwnerName,
       });
-      if (res.success) {
+      if (res.success && (!res.data?.status || res.data.status === 'ready')) {
         await onComplete();
+      } else if (res.success && res.data?.status === 'running') {
+        setInitializationStatus('正在准备你的专属工作空间...');
+        await waitForInitializationReady();
       } else {
-        setError(res.error || '初始化失败，请重试');
+        setError(res.data?.error || res.error || '初始化失败，请重试');
       }
     } catch {
       setError('网络错误，请重试');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const waitForInitializationReady = async () => {
+    const maxAttempts = 80;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (cancelledRef.current) return;
+      await delay(1500);
+      if (cancelledRef.current) return;
+      const status = await getOnboardingStatus(token!);
+      if (!status.success) {
+        setError(status.error || '初始化失败，请重试');
+        return;
+      }
+      if (status.data?.status === 'ready') {
+        await onComplete();
+        return;
+      }
+      if (status.data?.status === 'failed') {
+        setError(status.data.error || status.error || '初始化失败，请重试');
+        return;
+      }
+      setInitializationStatus('正在准备你的专属工作空间...');
+    }
+    setError('初始化时间较长，请稍后重试');
   };
 
   useEffect(() => {
@@ -292,6 +325,12 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
           {error && (
             <div className="mb-3 rounded-xl border px-3 py-2.5 text-sm text-red-500 bg-red-500/10 border-red-400/30">
               {error}
+            </div>
+          )}
+
+          {initializationStatus && !error && (
+            <div className="mb-3 rounded-xl border px-3 py-2.5 text-sm text-[var(--text-secondary)] bg-[var(--accent-subtle)] border-[var(--accent-border)]">
+              {initializationStatus}
             </div>
           )}
 
