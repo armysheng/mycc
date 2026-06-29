@@ -12,6 +12,11 @@ type OnboardingInitializeData = {
   status?: unknown;
   bootstrapPrompt?: unknown;
 };
+type RegistrationMode = 'open' | 'invite' | 'closed';
+type ExistingTestCredentials = {
+  credential: string;
+  password: string;
+};
 
 const GENERIC_LOGIN_ERROR = '手机号/邮箱或密码错误';
 const INTERNAL_DETAIL_PATTERN = /linux_user|mycc_u\d+|用户不存在|linuxUser/i;
@@ -76,10 +81,19 @@ async function getJson(fetchImpl: FetchLike, baseUrl: string, path: string, toke
   return { response, json };
 }
 
-function readToken(body: JsonObject): string {
+async function getPublicJson(fetchImpl: FetchLike, baseUrl: string, path: string) {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    method: 'GET',
+  });
+  const json = await readJson(response);
+  assertNoInternalAuthDetails(path, json);
+  return { response, json };
+}
+
+function readToken(body: JsonObject, label: string): string {
   const data = body.data;
   if (!data || typeof data !== 'object' || !('token' in data) || typeof data.token !== 'string') {
-    throw new Error('registration response did not include data.token');
+    throw new Error(`${label} did not include data.token`);
   }
   return data.token;
 }
@@ -88,6 +102,88 @@ function readInitializeData(body: JsonObject): OnboardingInitializeData {
   const data = body.data;
   if (!data || typeof data !== 'object') return {};
   return data as OnboardingInitializeData;
+}
+
+function readRegistrationMode(body: JsonObject): unknown {
+  const data = body.data;
+  if (!data || typeof data !== 'object' || !('registration' in data)) return undefined;
+  const registration = data.registration;
+  if (!registration || typeof registration !== 'object' || !('mode' in registration)) return undefined;
+  return registration.mode;
+}
+
+function assertRegistrationMode(mode: unknown): RegistrationMode {
+  if (mode === 'open' || mode === 'invite' || mode === 'closed') {
+    return mode;
+  }
+  throw new Error(`auth config did not include a supported registration mode, got ${String(mode)}`);
+}
+
+function readTrimmedEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
+function resolveExistingTestCredentials(): ExistingTestCredentials | undefined {
+  const credential = readTrimmedEnv('MYCC_AUTH_SMOKE_CREDENTIAL')
+    ?? readTrimmedEnv('MYCC_AUTH_SMOKE_EMAIL')
+    ?? readTrimmedEnv('MYCC_AUTH_SMOKE_PHONE');
+  const password = process.env.MYCC_AUTH_SMOKE_PASSWORD;
+  if (!credential && !password) return undefined;
+  if (!credential || !password) {
+    throw new Error(
+      'registration is closed; set both MYCC_AUTH_SMOKE_CREDENTIAL (or MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
+      + 'and MYCC_AUTH_SMOKE_PASSWORD for an existing test account',
+    );
+  }
+  return { credential, password };
+}
+
+async function readTargetRegistrationMode(fetchImpl: FetchLike, baseUrl: string): Promise<RegistrationMode> {
+  const config = await getPublicJson(fetchImpl, baseUrl, '/api/auth/config');
+  if (!config.response.ok || config.json.success !== true) {
+    throw new Error(`auth config failed status=${config.response.status}`);
+  }
+  return assertRegistrationMode(readRegistrationMode(config.json));
+}
+
+async function registerNewTestAccount(fetchImpl: FetchLike, baseUrl: string, registrationMode: RegistrationMode): Promise<string> {
+  const email = randomExampleEmail('auth-onboarding');
+  const password = `MyccSmoke-${randomUUID()}!`;
+  const body: JsonObject = {
+    email,
+    password,
+  };
+  const inviteCode = readTrimmedEnv('MYCC_AUTH_SMOKE_INVITE_CODE');
+  if (registrationMode === 'invite' && !inviteCode) {
+    throw new Error('registration is invite-only; set MYCC_AUTH_SMOKE_INVITE_CODE before running smoke:auth-onboarding');
+  }
+  if (inviteCode) body.inviteCode = inviteCode;
+
+  const registered = await postJson(fetchImpl, baseUrl, '/api/auth/register', body);
+  if (registered.response.status !== 201 || registered.json.success !== true) {
+    throw new Error(`registration failed status=${registered.response.status}`);
+  }
+  return readToken(registered.json, 'registration response');
+}
+
+async function loginExistingTestAccount(fetchImpl: FetchLike, baseUrl: string): Promise<string> {
+  const credentials = resolveExistingTestCredentials();
+  if (!credentials) {
+    throw new Error(
+      'registration is closed; set MYCC_AUTH_SMOKE_CREDENTIAL (or MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
+      + 'and MYCC_AUTH_SMOKE_PASSWORD for an existing test account before running smoke:auth-onboarding',
+    );
+  }
+
+  const loggedIn = await postJson(fetchImpl, baseUrl, '/api/auth/login', {
+    credential: credentials.credential,
+    password: credentials.password,
+  });
+  if (!loggedIn.response.ok || loggedIn.json.success !== true) {
+    throw new Error(`closed-mode login failed status=${loggedIn.response.status}`);
+  }
+  return readToken(loggedIn.json, 'login response');
 }
 
 export async function runAuthPrivacySmoke(options: SmokeOptions = {}): Promise<void> {
@@ -114,17 +210,10 @@ export async function runAuthPrivacySmoke(options: SmokeOptions = {}): Promise<v
 export async function runAuthOnboardingSmoke(options: SmokeOptions = {}): Promise<void> {
   const baseUrl = resolveBaseUrl(options.baseUrl);
   const fetchImpl = resolveFetch(options.fetch);
-  const email = randomExampleEmail('auth-onboarding');
-  const password = `MyccSmoke-${randomUUID()}!`;
-
-  const registered = await postJson(fetchImpl, baseUrl, '/api/auth/register', {
-    email,
-    password,
-  });
-  if (registered.response.status !== 201 || registered.json.success !== true) {
-    throw new Error(`registration failed status=${registered.response.status}`);
-  }
-  const token = readToken(registered.json);
+  const registrationMode = await readTargetRegistrationMode(fetchImpl, baseUrl);
+  const token = registrationMode === 'closed'
+    ? await loginExistingTestAccount(fetchImpl, baseUrl)
+    : await registerNewTestAccount(fetchImpl, baseUrl, registrationMode);
 
   const initialized = await postJson(fetchImpl, baseUrl, '/api/onboarding/initialize', {
     assistantName: '道友',

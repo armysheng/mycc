@@ -206,7 +206,7 @@ const targets: HarnessTarget[] = [
   {
     id: 'auth-onboarding-smoke',
     label: 'Auth onboarding smoke',
-    description: 'Registers an example.test user, initializes onboarding, and verifies /api/auth/me without calling chat.',
+    description: 'Registers a test user when open, requires MYCC_AUTH_SMOKE_INVITE_CODE when invite-only, or logs in an explicit existing test account when closed; initializes onboarding and verifies /api/auth/me without calling chat.',
     command: 'npm',
     args: ['run', 'smoke:auth-onboarding'],
     cwd: backendRoot,

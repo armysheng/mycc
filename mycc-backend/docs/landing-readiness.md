@@ -76,7 +76,7 @@ BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy
 BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-onboarding
 ```
 
-`smoke:auth-onboarding` registers or logs in a test identity, initializes onboarding, and may create or reuse workspace/E2B state. Do not run it casually against production without recording the test identity and cleanup expectation.
+`smoke:auth-onboarding` registers or logs in a test identity, initializes onboarding, and may create or reuse workspace/E2B state. Do not run it casually against production without recording the test identity and cleanup expectation. If `/api/auth/config` reports `registration.mode=closed`, provide an existing test account with `MYCC_AUTH_SMOKE_CREDENTIAL` (or `MYCC_AUTH_SMOKE_EMAIL` / `MYCC_AUTH_SMOKE_PHONE`) plus `MYCC_AUTH_SMOKE_PASSWORD`; invite-only targets can provide `MYCC_AUTH_SMOKE_INVITE_CODE` for new-account registration.
 
 ## Required Environment
 
