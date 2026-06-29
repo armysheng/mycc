@@ -66,6 +66,11 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('mycc-backend/scripts/agent-eval-static.ts');
   });
 
+  it('treats local manual test scripts as non-deploying', () => {
+    expect(workflow).toContain('mycc-backend/test-api.sh');
+    expect(workflow).toContain('mycc-backend/test-full.sh');
+  });
+
   it('can deploy frontend-only pushes without backend migrations or restarts', () => {
     expect(workflow).toContain('deploy_frontend=');
     expect(workflow).toContain('deploy_backend=');
