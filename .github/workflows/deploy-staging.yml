@@ -32,7 +32,67 @@ jobs:
       STAGING_BACKEND_RESTART_CMD: ${{ secrets.STAGING_BACKEND_RESTART_CMD }}
       STAGING_NODE_BIN_DIR: ${{ secrets.STAGING_NODE_BIN_DIR }}
     steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+
+      - name: Check deployment impact
+        id: deployment_impact
+        run: |
+          set -euo pipefail
+          if ! git rev-parse HEAD^ >/dev/null 2>&1; then
+            echo "No parent commit available; deploy to be safe."
+            echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+            echo "deploy_frontend=true" >> "${GITHUB_OUTPUT}"
+            echo "deploy_backend=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          git diff --name-only HEAD^ HEAD | tee /tmp/staging-changed-files.txt
+
+          should_deploy=false
+          deploy_frontend=false
+          deploy_backend=false
+          while IFS= read -r file; do
+            if [ -z "${file}" ]; then
+              continue
+            fi
+
+            case "${file}" in
+              docs/*|mycc-backend/docs/*|*.md|TODO.md|MYCC_STARTUP_GUIDE.md|.github/workflows/*|mycc-backend/src/scripts/staging-workflow.test.ts)
+                echo "non-deploying: ${file}"
+                ;;
+              mycc-web-react/*)
+                should_deploy=true
+                deploy_frontend=true
+                echo "frontend-impacting: ${file}"
+                ;;
+              mycc-backend/*|mycc-sandbox/*|evals/*|scripts/*)
+                should_deploy=true
+                deploy_backend=true
+                echo "backend-impacting: ${file}"
+                ;;
+              *)
+                should_deploy=true
+                deploy_frontend=true
+                deploy_backend=true
+                echo "deployment-impacting: ${file}"
+                ;;
+            esac
+          done < /tmp/staging-changed-files.txt
+
+          echo "should_deploy=${should_deploy}" >> "${GITHUB_OUTPUT}"
+          echo "deploy_frontend=${deploy_frontend}" >> "${GITHUB_OUTPUT}"
+          echo "deploy_backend=${deploy_backend}" >> "${GITHUB_OUTPUT}"
+
+      - name: Skip remote deploy
+        if: steps.deployment_impact.outputs.should_deploy != 'true'
+        run: echo "No deployment-impacting files changed; skipping staging SSH, migration, build, restart, and health probes."
+
       - name: Validate required staging secrets
+        if: steps.deployment_impact.outputs.should_deploy == 'true'
         run: |
           set -euo pipefail
           for key in STAGING_HOST STAGING_USER STAGING_SSH_KEY; do
@@ -49,17 +109,20 @@ jobs:
           fi
 
       - name: Setup SSH agent
+        if: steps.deployment_impact.outputs.should_deploy == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
       - name: Add staging host to known_hosts
+        if: steps.deployment_impact.outputs.should_deploy == 'true'
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           ssh-keyscan -p "${STAGING_PORT:-22}" -H "${STAGING_HOST}" >> ~/.ssh/known_hosts
 
       - name: Deploy on staging server
+        if: steps.deployment_impact.outputs.should_deploy == 'true'
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
@@ -67,9 +130,11 @@ jobs:
           PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
           FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
           NODE_BIN_DIR="${STAGING_NODE_BIN_DIR:-}"
+          DEPLOY_FRONTEND="${{ steps.deployment_impact.outputs.deploy_frontend }}"
+          DEPLOY_BACKEND="${{ steps.deployment_impact.outputs.deploy_backend }}"
           BACKEND_RESTART_CMD_B64="$(printf '%s' "${STAGING_BACKEND_RESTART_CMD:-}" | base64 -w 0)"
           ssh "${SSH_OPTS[@]}" "${STAGING_USER}@${STAGING_HOST}" \
-            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_NODE_BIN_DIR='${NODE_BIN_DIR}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
+            "PROJECT_DIR='${PROJECT_DIR}' FRONTEND_DIST_DIR='${FRONTEND_DIST_DIR}' STAGING_NODE_BIN_DIR='${NODE_BIN_DIR}' DEPLOY_FRONTEND='${DEPLOY_FRONTEND}' DEPLOY_BACKEND='${DEPLOY_BACKEND}' STAGING_BACKEND_RESTART_CMD_B64='${BACKEND_RESTART_CMD_B64}' bash -s" <<'EOF'
           set -euo pipefail
           STAGING_BACKEND_RESTART_CMD=""
           if [ -n "${STAGING_BACKEND_RESTART_CMD_B64:-}" ]; then
@@ -106,41 +171,46 @@ jobs:
           git checkout main
           git pull --ff-only origin main
 
-          npm -C mycc-web-react ci
-          npm -C mycc-web-react run build
+          if [ "${DEPLOY_FRONTEND}" = "true" ]; then
+            npm -C mycc-web-react ci
+            npm -C mycc-web-react run build
 
-          if [ -n "${FRONTEND_DIST_DIR}" ]; then
-            mkdir -p "${FRONTEND_DIST_DIR}"
-            rsync -a --delete mycc-web-react/dist/ "${FRONTEND_DIST_DIR}/"
+            if [ -n "${FRONTEND_DIST_DIR}" ]; then
+              mkdir -p "${FRONTEND_DIST_DIR}"
+              rsync -a --delete mycc-web-react/dist/ "${FRONTEND_DIST_DIR}/"
+            fi
           fi
 
-          npm -C mycc-backend ci
-          npm -C mycc-backend run db:migrate
-          npm -C mycc-backend run build
+          if [ "${DEPLOY_BACKEND}" = "true" ]; then
+            npm -C mycc-backend ci
+            npm -C mycc-backend run db:migrate
+            npm -C mycc-backend run build
 
-          if [ -n "${STAGING_BACKEND_RESTART_CMD:-}" ]; then
-            echo "restart via custom command"
-            bash -lc "${STAGING_BACKEND_RESTART_CMD}"
-          else
-            USER_UNIT="$(systemctl --user list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
-            SYS_UNIT="$(sudo systemctl list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
-            if [ -n "${USER_UNIT}" ] && systemctl --user restart "${USER_UNIT}" 2>/dev/null; then
-              echo "restarted with systemctl --user ${USER_UNIT}"
-            elif [ -n "${SYS_UNIT}" ] && sudo systemctl restart "${SYS_UNIT}" 2>/dev/null; then
-              echo "restarted with sudo systemctl ${SYS_UNIT}"
-            elif command -v pm2 >/dev/null 2>&1 && pm2 restart mycc-backend 2>/dev/null; then
-              echo "restarted with pm2 mycc-backend"
+            if [ -n "${STAGING_BACKEND_RESTART_CMD:-}" ]; then
+              echo "restart via custom command"
+              bash -lc "${STAGING_BACKEND_RESTART_CMD}"
             else
-              echo "failed to restart backend service" >&2
-              systemctl --user list-unit-files --type=service 2>/dev/null | grep -i mycc || true
-              sudo systemctl list-unit-files --type=service 2>/dev/null | grep -i mycc || true
-              pm2 list || true
-              exit 1
+              USER_UNIT="$(systemctl --user list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
+              SYS_UNIT="$(sudo systemctl list-unit-files --type=service 2>/dev/null | awk '/mycc/ {print $1; exit}')"
+              if [ -n "${USER_UNIT}" ] && systemctl --user restart "${USER_UNIT}" 2>/dev/null; then
+                echo "restarted with systemctl --user ${USER_UNIT}"
+              elif [ -n "${SYS_UNIT}" ] && sudo systemctl restart "${SYS_UNIT}" 2>/dev/null; then
+                echo "restarted with sudo systemctl ${SYS_UNIT}"
+              elif command -v pm2 >/dev/null 2>&1 && pm2 restart mycc-backend 2>/dev/null; then
+                echo "restarted with pm2 mycc-backend"
+              else
+                echo "failed to restart backend service" >&2
+                systemctl --user list-unit-files --type=service 2>/dev/null | grep -i mycc || true
+                sudo systemctl list-unit-files --type=service 2>/dev/null | grep -i mycc || true
+                pm2 list || true
+                exit 1
+              fi
             fi
           fi
           EOF
 
       - name: Verify backend health endpoint (via SSH)
+        if: steps.deployment_impact.outputs.deploy_backend == 'true'
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
@@ -176,6 +246,7 @@ jobs:
           fi
 
       - name: Verify backend deep readiness endpoint (via SSH)
+        if: steps.deployment_impact.outputs.deploy_backend == 'true'
         run: |
           set -euo pipefail
           SSH_PORT="${STAGING_PORT:-22}"
@@ -217,7 +288,7 @@ jobs:
           fi
 
       - name: Verify frontend endpoint (optional)
-        if: env.STAGING_FRONTEND_URL != ''
+        if: steps.deployment_impact.outputs.deploy_frontend == 'true' && env.STAGING_FRONTEND_URL != ''
         run: |
           set -euo pipefail
           curl -fsSIL "${STAGING_FRONTEND_URL}" | head -n 20
