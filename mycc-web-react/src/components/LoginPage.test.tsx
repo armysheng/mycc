@@ -89,7 +89,7 @@ describe("LoginPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
-    expect(await screen.findByText("当前为邀请内测阶段，请联系团队开通账号。")).toBeInTheDocument();
+    expect(await screen.findByText("暂未开放自助注册，请联系团队开通账号。")).toBeInTheDocument();
     const optionalContactInputs = screen.getAllByPlaceholderText("选填");
     expect(optionalContactInputs).toHaveLength(2);
     expect(optionalContactInputs[0]).toBeDisabled();
@@ -99,7 +99,8 @@ describe("LoginPage", () => {
     if (inviteCodeInput) {
       expect(inviteCodeInput).toBeDisabled();
     }
-    expect(screen.getByRole("button", { name: "邀请内测中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂未开放注册" })).toBeDisabled();
+    expect(document.body).not.toHaveTextContent("邀请内测中");
   });
 
   it("does not display internal login errors", async () => {

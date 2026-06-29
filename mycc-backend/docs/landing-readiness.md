@@ -35,7 +35,7 @@ Latest no-side-effect production evidence from 2026-06-29 CST:
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed again on deployed commit `23074b0`.
 - Browser product-surface audit of `https://daoyou.iaigc.fun/projects/demo?codex_audit=<timestamp>` passed on desktop and 390x844 mobile viewport after cache-busting navigation:
   - Login hero shows `问清楚，再动手。把念头落成结果。`, with `道友 AI` and `念头通达出品` visible.
-  - Registration tab shows `当前为邀请内测阶段，请联系团队开通账号。`; phone, email, password, and submit button are disabled; submit text is `邀请内测中`.
+  - Registration tab shows `暂未开放自助注册，请联系团队开通账号。`; phone, email, password, and submit button are disabled; submit text is `暂未开放注册`.
   - Visible body text did not expose `MyCC`, `linuxUser`, `E2B`, `sandbox`, `token`, `mycc_u`, `大辉哥`, `老板`, or `主人`.
   - A previously observed old login hero was not reproducible after cache-busting navigation and matches a stale browser SPA chunk/cache symptom rather than the deployed asset state.
 
@@ -43,7 +43,7 @@ Current Playwright product-surface evidence from 2026-06-29 CST:
 
 - Desktop viewport `1440x1000` at `/projects/demo?codex_audit=<timestamp>` rendered title `道友 AI`, login hero `问清楚，再动手。把念头落成结果。`, `道友 AI`, and `念头通达出品`.
 - Mobile viewport `390x844` rendered the compact login card with `道友 AI` and `念头通达出品`; `documentElement.scrollWidth=390` and `body.scrollWidth=390`, so no horizontal overflow was observed.
-- Registration tab was opened without submitting a form. It showed `当前为邀请内测阶段，请联系团队开通账号。`; phone, email, password, and `邀请内测中` submit button were disabled.
+- Registration tab was opened without submitting a form. It showed `暂未开放自助注册，请联系团队开通账号。`; phone, email, password, and `暂未开放注册` submit button were disabled.
 - Visible body text in the desktop, mobile, and registration-tab audits did not match `MyCC`, `linuxUser`, `E2B`, `sandbox`, `token`, `mycc_u`, `大辉哥`, `老板`, or `主人`.
 - Browser console only reported a password-field autocomplete hint; no runtime error was observed during the readonly audit.
 
