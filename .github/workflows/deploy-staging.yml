@@ -187,6 +187,7 @@ jobs:
             if [ -n "${FRONTEND_DIST_DIR}" ]; then
               mkdir -p "${FRONTEND_DIST_DIR}"
               rsync -a --delete mycc-web-react/dist/ "${FRONTEND_DIST_DIR}/"
+              chmod -R u=rwX,go=rX "${FRONTEND_DIST_DIR}"
             fi
           fi
 
