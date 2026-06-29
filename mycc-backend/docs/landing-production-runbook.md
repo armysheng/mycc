@@ -25,6 +25,7 @@ database changes, or service restarts needs an explicit release decision.
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
   - Authorized local `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `database=pass`, `skills=pass`, `runtime=pass`, `ssh=skipped`
+  - Production `schema_migrations`: 8 applied migrations; `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied
   - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
   - `GET /favicon.svg`: `200`, `content-type=image/svg+xml`
   - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed
@@ -175,6 +176,36 @@ Expected:
 - `checks.runtime.status=pass` with E2B Agent preflight ready.
 - `checks.ssh.status=skipped` when the configured runtime does not initialize SSH at startup.
 - Do not paste the token or raw output containing sensitive fields into PRs, screenshots, or chat; record only the redacted status summary.
+
+Read-only migration evidence:
+
+```bash
+ssh armysheng@136.110.125.242 'set -euo pipefail
+cd /home/armysheng/mycc/mycc-backend
+set -a
+. ./.env
+set +a
+node - <<'"'"'NODE'"'"'
+const pg = require("pg");
+const required = ["007-add-agent-run-trace.sql", "008-add-ide-session-identity.sql"];
+(async () => {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+  try {
+    const result = await pool.query("SELECT filename, applied_at FROM schema_migrations ORDER BY filename");
+    const applied = new Set(result.rows.map((row) => row.filename));
+    console.log(JSON.stringify({
+      migration_count: result.rows.length,
+      required: Object.fromEntries(required.map((name) => [name, applied.has(name) ? "applied" : "missing"])),
+    }, null, 2));
+  } finally {
+    await pool.end();
+  }
+})();
+NODE
+'
+```
+
+Expected: `migration_count` includes all repo migrations through `008`, and both required landing migrations report `applied`. This command is read-only and must not be replaced with `npm run db:migrate` unless the migration gate is explicitly open.
 
 ## Auth Privacy Smoke
 
