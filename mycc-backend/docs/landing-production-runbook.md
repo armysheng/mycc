@@ -17,13 +17,14 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `e637904`
+- Current deployed commit: `edff4b8`
 - Current production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
   - `GET /health`: `200`
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
+  - Authorized local `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `database=pass`, `skills=pass`, `runtime=pass`, `ssh=skipped`
   - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
   - `GET /favicon.svg`: `200`, `content-type=image/svg+xml`
   - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed
@@ -152,6 +153,28 @@ npm run doctor:e2b-agent
 
 The Node guard must show Node `v20.19.5` and the same `node`/`npm` binaries as
 the user systemd backend service.
+
+Ops-only deep readiness, no user creation:
+
+```bash
+ssh armysheng@136.110.125.242 'set -euo pipefail
+cd /home/armysheng/mycc/mycc-backend
+set -a
+. ./.env
+set +a
+curl -fsS -H "Authorization: Bearer ${MYCC_READYZ_DEEP_TOKEN}" \
+  http://127.0.0.1:8080/readyz/deep
+'
+```
+
+Expected:
+
+- `ready=true`, `status=ok`.
+- `checks.database.status=pass`.
+- `checks.skills.status=pass`.
+- `checks.runtime.status=pass` with E2B Agent preflight ready.
+- `checks.ssh.status=skipped` when the configured runtime does not initialize SSH at startup.
+- Do not paste the token or raw output containing sensitive fields into PRs, screenshots, or chat; record only the redacted status summary.
 
 ## Auth Privacy Smoke
 
