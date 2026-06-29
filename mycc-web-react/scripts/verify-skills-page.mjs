@@ -3,16 +3,22 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const APP_URL = 'http://127.0.0.1:3000/';
-const API_URL = 'http://127.0.0.1:8080';
-const USER = '+8613800138000';
-const PASS = 'test123456';
+const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3000/';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:8080';
+const USER = process.env.MYCC_TEST_CREDENTIAL;
+const PASS = process.env.MYCC_TEST_PASSWORD;
 const countFromTab = (label) => {
   const m = label.match(/\((\d+)\)/);
   return m ? Number(m[1]) : 0;
 };
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const screenshotDir = path.resolve(__dirname, '../../output/playwright');
+
+if (!USER || !PASS) {
+  throw new Error(
+    'Missing MYCC_TEST_CREDENTIAL or MYCC_TEST_PASSWORD. Provide test credentials via env/private channel before running this live verification script.',
+  );
+}
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });

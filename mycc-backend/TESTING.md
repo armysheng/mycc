@@ -83,8 +83,8 @@ curl http://localhost:8080/health
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "phone": "+8613800138000",
-    "password": "test123456",
+    "phone": "<TEST_PHONE_FROM_ENV>",
+    "password": "<TEST_PASSWORD_FROM_ENV>",
     "nickname": "测试用户"
   }'
 
@@ -116,12 +116,12 @@ curl -X POST http://localhost:8080/api/chat \
 # 注册
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"phone": "+8613800138001", "password": "test123", "nickname": "用户1"}'
+  -d '{"phone": "<LOCAL_TEST_PHONE>", "password": "<LOCAL_TEST_PASSWORD>", "nickname": "用户1"}'
 
 # 登录
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"credential": "+8613800138001", "password": "test123"}'
+  -d '{"credential": "<LOCAL_TEST_PHONE>", "password": "<LOCAL_TEST_PASSWORD>"}'
 ```
 
 ### 场景 2: 对话功能（需要 Claude API）

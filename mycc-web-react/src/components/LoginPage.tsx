@@ -11,10 +11,12 @@ export function LoginPage() {
   const { login } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const isDev = import.meta.env.DEV;
-  const [credential, setCredential] = useState(isDev ? "+8613800138000" : "");
+  const devCredential = isDev ? import.meta.env.VITE_DEV_LOGIN_CREDENTIAL ?? "" : "";
+  const devPassword = isDev ? import.meta.env.VITE_DEV_LOGIN_PASSWORD ?? "" : "";
+  const [credential, setCredential] = useState(devCredential);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState(isDev ? "test123456" : "");
+  const [password, setPassword] = useState(devPassword);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

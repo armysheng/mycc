@@ -1,11 +1,34 @@
 #!/bin/bash
-# MyCC 完整功能测试脚本
+# 道友 AI 完整功能测试脚本
 
 set -e
 
-API="http://localhost:8080"
-echo "=== MyCC 商业化后端测试 ==="
+API="${API:-http://localhost:8080}"
+MYCC_TEST_PHONE_1="${MYCC_TEST_PHONE_1:-}"
+MYCC_TEST_PHONE_2="${MYCC_TEST_PHONE_2:-}"
+MYCC_TEST_PHONE_3="${MYCC_TEST_PHONE_3:-}"
+MYCC_TEST_PASSWORD="${MYCC_TEST_PASSWORD:-}"
+echo "=== 道友 AI 商业化后端测试 ==="
 echo ""
+
+if [[ -z "$MYCC_TEST_PHONE_1" || -z "$MYCC_TEST_PHONE_2" || -z "$MYCC_TEST_PHONE_3" || -z "$MYCC_TEST_PASSWORD" ]]; then
+  echo "ERROR: Missing MYCC_TEST_PHONE_1, MYCC_TEST_PHONE_2, MYCC_TEST_PHONE_3, or MYCC_TEST_PASSWORD." >&2
+  echo "Provide disposable local test credentials via env/private channel before running this script." >&2
+  exit 1
+fi
+
+register_user() {
+  local phone="$1"
+  local nickname="$2"
+
+  curl -s -X POST "$API/api/auth/register" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+      --arg phone "$phone" \
+      --arg password "$MYCC_TEST_PASSWORD" \
+      --arg nickname "$nickname" \
+      '{phone: $phone, password: $password, nickname: $nickname}')"
+}
 
 # 测试 1: 健康检查
 echo "✅ 测试 1: 健康检查"
@@ -16,23 +39,17 @@ echo ""
 echo "✅ 测试 2: 注册 3 个用户"
 
 echo "注册用户 1..."
-USER1=$(curl -s -X POST "$API/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"+8613800138001","password":"test123","nickname":"测试用户1"}')
+USER1=$(register_user "$MYCC_TEST_PHONE_1" "测试用户1")
 TOKEN1=$(echo "$USER1" | jq -r '.data.token')
 echo "用户1: $(echo "$USER1" | jq -r '.data.user.nickname') (ID: $(echo "$USER1" | jq -r '.data.user.id'))"
 
 echo "注册用户 2..."
-USER2=$(curl -s -X POST "$API/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"+8613800138002","password":"test123","nickname":"测试用户2"}')
+USER2=$(register_user "$MYCC_TEST_PHONE_2" "测试用户2")
 TOKEN2=$(echo "$USER2" | jq -r '.data.token')
 echo "用户2: $(echo "$USER2" | jq -r '.data.user.nickname') (ID: $(echo "$USER2" | jq -r '.data.user.id'))"
 
 echo "注册用户 3..."
-USER3=$(curl -s -X POST "$API/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"+8613800138003","password":"test123","nickname":"测试用户3"}')
+USER3=$(register_user "$MYCC_TEST_PHONE_3" "测试用户3")
 TOKEN3=$(echo "$USER3" | jq -r '.data.token')
 echo "用户3: $(echo "$USER3" | jq -r '.data.user.nickname') (ID: $(echo "$USER3" | jq -r '.data.user.id'))"
 echo ""
@@ -63,7 +80,10 @@ echo ""
 echo "✅ 测试 6: 登录测试（用户3）"
 LOGIN=$(curl -s -X POST "$API/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"credential":"+8613800138003","password":"test123"}')
+  -d "$(jq -n \
+    --arg credential "$MYCC_TEST_PHONE_3" \
+    --arg password "$MYCC_TEST_PASSWORD" \
+    '{credential: $credential, password: $password}')")
 echo "$LOGIN" | jq '.data.user'
 echo ""
 

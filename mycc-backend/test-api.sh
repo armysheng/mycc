@@ -2,10 +2,19 @@
 # API 测试脚本
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
+MYCC_TEST_PHONE="${MYCC_TEST_PHONE:-}"
+MYCC_TEST_PASSWORD="${MYCC_TEST_PASSWORD:-}"
+MYCC_TEST_NICKNAME="${MYCC_TEST_NICKNAME:-测试用户}"
 TOKEN=""
 
-echo "=== MyCC Backend API 测试 ==="
+echo "=== 道友 AI Backend API 测试 ==="
 echo ""
+
+if [[ -z "$MYCC_TEST_PHONE" || -z "$MYCC_TEST_PASSWORD" ]]; then
+  echo "ERROR: Missing MYCC_TEST_PHONE or MYCC_TEST_PASSWORD." >&2
+  echo "Provide disposable local test credentials via env/private channel before running this script." >&2
+  exit 1
+fi
 
 # 1. 健康检查
 echo "1️⃣ 健康检查"
@@ -16,11 +25,11 @@ echo ""
 echo "2️⃣ 注册用户"
 REGISTER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/register" \
   -H "Content-Type: application/json" \
-  -d '{
-    "phone": "+8613800138000",
-    "password": "test123456",
-    "nickname": "测试用户"
-  }')
+  -d "$(jq -n \
+    --arg phone "$MYCC_TEST_PHONE" \
+    --arg password "$MYCC_TEST_PASSWORD" \
+    --arg nickname "$MYCC_TEST_NICKNAME" \
+    '{phone: $phone, password: $password, nickname: $nickname}')")
 
 echo "$REGISTER_RESPONSE" | jq .
 

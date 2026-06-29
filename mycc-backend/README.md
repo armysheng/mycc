@@ -33,12 +33,12 @@ curl http://localhost:8081/readyz
 # 注册用户
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"phone": "+8613800138000", "password": "test123", "nickname": "测试用户"}'
+  -d '{"phone": "<TEST_PHONE_FROM_ENV>", "password": "<TEST_PASSWORD_FROM_ENV>", "nickname": "测试用户"}'
 
 # 登录
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"credential": "+8613800138000", "password": "test123"}'
+  -d '{"credential": "<TEST_PHONE_OR_EMAIL_FROM_ENV>", "password": "<TEST_PASSWORD_FROM_ENV>"}'
 ```
 
 ## 项目结构
@@ -83,7 +83,7 @@ mycc-backend/
 **请求体**:
 ```json
 {
-  "phone": "+8613800138000",  // 可选，与 email 二选一
+  "phone": "<USER_PHONE>",     // 可选，与 email 二选一
   "email": "user@example.com", // 可选，与 phone 二选一
   "password": "password123",   // 必填，至少 6 位
   "nickname": "用户昵称"        // 可选
@@ -98,9 +98,8 @@ mycc-backend/
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "user": {
       "id": 1,
-      "phone": "+8613800138000",
+      "phone": "<USER_PHONE>",
       "nickname": "用户昵称",
-      "linux_user": "mycc_u1",
       "plan": "free"
     }
   }
@@ -113,7 +112,7 @@ mycc-backend/
 **请求体**:
 ```json
 {
-  "credential": "+8613800138000",  // 手机号或邮箱
+  "credential": "<USER_PHONE_OR_EMAIL>",  // 手机号或邮箱
   "password": "password123"
 }
 ```
@@ -134,9 +133,8 @@ Authorization: Bearer <token>
   "success": true,
   "data": {
     "id": 1,
-    "phone": "+8613800138000",
+    "phone": "<USER_PHONE>",
     "nickname": "用户昵称",
-    "linux_user": "mycc_u1",
     "status": "active",
     "subscription": {
       "plan": "free",

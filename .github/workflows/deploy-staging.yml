@@ -62,7 +62,7 @@ jobs:
             fi
 
             case "${file}" in
-              docs/*|mycc-backend/docs/*|*.md|TODO.md|MYCC_STARTUP_GUIDE.md|.github/workflows/*|mycc-backend/src/scripts/staging-workflow.test.ts|mycc-backend/scripts/landing-pr-classify.ts|mycc-backend/scripts/verify-e2b-release-readiness.ts|mycc-backend/scripts/harness-verify.ts|mycc-backend/scripts/agent-eval-static.ts|mycc-backend/scripts/smoke-auth-onboarding.ts|mycc-backend/scripts/smoke-auth-privacy.ts|mycc-backend/scripts/smoke-e2b-*.ts)
+              docs/*|mycc-backend/docs/*|*.md|TODO.md|MYCC_STARTUP_GUIDE.md|.github/workflows/*|mycc-backend/test-api.sh|mycc-backend/test-full.sh|mycc-backend/src/scripts/staging-workflow.test.ts|mycc-backend/scripts/landing-pr-classify.ts|mycc-backend/scripts/verify-e2b-release-readiness.ts|mycc-backend/scripts/harness-verify.ts|mycc-backend/scripts/agent-eval-static.ts|mycc-backend/scripts/smoke-auth-onboarding.ts|mycc-backend/scripts/smoke-auth-privacy.ts|mycc-backend/scripts/smoke-e2b-*.ts)
                 echo "non-deploying: ${file}"
                 ;;
               mycc-web-react/*)
