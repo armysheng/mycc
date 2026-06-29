@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
+  redactHarnessText,
   setHarnessSpanStatus,
   startHarnessSpan,
 } from '../src/harness/telemetry.js';
@@ -54,6 +55,13 @@ type HarnessResult = {
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const outputRoot = path.join(repoRoot, 'output', 'harness');
+const LIVE_GATE_APPROVAL_ENV = 'MYCC_LIVE_GATE_APPROVED';
+const LIVE_SIDE_EFFECT_TARGETS = new Set<HarnessTargetId>([
+  'auth-onboarding-smoke',
+  'e2b-ide-smoke',
+  'e2b-desktop-smoke',
+  'e2b-agent-sdk-smoke',
+]);
 
 const backendTestEnv: Record<string, string | undefined> = {
   NODE_ENV: 'test',
@@ -281,6 +289,7 @@ async function main() {
   });
   const selectedTargetIds = resolveSelectedTargets(args.target);
   const expandedTargets = expandTargetGroups(selectedTargetIds);
+  assertLiveTargetApproval(expandedTargets);
   const startedAt = new Date();
   try {
     const results = expandedTargets.map(runTarget);
@@ -394,6 +403,21 @@ function expandTargetGroups(ids: HarnessTargetId[]): HarnessTarget[] {
   return expanded;
 }
 
+function assertLiveTargetApproval(expandedTargets: HarnessTarget[]): void {
+  const liveTargets = expandedTargets.filter((target) => LIVE_SIDE_EFFECT_TARGETS.has(target.id));
+  if (liveTargets.length === 0) return;
+
+  const liveTargetList = liveTargets.map((target) => target.id).join(', ');
+  if (process.env[LIVE_GATE_APPROVAL_ENV] !== '1') {
+    throw new Error(
+      `Live side-effect targets require ${LIVE_GATE_APPROVAL_ENV}=1 before execution: ${liveTargetList}`,
+    );
+  }
+  if (!process.env.BASE_URL?.trim()) {
+    throw new Error(`Live side-effect targets require explicit BASE_URL before execution: ${liveTargetList}`);
+  }
+}
+
 function runTarget(target: HarnessTarget): HarnessResult {
   const span = startHarnessSpan('mycc.harness_verify.target', {
     'mycc.harness_verify.target_id': target.id,
@@ -438,8 +462,8 @@ function runTarget(target: HarnessTarget): HarnessResult {
       exitCode: result.status,
       durationMs,
       command: [target.command, ...(target.args ?? [])].join(' '),
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim(),
+      stdout: redactHarnessText(result.stdout.trim()),
+      stderr: redactHarnessText(result.stderr.trim()),
     };
   } catch (error) {
     span.recordException(error);
@@ -533,7 +557,7 @@ function printHelp(): void {
     '  BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=public-surface-smoke --no-write',
     '  npm run harness:verify -- --target=e2b-release,sandbox-template',
     '  npm run harness:verify -- --target=landing --no-write',
-    '  BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write',
+    '  MYCC_LIVE_GATE_APPROVED=1 BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write',
   ].join('\n'));
 }
 

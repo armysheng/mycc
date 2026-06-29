@@ -81,7 +81,7 @@ The core path is proven when all of these are true:
 - E2B Agent doctor is ready.
 - Sandbox template doctor is ready.
 - No-side-effect public surface live smoke passes against the target environment.
-- No-side-effect auth privacy live smoke passes against the target environment.
+- Low-side-effect auth privacy live smoke passes against the target environment.
 - No-model auth/onboarding live smoke passes against the target environment, with expected registration/onboarding side effects.
 - Live E2B IDE, desktop, and Agent SDK workspace smoke tests pass against the target environment.
 
@@ -100,11 +100,11 @@ Run the live landing gate against the target backend before public traffic:
 
 ```bash
 cd mycc-backend
-BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=landing-live --no-write
+MYCC_LIVE_GATE_APPROVED=1 BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=landing-live --no-write
 ```
 
-Use the actual staging or production URL for `BASE_URL`. Run no-side-effect auth
-privacy before any live smoke with side effects:
+Use the actual staging or production URL for `BASE_URL`. Run the low-side-effect
+auth privacy probe before any live smoke with larger side effects:
 
 Production runbook note: before running any `npm run smoke:*` or `npm run harness:verify` command in production, use the Node20 guard and make both local binaries and the guarded Node bin first-class PATH entries, for example `NODE_BIN_DIR="$(./scripts/guard-production-node.sh --print-bin-dir)"` followed by `export PATH="$PWD/node_modules/.bin:$NODE_BIN_DIR:$PATH"`, to avoid `tsx: not found`.
 
@@ -153,7 +153,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |
 | Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
 | E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |
-| Full live gate | `harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
+| Full live gate | `MYCC_LIVE_GATE_APPROVED=1 BASE_URL=<target> npm run harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
 | Rollback rehearsal | Config-only fallback to `remote-claude` / `IDE disabled` / `workspace ssh`, restart, cleanup, health checks | Still required | Requires planned operations window and release owner notes. |
 | Live gate decision packet | `landing-production-runbook.md` approval packet | Documented; must be filled before live smoke or rollback rehearsal | Records owner, test identity label, approved checks, side effects, cleanup expectation, abort threshold, and evidence owner. |
 
@@ -169,9 +169,9 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
    - Run `npm run db:migrate` only when cutting a new release candidate with unapplied migrations, or explicitly prove it is a no-op.
    - Verify authorized `GET /readyz/deep` over SSH/localhost returns `runtime.status=pass`; public unauthenticated requests must stay 401/403 without internal details.
    - Run `BASE_URL=<staging-backend> npm run smoke:public-surface` before auth or E2B checks.
-   - Run `BASE_URL=<staging-backend> npm run smoke:auth-privacy` before any live check with side effects.
+   - Run `BASE_URL=<staging-backend> npm run smoke:auth-privacy` before any larger live check with side effects; record the failed-login audit/rate-limit side effect.
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-onboarding` before model-consuming smoke.
-   - Run `BASE_URL=<staging-backend> npm run harness:verify -- --target=landing-live --no-write`.
+   - Run `MYCC_LIVE_GATE_APPROVED=1 BASE_URL=<staging-backend> npm run harness:verify -- --target=landing-live --no-write`.
    - Fill the production runbook live gate decision packet before running any live smoke against the public target.
 
 3. Product copy and surface audit

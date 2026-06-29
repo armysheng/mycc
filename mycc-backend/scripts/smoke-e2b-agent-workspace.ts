@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { createHash } from 'node:crypto';
 import { Template } from 'e2b';
 import type { AgentRuntime } from '../src/agent-runtime/types.js';
 import { E2bClaudeAgentSdkRuntime } from '../src/agent-runtime/e2b-claude-agent-sdk-runtime.js';
@@ -71,7 +72,7 @@ async function main() {
       '请直接完成文件写入，不要只解释。',
     ].join('\n'));
     await assertWorkspaceFileEquals(session, AGENT_READBACK_FILE, MARKER);
-    console.log(`[ok] E2B Agent+IDE workspace smoke passed: runtime=${AGENT_RUNTIME}, sandbox=${session.sandboxId}, marker=${MARKER}`);
+    console.log(`[ok] E2B Agent+IDE workspace smoke passed: runtime=${AGENT_RUNTIME}, sandboxRef=${formatSmokeSandboxRef(session.sandboxId)}, marker=${MARKER}`);
   } finally {
     await cleanup();
   }
@@ -187,7 +188,12 @@ async function assertWorkspaceFileEquals(
 async function cleanup(): Promise<void> {
   if (!session) return;
   await provider.stopCodeServer(session);
-  console.log(`[cleanup] E2B Agent+IDE workspace smoke cleanup complete: sandbox=${session.sandboxId}`);
+  console.log(`[cleanup] E2B Agent+IDE workspace smoke cleanup complete: sandboxRef=${formatSmokeSandboxRef(session.sandboxId)}`);
+}
+
+function formatSmokeSandboxRef(sandboxId: string): string {
+  const digest = createHash('sha256').update(sandboxId).digest('hex').slice(0, 8);
+  return `sbx:${digest}`;
 }
 
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {

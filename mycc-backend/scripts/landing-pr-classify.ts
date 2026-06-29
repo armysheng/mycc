@@ -79,6 +79,7 @@ const rules: Rule[] = [
       'mycc-backend/src/routes/auth.test.ts',
       'mycc-backend/src/scripts/public-surface-smoke.ts',
       'mycc-backend/src/scripts/public-surface-smoke.test.ts',
+      'mycc-backend/src/scripts/harness-verify.test.ts',
       'mycc-backend/src/scripts/migration-sql.ts',
       'mycc-backend/src/scripts/apply-migrations.test.ts',
       'mycc-backend/src/scripts/staging-workflow.test.ts',

@@ -65,7 +65,7 @@ The first command is a static release-readiness guard. The doctor command may qu
 Start the backend with the target `.env`, then run:
 
 ```bash
-BASE_URL=http://localhost:18081 npm run harness:verify -- --target=landing-live --no-write
+MYCC_LIVE_GATE_APPROVED=1 BASE_URL=http://localhost:18081 npm run harness:verify -- --target=landing-live --no-write
 BASE_URL=http://localhost:18081 npm run smoke:e2b-ide
 BASE_URL=http://localhost:18081 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:18081 npm run smoke:e2b-agent-sdk-workspace
