@@ -16,6 +16,7 @@ import { initSSHPool, getSSHPool } from './ssh/pool.js';
 import type { SSHConfig } from './ssh/types.js';
 import { shouldInitializeSshAtStartup, shouldStartAutomationScheduler } from './startup/ssh-startup.js';
 import { requireProductionStartupSecrets } from './startup/readiness.js';
+import { parseCorsOrigins } from './startup/cors.js';
 import { validateRegistry } from './skills/skill-registry.js';
 import { AutomationScheduler } from './automations/scheduler.js';
 import {
@@ -44,7 +45,7 @@ const fastify = Fastify({
 
 // 注册 CORS
 await fastify.register(cors, {
-  origin: ['http://localhost:3001', 'http://localhost:3000', 'http://127.0.0.1:3001'],
+  origin: parseCorsOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
