@@ -27,7 +27,7 @@
 ### P1 - 内测体验增强
 
 - [ ] **邮箱/手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
-- [ ] **Google/GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
+- [ ] **Google/GitHub 登录** - OAuth provider、callback、同邮箱合并策略和 CSRF state 校验已进入实现分支；上线前还需 provider app 配置、callback URL 核对、生产迁移和授权 live smoke。账号绑定/解绑管理页另列后续项。
 - [x] **注册入口控制** - 已支持 `open` / `invite` / `closed` 三种注册模式；生产当前设置为 `closed`，避免公开注册入口失控。
 - [ ] **产品报错验收样例库** - 沉淀登录、初始化、IDE、desktop、Agent SDK workspace 等常见失败态的产品化报错样例。
 
@@ -57,7 +57,7 @@
 ## Landing P1 - 内测期
 
 - [ ] **邮箱或手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
-- [ ] **Google / GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
+- [ ] **Google / GitHub 登录** - 实现 Google/GitHub OAuth 登录注册入口；新用户仍受 `MYCC_REGISTRATION_MODE` gate 约束，生产启用前必须完成 provider 配置和 live callback 验证。账号绑定/解绑管理页另列后续项。
 - [ ] **密码重置** - 支持申请、发送、验证、单次使用 reset token，密码变更后使旧会话失效。
 - [ ] **Auth audit** - 记录注册、登录成功/失败、重置、OAuth 绑定、profile 修改、禁用/启用等事件。
 - [ ] **生产配置产品化** - CORS 改为 env allowlist，补上线前凭据轮换清单，避免裸 host、sandbox、linux user 等内部细节进入前台 UI。

@@ -151,9 +151,21 @@ MYCC_AGENT_SDK_ALLOWED_TOOLS=Read,Glob,Grep,Bash,Edit,Write
 MYCC_AGENT_SDK_PERMISSION_MODE=bypassPermissions
 MYCC_AGENT_RUN_STORE=postgres
 MYCC_READYZ_DEEP_TOKEN=<strong ops-only token>
+MYCC_AUTH_PUBLIC_BASE_URL=https://daoyou.iaigc.fun
+MYCC_OAUTH_GOOGLE_CLIENT_ID=<google oauth client id, optional until enabled>
+MYCC_OAUTH_GOOGLE_CLIENT_SECRET=<google oauth client secret, optional until enabled>
+MYCC_OAUTH_GITHUB_CLIENT_ID=<github oauth client id, optional until enabled>
+MYCC_OAUTH_GITHUB_CLIENT_SECRET=<github oauth client secret, optional until enabled>
 ```
 
 Claude provider credentials should be configured through MyCC/CCR-specific variables. Do not put global `OPENAI_BASE_URL` or `OPENAI_API_KEY` into the backend process.
+
+Google/GitHub OAuth providers are exposed only when both client id and secret are configured for that provider. The provider callback URLs must be registered as:
+
+- `https://daoyou.iaigc.fun/api/auth/oauth/google/callback`
+- `https://daoyou.iaigc.fun/api/auth/oauth/github/callback`
+
+OAuth new-account creation obeys `MYCC_REGISTRATION_MODE`: existing linked accounts may log in, but new OAuth users are blocked while public registration is `closed` or `invite`. Do not run live OAuth callback smoke against production until the provider apps, test identity, side effects, and cleanup owner are recorded in the release decision packet.
 
 `/readyz/deep` is an operations-only endpoint because it includes database, SSH, skills, and runtime detail. Verify it over SSH or another internal channel with `Authorization: Bearer ${MYCC_READYZ_DEEP_TOKEN}` against `http://127.0.0.1:8080/readyz/deep`; public unauthenticated requests must receive only the fixed unauthorized response and no `checks` payload.
 
@@ -167,6 +179,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | --- | --- | --- | --- |
 | No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 in post-#121 evidence; verify the current deployed commit live before release decisions. | No extra authorization needed. |
 | Auth privacy smoke | `smoke:auth-privacy` | Passed on 2026-06-29 against deployed commit `23074b0`; generic credential error confirmed | Creates one failed-login audit/rate-limit event; no registration, onboarding, E2B session, or chat. |
+| OAuth login/register | Google/GitHub start URL, callback URL, verified email merge, new-account registration gate | Code path must pass local tests and provider config must be verified before enabling live buttons | Live callback uses third-party provider identity and may create/link a real account; run only with an approved test identity. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed again on 2026-06-29 with Playwright: desktop login, mobile login, registration closed state, no forbidden public text, no mobile horizontal overflow | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
 | Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |

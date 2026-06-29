@@ -1,6 +1,16 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { register, login, getCurrentUser, updateCurrentUserProfile } from '../auth/service.js';
+import {
+  buildOAuthAuthorizationUrl,
+  buildOAuthFrontendRedirect,
+  completeOAuthCodeLogin,
+  getOAuthPublicConfig,
+  getCurrentUser,
+  isOAuthProvider,
+  login,
+  register,
+  updateCurrentUserProfile,
+} from '../auth/service.js';
 import { buildAuthRateLimitKey, InMemoryAuthRateLimiter } from '../auth/rate-limit.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 
@@ -30,11 +40,24 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const oauthStartQuerySchema = z.object({
+  returnTo: optionalTrimmedString,
+});
+
+const oauthCallbackQuerySchema = z.object({
+  code: z.string().transform(value => value.trim()).pipe(z.string().min(1)),
+  state: z.string().transform(value => value.trim()).pipe(z.string().min(1)),
+});
+
 const publicAuthErrorMessages = new Set([
   '手机号或邮箱必须提供一个',
   '密码长度至少 6 位',
   '该手机号或邮箱已注册，请直接登录或换一个账号注册',
   '手机号/邮箱或密码错误',
+  '暂未开放自助注册，请联系团队开通账号',
+  '第三方账号邮箱尚未验证，请先完成邮箱验证后再登录',
+  '第三方登录暂不可用，请稍后重试',
+  '第三方登录失败，请稍后重试',
 ]);
 
 function authErrorMessage(err: unknown, fallback: string): string {
@@ -161,8 +184,70 @@ export async function authRoutes(fastify: FastifyInstance) {
       success: true,
       data: {
         registration: registrationConfig(),
+        oauth: getOAuthPublicConfig(),
       },
     });
+  });
+
+  // GET /api/auth/oauth/:provider/start - 跳转到第三方授权页
+  fastify.get('/api/auth/oauth/:provider/start', async (request, reply) => {
+    const provider = (request.params as { provider?: string }).provider || '';
+    if (!isOAuthProvider(provider)) {
+      return reply.status(404).send({
+        success: false,
+        error: '第三方登录服务不存在',
+      });
+    }
+
+    try {
+      const query = oauthStartQuerySchema.parse(request.query);
+      const authorizationUrl = buildOAuthAuthorizationUrl(provider, {
+        returnTo: query.returnTo,
+      });
+      return reply.redirect(authorizationUrl);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: '请求参数错误',
+          details: err.issues,
+        });
+      }
+      return reply.status(503).send({
+        success: false,
+        error: authErrorMessage(err, '第三方登录暂不可用，请稍后重试'),
+      });
+    }
+  });
+
+  // GET /api/auth/oauth/:provider/callback - 第三方授权回调
+  fastify.get('/api/auth/oauth/:provider/callback', async (request, reply) => {
+    const provider = (request.params as { provider?: string }).provider || '';
+    if (!isOAuthProvider(provider)) {
+      return reply.status(404).send({
+        success: false,
+        error: '第三方登录服务不存在',
+      });
+    }
+
+    try {
+      const query = oauthCallbackQuerySchema.parse(request.query);
+      const result = await completeOAuthCodeLogin(provider, {
+        code: query.code,
+        state: query.state,
+      });
+      return reply.redirect(buildOAuthFrontendRedirect({
+        token: result.token,
+        returnTo: result.returnTo,
+      }));
+    } catch (err) {
+      const error = err instanceof z.ZodError
+        ? '请求参数错误'
+        : authErrorMessage(err, '第三方登录失败，请稍后重试');
+      return reply.redirect(buildOAuthFrontendRedirect({
+        error,
+      }));
+    }
   });
 
   // POST /api/auth/register - 用户注册

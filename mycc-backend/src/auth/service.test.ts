@@ -1,15 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import {
   createUser,
   findUserByCredential,
   findUserById,
+  findUserByOAuthAccount,
   getSubscription,
+  linkOAuthAccount,
+  createOAuthUserWithAccount,
   updateUserProfile,
 } from '../db/client.js';
 import { vpsUserManager } from '../vps/user-manager.js';
 import {
   getCurrentUser,
+  buildOAuthAuthorizationUrl,
+  getOAuthPublicConfig,
+  loginWithOAuthProfile,
   login,
   register,
   requireSafeJwtSecret,
@@ -20,7 +27,10 @@ vi.mock('../db/client.js', () => ({
   createUser: vi.fn(),
   findUserByCredential: vi.fn(),
   findUserById: vi.fn(),
+  findUserByOAuthAccount: vi.fn(),
   getSubscription: vi.fn(),
+  linkOAuthAccount: vi.fn(),
+  createOAuthUserWithAccount: vi.fn(),
   updateUserProfile: vi.fn(),
 }));
 
@@ -37,6 +47,55 @@ beforeEach(() => {
   delete process.env.MYCC_IDE_PROVIDER;
   delete process.env.MYCC_WORKSPACE_PROVIDER;
   delete process.env.MYCC_SKIP_SSH_STARTUP_CHECK;
+  delete process.env.MYCC_REGISTRATION_MODE;
+  delete process.env.MYCC_REGISTRATION_ENABLED;
+  delete process.env.MYCC_AUTH_PUBLIC_BASE_URL;
+  delete process.env.MYCC_OAUTH_GOOGLE_CLIENT_ID;
+  delete process.env.MYCC_OAUTH_GOOGLE_CLIENT_SECRET;
+  delete process.env.MYCC_OAUTH_GITHUB_CLIENT_ID;
+  delete process.env.MYCC_OAUTH_GITHUB_CLIENT_SECRET;
+});
+
+describe('OAuth provider config', () => {
+  it('keeps OAuth providers disabled until both client id and secret are configured', () => {
+    process.env.MYCC_OAUTH_GOOGLE_CLIENT_ID = 'google-client';
+
+    expect(getOAuthPublicConfig()).toEqual({
+      providers: {
+        google: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/google/start',
+        },
+        github: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/github/start',
+        },
+      },
+    });
+  });
+
+  it('builds provider authorization URLs with signed state and without client secrets', () => {
+    process.env.MYCC_AUTH_PUBLIC_BASE_URL = 'https://daoyou.iaigc.fun/';
+    process.env.MYCC_OAUTH_GOOGLE_CLIENT_ID = 'google-client';
+    process.env.MYCC_OAUTH_GOOGLE_CLIENT_SECRET = 'google-secret';
+
+    const authorizationUrl = buildOAuthAuthorizationUrl('google', {
+      returnTo: '/projects/demo',
+    });
+    const url = new URL(authorizationUrl);
+    const state = url.searchParams.get('state');
+
+    expect(url.origin).toBe('https://accounts.google.com');
+    expect(url.searchParams.get('client_id')).toBe('google-client');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://daoyou.iaigc.fun/api/auth/oauth/google/callback');
+    expect(authorizationUrl).not.toContain('google-secret');
+    expect(state).toBeTruthy();
+    expect(jwt.verify(state!, 'your_jwt_secret_change_in_production')).toMatchObject({
+      type: 'oauth_state',
+      provider: 'google',
+      returnTo: '/projects/demo',
+    });
+  });
 });
 
 describe('JWT secret safety', () => {
@@ -291,5 +350,141 @@ describe('login error privacy', () => {
       credential: 'login@example.test',
       password: 'wrong-password',
     })).rejects.toThrow('手机号/邮箱或密码错误');
+  });
+});
+
+describe('OAuth login', () => {
+  const subscription = {
+    id: 1,
+    user_id: 42,
+    plan: 'free' as const,
+    tokens_limit: 300000,
+    tokens_used: 1000,
+    reset_at: new Date('2026-07-01T00:00:00.000Z'),
+    expires_at: undefined,
+    created_at: new Date(),
+  };
+
+  const userRecord = {
+    id: 42,
+    phone: undefined,
+    email: 'linked@example.test',
+    password_hash: '$2b$10$012345678901234567890uMT6wdtPVwV0pBYg98qgkW4tHsCPjBZK',
+    assistant_name: 'cc',
+    linux_user: 'mycc_u42',
+    status: 'active',
+    is_initialized: false,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+
+  beforeEach(() => {
+    vi.mocked(getSubscription).mockResolvedValue(subscription);
+  });
+
+  it('logs in through an existing linked provider account', async () => {
+    vi.mocked(findUserByOAuthAccount).mockResolvedValue(userRecord);
+
+    const result = await loginWithOAuthProfile({
+      provider: 'github',
+      providerUserId: '12345',
+      email: undefined,
+      emailVerified: false,
+    });
+
+    expect(findUserByOAuthAccount).toHaveBeenCalledWith('github', '12345');
+    expect(findUserByCredential).not.toHaveBeenCalled();
+    expect(linkOAuthAccount).not.toHaveBeenCalled();
+    expect(result.user).toMatchObject({
+      id: 42,
+      email: 'linked@example.test',
+      plan: 'free',
+    });
+    expect(result.user).not.toHaveProperty('linux_user');
+  });
+
+  it('links a verified provider email to an existing password account', async () => {
+    vi.mocked(findUserByOAuthAccount).mockResolvedValue(null);
+    vi.mocked(findUserByCredential).mockResolvedValue(userRecord);
+
+    const result = await loginWithOAuthProfile({
+      provider: 'google',
+      providerUserId: 'google-sub-1',
+      email: ' Linked@Example.TEST ',
+      emailVerified: true,
+    });
+
+    expect(findUserByCredential).toHaveBeenCalledWith('linked@example.test');
+    expect(linkOAuthAccount).toHaveBeenCalledWith({
+      userId: 42,
+      provider: 'google',
+      providerUserId: 'google-sub-1',
+      email: 'linked@example.test',
+      emailVerified: true,
+    });
+    expect(createOAuthUserWithAccount).not.toHaveBeenCalled();
+    expect(result.user.id).toBe(42);
+  });
+
+  it('rejects first-time OAuth login when the provider email is unverified', async () => {
+    vi.mocked(findUserByOAuthAccount).mockResolvedValue(null);
+
+    await expect(loginWithOAuthProfile({
+      provider: 'github',
+      providerUserId: 'github-1',
+      email: 'new@example.test',
+      emailVerified: false,
+    })).rejects.toThrow('第三方账号邮箱尚未验证，请先完成邮箱验证后再登录');
+
+    expect(findUserByCredential).not.toHaveBeenCalled();
+    expect(linkOAuthAccount).not.toHaveBeenCalled();
+    expect(createOAuthUserWithAccount).not.toHaveBeenCalled();
+  });
+
+  it('creates a new account for a verified OAuth email without exposing internals', async () => {
+    vi.mocked(findUserByOAuthAccount).mockResolvedValue(null);
+    vi.mocked(findUserByCredential).mockResolvedValue(null);
+    vi.mocked(createOAuthUserWithAccount).mockResolvedValue({
+      ...userRecord,
+      id: 77,
+      email: 'new@example.test',
+      linux_user: 'mycc_u77',
+    });
+
+    const result = await loginWithOAuthProfile({
+      provider: 'google',
+      providerUserId: 'google-sub-77',
+      email: 'NEW@Example.TEST',
+      emailVerified: true,
+    });
+
+    expect(createOAuthUserWithAccount).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'new@example.test',
+      provider: 'google',
+      providerUserId: 'google-sub-77',
+      emailVerified: true,
+      password_hash: expect.stringMatching(/^\$2[aby]\$/),
+    }));
+    expect(result.user).toMatchObject({
+      id: 77,
+      email: 'new@example.test',
+      plan: 'free',
+    });
+    expect(result.user).not.toHaveProperty('linux_user');
+  });
+
+  it('blocks new OAuth account creation when public registration is closed', async () => {
+    process.env.MYCC_REGISTRATION_MODE = 'closed';
+    vi.mocked(findUserByOAuthAccount).mockResolvedValue(null);
+    vi.mocked(findUserByCredential).mockResolvedValue(null);
+
+    await expect(loginWithOAuthProfile({
+      provider: 'google',
+      providerUserId: 'google-sub-88',
+      email: 'new@example.test',
+      emailVerified: true,
+    })).rejects.toThrow('暂未开放自助注册，请联系团队开通账号');
+
+    expect(createOAuthUserWithAccount).not.toHaveBeenCalled();
   });
 });

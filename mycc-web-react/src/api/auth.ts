@@ -10,6 +10,13 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 const apiUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
 
+export function resolveAuthUrl(pathOrUrl: string): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+  return apiUrl(pathOrUrl);
+}
+
 export async function login(data: LoginRequest): Promise<AuthResponse> {
   const res = await fetch(apiUrl('/api/auth/login'), {
     method: 'POST',
