@@ -155,6 +155,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |
 | Full live gate | `harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
 | Rollback rehearsal | Config-only fallback to `remote-claude` / `IDE disabled` / `workspace ssh`, restart, cleanup, health checks | Still required | Requires planned operations window and release owner notes. |
+| Live gate decision packet | `landing-production-runbook.md` approval packet | Documented; must be filled before live smoke or rollback rehearsal | Records owner, test identity label, approved checks, side effects, cleanup expectation, abort threshold, and evidence owner. |
 
 1. Release boundary cleanup
    - Decide which dirty worktree changes belong to the landing branch.
@@ -171,6 +172,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-privacy` before any live check with side effects.
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-onboarding` before model-consuming smoke.
    - Run `BASE_URL=<staging-backend> npm run harness:verify -- --target=landing-live --no-write`.
+   - Fill the production runbook live gate decision packet before running any live smoke against the public target.
 
 3. Product copy and surface audit
    - Initial public brand copy is `道友 AI / 念头通达出品`.

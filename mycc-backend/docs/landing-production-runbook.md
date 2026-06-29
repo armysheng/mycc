@@ -230,6 +230,63 @@ Expected:
 - The response does not reveal whether an account exists.
 - No registration, onboarding, E2B session, or chat request is performed.
 
+## Live Gate Release Decision Packet
+
+Use this packet before running any command in the live smoke matrix. Do not
+replace it with an informal chat approval because the live checks create durable
+production evidence and may allocate E2B/model resources.
+
+```text
+Release gate id:
+Release owner:
+Operator:
+Target URL: https://daoyou.iaigc.fun
+Target deployed commit: 23074b0
+Approval timestamp:
+Approved checks:
+  [ ] smoke:auth-onboarding
+  [ ] smoke:e2b-ide
+  [ ] smoke:e2b-desktop
+  [ ] smoke:e2b-agent-sdk-workspace
+  [ ] harness:verify -- --target=landing-live --no-write
+  [ ] rollback rehearsal
+Test identity source: existing / invite / newly created
+Test identity label, not secret:
+Expected side effects:
+  [ ] failed login audit/rate-limit event already accepted
+  [ ] auth/onboarding writes
+  [ ] E2B IDE session
+  [ ] E2B desktop service
+  [ ] Agent SDK workspace marker files
+  [ ] backend restart during rollback rehearsal
+Cleanup expectation:
+Abort threshold:
+Evidence owner:
+```
+
+Run order once approved:
+
+1. Re-run the production no-side-effect gate and confirm the remote worktree is
+   clean before any live smoke.
+2. Run `smoke:auth-onboarding` with the approved test identity.
+3. Run E2B IDE, desktop, and Agent SDK workspace smokes one at a time; record
+   the command, timestamp, PASS/FAIL/BLOCKED, and cleanup output after each.
+4. Run `landing-live` only if the individual auth and E2B smokes pass or the
+   release owner explicitly accepts a known non-product blocker.
+5. Run rollback rehearsal in the release window, then restore the landing
+   runtime config and re-run `/health`, `/readyz`, and `smoke:public-surface`.
+6. Update `landing-readiness.md` with the final decision and any cleanup notes.
+
+Abort immediately and do not continue to later live checks if any of these
+appear:
+
+- Provider or raw infrastructure details reach the public UI or API response.
+- `/health`, `/readyz`, or protected deep readiness becomes unavailable.
+- A smoke cannot confirm cleanup of its E2B session or service.
+- The approved test identity cannot be identified in the evidence log.
+- Any command needs a real user secret pasted into terminal history, PRs,
+  screenshots, or chat.
+
 ## Authorized Live Smoke Matrix
 
 Only run after the release owner records the approval, test identity, expected
