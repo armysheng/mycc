@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getImagePreloadSkills, getReadySkills, getTriggersForSkill } from './skill-registry.js';
+import {
+  getImagePreloadSkills,
+  getReadySkills,
+  getTriggersForSkill,
+  SKILL_REGISTRY,
+} from './skill-registry.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const catalogRoot = path.join(currentDir, 'catalog');
@@ -51,5 +56,22 @@ describe('skill registry image preload contract', () => {
         triggers.some((trigger) => !trigger.startsWith('/') && trigger.trim().length >= 2),
       ).toBe(true);
     }
+  });
+
+  it('keeps public skill copy aligned with the DaoYou AI product surface', () => {
+    const forbiddenPublicCopy = /MyCC|CC 电脑|给 cc|发给 cc|cc 需要做|大辉哥|老板|主人/i;
+
+    for (const skill of SKILL_REGISTRY) {
+      const publicCopy = [
+        skill.name,
+        skill.description,
+        skill.validation_note,
+      ].filter(Boolean).join('\n');
+
+      expect(publicCopy).not.toMatch(forbiddenPublicCopy);
+    }
+
+    const tellMeSop = fs.readFileSync(path.join(catalogRoot, 'tell-me/配置SOP.md'), 'utf8');
+    expect(tellMeSop).not.toMatch(forbiddenPublicCopy);
   });
 });

@@ -92,6 +92,7 @@ const rules: Rule[] = [
     reason: 'skills registry, install path, SkillsPage, API, and skills tests',
     patterns: [
       'docs/mycc-skill-center-integration.md',
+      'mycc-backend/src/skills/catalog/**',
       'mycc-backend/src/skills/**',
       'mycc-backend/src/routes/skills.ts',
       'mycc-backend/src/routes/skills.test.ts',
@@ -222,7 +223,7 @@ function main() {
 }
 
 function listDirtyFiles(): DirtyFile[] {
-  const result = spawnSync('git', ['status', '--short'], {
+  const result = spawnSync('git', ['-c', 'core.quotePath=false', 'status', '--short'], {
     cwd: repoRoot(),
     encoding: 'utf8',
   });
