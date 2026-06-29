@@ -16,14 +16,16 @@ Current public preview:
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
 - Production operations runbook: `mycc-backend/docs/landing-production-runbook.md`
-- Deployed commit after the latest landing maintenance pass: `84f984ea48dc6400d7905944825f973597dd8d4a`
+- Deployed commit after the latest landing maintenance pass: `37c72d7a09215dac7e3534877ab8325ca7367811`
 
 Current no-side-effect production evidence from 2026-06-29 CST:
 
 - `GET https://daoyou.iaigc.fun/health`: `200`, `status=ok`.
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
-- Remote `/home/armysheng/mycc` is deployed at `84f984e`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Remote `/home/armysheng/mycc` is deployed at `37c72d7`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- `GET https://daoyou.iaigc.fun/api/auth/config`: `registration.mode=closed`, `enabled=false`, `inviteRequired=false`.
+- `MYCC_ONBOARDING_ASYNC` is `false_or_unset` in production; async onboarding code is deployed but not yet enabled for live users.
 - Home HTML title is `道友 AI`, and the meta description includes `念头通达`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed after the latest brand deployment; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
 - Production deploys now include `mycc-backend/scripts/guard-production-node.sh`; `npm ci/build` must use the same Node v20.19.5 toolchain as systemd.
