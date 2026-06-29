@@ -16,14 +16,14 @@ Current public preview:
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
 - Production operations runbook: `mycc-backend/docs/landing-production-runbook.md`
-- Deployed commit after the latest landing maintenance pass: `23074b069070652b9887e3a3e0c4f534f8d03365`
+- Deployed commit after the latest landing maintenance pass: `7b2b4f25bcfa10364f120ea99f0e74a05d10d9a9`
 
 Current no-side-effect production evidence from 2026-06-29 CST:
 
 - `GET https://daoyou.iaigc.fun/health`: `200`, `status=ok`.
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
-- Remote `/home/armysheng/mycc` is deployed at `23074b0`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Remote `/home/armysheng/mycc` is deployed at `7b2b4f2`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
 - `GET https://daoyou.iaigc.fun/api/auth/config`: `registration.mode=closed`, `enabled=false`, `inviteRequired=false`.
 - `GET https://daoyou.iaigc.fun/favicon.svg`: `200`, `content-type=image/svg+xml`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed; this is no-side-effect and covers public health, readiness, unauthenticated deep readiness privacy, auth registration mode, homepage brand, favicon, and built assets.
@@ -69,6 +69,15 @@ Post-#112 local release evidence from 2026-06-29 CST:
 - `npm run harness:verify -- --target=landing --no-write` on commit `7714179` completed 7 of 8 sub-gates successfully: backend build, frontend build, backend tests, frontend product tests, static agent evals, E2B release readiness, and sandbox template doctor.
 - The only local landing gate failure was `e2b-agent`, caused by missing local `MYCC_E2B_API_KEY` or `E2B_API_KEY` and missing local Claude credential. Production `doctor:e2b-agent` and `mycc-sandbox doctor:template` passed on deployed commit `23074b0`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy` passed on deployed commit `23074b0`; this performs one failed-login privacy probe and does not register, initialize onboarding, create E2B sessions, or call chat.
+
+Post-#119 production evidence from 2026-06-29 CST:
+
+- Main commit `7b2b4f25bcfa10364f120ea99f0e74a05d10d9a9` passed GitHub `CI` run `28370295997`: `frontend-ci`, `backend-ci`, and `sandbox-ci` all succeeded.
+- GitHub `Deploy Staging` run `28370370431` succeeded for commit `7b2b4f25bcfa10364f120ea99f0e74a05d10d9a9`, including backend health, deep readiness, and frontend endpoint verification.
+- Remote `/home/armysheng/mycc` is deployed at `7b2b4f2`, `prod_dirty_count=0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface` passed on deployed commit `7b2b4f2`.
+- Production Node guard passes with Node `v20.19.5`, and `npm run doctor:e2b-agent` reports E2B Agent preflight ready.
+- `npm run verify:rollback-preflight` is now part of the local no-side-effect release gate before live smoke or rollback rehearsal.
 
 The core path is proven when all of these are true:
 
@@ -146,7 +155,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 
 | Category | Check | Current state | Authorization / side effect |
 | --- | --- | --- | --- |
-| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `23074b0` | No extra authorization needed. |
+| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `7b2b4f2` | No extra authorization needed. |
 | Auth privacy smoke | `smoke:auth-privacy` | Passed on 2026-06-29 against deployed commit `23074b0`; generic credential error confirmed | Creates one failed-login audit/rate-limit event; no registration, onboarding, E2B session, or chat. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed again on 2026-06-29 with Playwright: desktop login, mobile login, registration closed state, no forbidden public text, no mobile horizontal overflow | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
