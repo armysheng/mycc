@@ -44,7 +44,7 @@
 - [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
 - [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
 - [x] **公网无副作用表面 smoke gate** - `smoke:public-surface` 已固化 `/health`、`/readyz`、未授权 `/readyz/deep` 隐私、注册 gate、首页品牌、favicon 与静态资源检查。
-- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面与授权 deep readiness 已通过；登录初始化和 E2B live smokes 仍需 release 授权。
+- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、授权 deep readiness 和生产迁移 007/008 已验证；登录初始化和 E2B live smokes 仍需 release 授权。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
 - [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：强刷新后桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 新首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。

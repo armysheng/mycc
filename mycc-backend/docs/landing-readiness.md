@@ -43,6 +43,7 @@ Current ops-only production evidence from 2026-06-29 CST:
 - Authorized local `GET http://127.0.0.1:8080/readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `status=ok`.
 - Deep readiness checks: `database=pass`, `skills=pass`, `runtime=pass` with `E2B Agent preflight ready`; `ssh=skipped` because the configured runtime does not initialize SSH at startup.
 - Public unauthenticated `GET https://daoyou.iaigc.fun/readyz/deep` still returns only `401 readyz_deep_unauthorized` and does not expose internal checks.
+- Production `schema_migrations` contains 8 applied migrations. Required landing migrations `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; both were recorded on 2026-06-26T08:34:28Z.
 
 The core path is proven when all of these are true:
 
@@ -123,6 +124,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `edff4b8` | No extra authorization needed. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed on 2026-06-29 after cache-busting navigation | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN` | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config | Requires ops token; do not expose internal checks publicly. |
+| Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |
 | Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
 | E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |
 | Full live gate | `harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
@@ -132,12 +134,12 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
    - Decide which dirty worktree changes belong to the landing branch.
    - Split unrelated experiments, generated artifacts, and old redesign folders out of the release candidate.
    - Run `npm run landing:classify -- --fail-on-unclassified` from `mycc-backend` before staging files.
-   - Confirm migrations `007` and `008` are included and applied.
+   - Confirm migrations `007` and `008` are included and applied. Completed on 2026-06-29 by read-only `schema_migrations` query.
 
 2. Staging deployment rehearsal
    - Public staging preview is deployed at `https://daoyou.iaigc.fun`.
-   - Confirm whether the deployed backend commit includes all release-candidate migrations.
-   - Run `npm run db:migrate` against the target database when cutting the release candidate, or explicitly prove it is a no-op.
+   - Confirm whether the deployed backend commit includes all release-candidate migrations. Current target has `001` through `008` recorded.
+   - Run `npm run db:migrate` only when cutting a new release candidate with unapplied migrations, or explicitly prove it is a no-op.
    - Verify authorized `GET /readyz/deep` over SSH/localhost returns `runtime.status=pass`; public unauthenticated requests must stay 401/403 without internal details.
    - Run `BASE_URL=<staging-backend> npm run smoke:public-surface` before auth or E2B checks.
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-privacy` before any live check with side effects.
