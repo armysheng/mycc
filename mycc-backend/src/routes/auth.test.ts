@@ -133,7 +133,7 @@ describe('auth routes', () => {
     expect(response.json()).toMatchObject({
       success: false,
       code: 'registration_closed',
-      error: '注册当前仅面向内测邀请开放，请联系团队开通账号',
+      error: '暂未开放自助注册，请联系团队开通账号',
     });
     expect(mocks.register).not.toHaveBeenCalled();
     await app.close();

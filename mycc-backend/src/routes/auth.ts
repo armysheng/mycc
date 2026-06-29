@@ -49,7 +49,7 @@ function authErrorMessage(err: unknown, fallback: string): string {
 
 const authRateLimiter = new InMemoryAuthRateLimiter();
 const AUTH_RATE_LIMIT_MESSAGE = '尝试次数过多，请稍后再试';
-const REGISTRATION_CLOSED_MESSAGE = '注册当前仅面向内测邀请开放，请联系团队开通账号';
+const REGISTRATION_CLOSED_MESSAGE = '暂未开放自助注册，请联系团队开通账号';
 const REGISTRATION_INVITE_MESSAGE = '注册当前仅面向内测邀请开放，请填写有效邀请码';
 
 type RegistrationMode = 'open' | 'invite' | 'closed';

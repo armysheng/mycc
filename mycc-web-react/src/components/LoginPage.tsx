@@ -249,7 +249,7 @@ export function LoginPage() {
 
           {mode === "register" && registrationClosed && (
             <div className="mt-4 rounded-xl border px-3 py-2.5 text-sm text-[var(--text-secondary)] bg-[var(--accent-subtle)] border-[var(--accent-border)]">
-              当前为邀请内测阶段，请联系团队开通账号。
+              暂未开放自助注册，请联系团队开通账号。
             </div>
           )}
 
@@ -372,7 +372,7 @@ export function LoginPage() {
                   background: loading || registrationClosed ? "var(--accent-hover)" : "var(--accent)",
                 }}
               >
-                {registrationClosed ? "邀请内测中" : loading ? "注册中..." : "创建并进入"}
+                {registrationClosed ? "暂未开放注册" : loading ? "注册中..." : "创建并进入"}
               </button>
             </form>
           )}
