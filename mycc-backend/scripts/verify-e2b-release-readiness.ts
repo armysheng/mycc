@@ -245,9 +245,11 @@ const checks: Check[] = [
     file: '../.github/workflows/deploy-staging.yml',
     snippets: [
       'READY_URL="${STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz/deep}"',
+      'STAGING_BACKEND_READY_TOKEN: ${{ secrets.STAGING_BACKEND_READY_TOKEN }}',
+      'Authorization: Bearer %s',
       'Backend deep readiness check passed',
       '"runtime"[[:space:]]*:[[:space:]]*\\{[^}]*"status"[[:space:]]*:[[:space:]]*"pass"',
-      'curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/readyz/deep',
+      'curl -fsS --connect-timeout 2 --max-time 5 "${READY_CURL_ARGS[@]}" http://127.0.0.1:8080/readyz/deep',
     ],
   },
   {
