@@ -17,7 +17,7 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `23074b0`
+- Current deployed commit: `7b2b4f2`
 - Current production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
@@ -32,13 +32,17 @@ database changes, or service restarts needs an explicit release decision.
   - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
-  - GitHub `CI` run `28364261338` passed for `23074b0`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
-  - GitHub `Deploy Staging` run `28364322947` passed for `23074b0`
+  - GitHub `CI` run `28370295997` passed for `7b2b4f2`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
+  - GitHub `Deploy Staging` run `28370370431` passed for `7b2b4f2`
   - Production Node guard: Node `v20.19.5`, matching systemd service toolchain
   - `npm run doctor:e2b-agent`: E2B Agent preflight ready
   - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
-  - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed; one failed-login privacy probe was run
   - Playwright product-surface audit: desktop login, 390x844 mobile login, and registration closed state passed without forbidden public text or mobile horizontal overflow
+  - Latest no-side-effect maintenance added `npm run verify:rollback-preflight`; deployed `7b2b4f2` has `prod_dirty_count=0`, backend service `active`, public-surface smoke passed, and production `doctor:e2b-agent` reports E2B Agent preflight ready
+
+Historical low-side-effect evidence:
+
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed on deployed commit `23074b0`; one failed-login privacy probe was run. Re-run at most once per release candidate and record the audit/rate-limit side effect.
 
 Always use `systemctl --user` for backend service checks. System-level
 `systemctl status mycc-backend.service` can report a misleading inactive state
@@ -90,6 +94,7 @@ Run from a clean worktree, not from the dirty coordinator workspace:
 ```bash
 cd mycc-backend
 npm run landing:classify -- --fail-on-unclassified
+npm run verify:rollback-preflight
 npm run verify:e2b-release
 npm run harness:verify -- --target=landing --no-write
 ```
@@ -104,6 +109,7 @@ Expected for a fully credentialed release shell:
 - Backend Vitest passes.
 - Focused product-facing frontend tests pass.
 - Static agent evals pass.
+- Rollback preflight passes.
 - E2B release readiness passes.
 - E2B Agent doctor is ready.
 - Sandbox template doctor is ready.
@@ -246,7 +252,7 @@ Release gate id:
 Release owner:
 Operator:
 Target URL: https://daoyou.iaigc.fun
-Target deployed commit: 23074b0
+Target deployed commit: <current deployed commit, for example 7b2b4f2>
 Approval timestamp:
 Release window:
 Evidence path:

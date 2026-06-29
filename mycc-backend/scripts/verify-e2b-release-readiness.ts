@@ -138,6 +138,17 @@ const checks: Check[] = [
     ],
   },
   {
+    label: 'production runbook exposes rollback preflight gate',
+    file: 'docs/landing-production-runbook.md',
+    snippets: [
+      'npm run landing:classify -- --fail-on-unclassified',
+      'npm run verify:rollback-preflight',
+      'npm run verify:e2b-release',
+      'Rollback preflight passes.',
+      'credential-blocked, not product-passed',
+    ],
+  },
+  {
     label: 'backend index registers readiness routes',
     file: 'src/index.ts',
     snippets: [
@@ -253,6 +264,21 @@ const checks: Check[] = [
       'Staging deployment rehearsal',
       'Product copy and surface audit',
       'Operations rollback rehearsal',
+    ],
+  },
+  {
+    label: 'landing readiness records maintenance evidence structure',
+    file: 'docs/landing-readiness.md',
+    snippets: [
+      'Post-#',
+      'production evidence',
+      'GitHub `CI` run',
+      'GitHub `Deploy Staging` run',
+      'Remote `/home/armysheng/mycc` is deployed at',
+      'BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface',
+      'npm run verify:rollback-preflight',
+      'prod_dirty_count=0',
+      'E2B Agent preflight ready',
     ],
   },
   {
