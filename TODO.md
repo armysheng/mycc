@@ -22,7 +22,7 @@
 
 - [ ] **邮箱/手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
 - [ ] **Google/GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
-- [ ] **注册入口控制** - 明确邀请码、灰度名单或开关注入方式，避免生产注册入口失控。
+- [x] **注册入口控制** - 已支持 `open` / `invite` / `closed` 三种注册模式；生产当前设置为 `closed`，避免公开注册入口失控。
 - [ ] **产品报错验收样例库** - 沉淀登录、初始化、IDE、desktop、Agent SDK workspace 等常见失败态的产品化报错样例。
 
 ### P2 - 长期运营能力
@@ -40,6 +40,7 @@
 - [x] **初始化后保持项目上下文** - 从 `/projects/demo` 完成初始化后仍回到 demo 项目，不跳到默认项目空间。
 - [x] **Auth / readiness P1 hotfix** - 登录不存在账号不再返回“用户不存在”；公网 `/readyz/deep` 无 token 返回 401 且不暴露内部 checks/runtime/E2B。
 - [x] **生产发布工具链 guard** - 生产 `npm ci/build` 必须使用 systemd 同款 Node v20.19.5，避免 native addon ABI 错配导致 SIGSEGV。
+- [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
