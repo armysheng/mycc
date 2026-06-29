@@ -6,9 +6,9 @@ import type { AllMessage, ChatMessage, TimestampedSDKMessage } from "../types";
 const verboseSkillText = [
   "Base directory for this skill: /home/mycc/.claude/skills/browser-use",
   "",
-  "# Browser Use In MyCC Sandbox",
+  "# 道友 AI 助理浏览器",
   "",
-  "The sandbox includes browser automation dependencies.",
+  "道友 AI 的云端工作间预装浏览器自动化能力。",
   "",
   "ARGUMENTS: https://example.com/",
 ].join("\n");

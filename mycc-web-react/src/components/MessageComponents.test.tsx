@@ -69,9 +69,9 @@ describe("MessageComponents productized system copy", () => {
       content: [
         "Base directory for this skill: /home/mycc/.claude/skills/browser-use",
         "",
-        "# Browser Use In MyCC Sandbox",
+        "# 道友 AI 助理浏览器",
         "",
-        "The sandbox includes browser automation dependencies.",
+        "道友 AI 的云端工作间预装浏览器自动化能力。",
         "ARGUMENTS: https://bbs.byr.cn/#!board/Job",
       ].join("\n"),
       timestamp: 1710000000000,
@@ -83,12 +83,12 @@ describe("MessageComponents productized system copy", () => {
       screen.getByRole("button", { name: /处理动态/ }),
     ).toBeInTheDocument();
     expect(container).not.toHaveTextContent("Base directory for this skill");
-    expect(container).not.toHaveTextContent("Browser Use In MyCC Sandbox");
+    expect(container).not.toHaveTextContent("道友 AI 助理浏览器");
 
     fireEvent.click(screen.getByRole("button", { name: /处理动态/ }));
 
     expect(container).toHaveTextContent("Base directory for this skill");
-    expect(container).toHaveTextContent("Browser Use In MyCC Sandbox");
+    expect(container).toHaveTextContent("道友 AI 助理浏览器");
   });
 
   it("hides successful result metadata from the chat surface", () => {

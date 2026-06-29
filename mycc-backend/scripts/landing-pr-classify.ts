@@ -180,6 +180,7 @@ const rules: Rule[] = [
       'mycc-web-react/src/test/**',
       'mycc-web-react/src/types.ts',
       'mycc-web-react/src/types/auth.ts',
+      'mycc-web-react/src/utils/UnifiedMessageProcessor.ts',
       'mycc-web-react/src/utils/UnifiedMessageProcessor.test.ts',
       'mycc-web-react/src/utils/apiError.ts',
       'mycc-web-react/src/utils/productCopy.ts',

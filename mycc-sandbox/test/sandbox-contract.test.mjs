@@ -295,16 +295,18 @@ test('service scripts keep secrets out of argv and expose stable ports', () => {
   assert.match(browserUseSkill, /`baidu` or `百度`/);
   assert.match(browserUseSkill, /https:\/\/www\.baidu\.com\//);
   assert.match(browserUseSkill, /exo-open --launch WebBrowser/);
-  assert.match(browserUseSkill, /visible CC computer browser/i);
+  assert.match(browserUseSkill, /right-side visible browser/i);
   assert.match(browserUseSkill, /127\.0\.0\.1:9222/);
   assert.match(browserUseSkill, /do not launch a hidden Chrome for Testing/i);
   assert.match(browserUseSkill, /MYCC_DESKTOP_BROWSER_WINDOW_SIZE:-1440,900/);
+  assert.doesNotMatch(browserUseSkill, /MyCC Sandbox|CC computer|E2B hosts/i);
   assert.doesNotMatch(browserUseSkill, /chromium --no-sandbox/);
   assert.doesNotMatch(browserUseSkill, /mycc-open-browser/);
 
-  assert.match(workspaceClaude, /CC 的电脑/);
+  assert.match(workspaceClaude, /道友 AI 的可见浏览器/);
   assert.match(workspaceClaude, /可见浏览器/);
   assert.match(workspaceClaude, /不要.*隐藏.*浏览器/);
+  assert.doesNotMatch(workspaceClaude, /CC 的电脑|这个沙盒/);
 
   assert.match(registerDeliverable, /deliverables\.json/);
   assert.match(registerDeliverable, /allowedKinds/);
