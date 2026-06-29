@@ -59,6 +59,13 @@ describe('staging deploy workflow', () => {
     expect(workflow.match(new RegExp(deployGate, 'g'))?.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('treats release gate script-only pushes as non-deploying', () => {
+    expect(workflow).toContain('mycc-backend/scripts/landing-pr-classify.ts');
+    expect(workflow).toContain('mycc-backend/scripts/verify-e2b-release-readiness.ts');
+    expect(workflow).toContain('mycc-backend/scripts/harness-verify.ts');
+    expect(workflow).toContain('mycc-backend/scripts/agent-eval-static.ts');
+  });
+
   it('can deploy frontend-only pushes without backend migrations or restarts', () => {
     expect(workflow).toContain('deploy_frontend=');
     expect(workflow).toContain('deploy_backend=');
@@ -69,5 +76,13 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('if [ "${DEPLOY_BACKEND}" = "true" ]; then');
     expect(workflow).toContain("steps.deployment_impact.outputs.deploy_backend == 'true'");
     expect(workflow).toContain("steps.deployment_impact.outputs.deploy_frontend == 'true' && env.STAGING_FRONTEND_URL != ''");
+  });
+
+  it('can authenticate protected deep readiness probes without exposing the token in the URL', () => {
+    expect(workflow).toContain('STAGING_BACKEND_READY_TOKEN: ${{ secrets.STAGING_BACKEND_READY_TOKEN }}');
+    expect(workflow).toContain('READY_AUTH_HEADER_B64');
+    expect(workflow).toContain('Authorization: Bearer %s');
+    expect(workflow).toContain('READY_CURL_ARGS=(-H "$(printf');
+    expect(workflow).not.toContain('STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz/deep?token=');
   });
 });
