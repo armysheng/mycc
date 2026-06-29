@@ -319,6 +319,10 @@ Notes:
 - `MYCC_LIVE_GATE_APPROVED=1` is a deliberate operator acknowledgement. The
   harness refuses live side-effect targets without it and without an explicit
   `BASE_URL`.
+- When the expanded harness target includes live side-effect checks, the harness
+  runs in fail-fast mode: after the first failed target, later targets are marked
+  `skipped` so failed prerequisites do not cascade into account or E2B side
+  effects. Each child command also has a bounded runtime.
 - `smoke:auth-onboarding` does not call `/api/chat`, but it does register or
   reuse an account and calls `/api/onboarding/initialize`; depending on the
   target workspace provider and account initialization state, that initialize

@@ -38,6 +38,7 @@ type HarnessTarget = {
   env?: Record<string, string | undefined>;
   group?: HarnessTargetId[];
   expensive?: boolean;
+  timeoutMs?: number;
 };
 
 type HarnessResult = {
@@ -55,6 +56,7 @@ type HarnessResult = {
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const outputRoot = path.join(repoRoot, 'output', 'harness');
+const DEFAULT_TARGET_TIMEOUT_MS = 15 * 60_000;
 const LIVE_GATE_APPROVAL_ENV = 'MYCC_LIVE_GATE_APPROVED';
 const LIVE_SIDE_EFFECT_TARGETS = new Set<HarnessTargetId>([
   'auth-onboarding-smoke',
@@ -292,7 +294,7 @@ async function main() {
   assertLiveTargetApproval(expandedTargets);
   const startedAt = new Date();
   try {
-    const results = expandedTargets.map(runTarget);
+    const results = runExpandedTargets(expandedTargets);
     const report = {
       ok: results.every((result) => result.ok),
       startedAt: startedAt.toISOString(),
@@ -403,6 +405,47 @@ function expandTargetGroups(ids: HarnessTargetId[]): HarnessTarget[] {
   return expanded;
 }
 
+function runExpandedTargets(expandedTargets: HarnessTarget[]): HarnessResult[] {
+  const results: HarnessResult[] = [];
+  const failFast = shouldFailFastHarnessRun(expandedTargets);
+
+  for (let index = 0; index < expandedTargets.length; index += 1) {
+    const target = expandedTargets[index]!;
+    const result = runTarget(target);
+    results.push(result);
+
+    if (!failFast || result.ok) continue;
+
+    for (const skippedTarget of expandedTargets.slice(index + 1)) {
+      results.push(buildSkippedResult(
+        skippedTarget,
+        `Skipped after ${target.id} failed in live gate fail-fast mode.`,
+      ));
+    }
+    break;
+  }
+
+  return results;
+}
+
+function shouldFailFastHarnessRun(expandedTargets: HarnessTarget[]): boolean {
+  return expandedTargets.some((target) => LIVE_SIDE_EFFECT_TARGETS.has(target.id));
+}
+
+function buildSkippedResult(target: HarnessTarget, reason: string): HarnessResult {
+  return {
+    id: target.id,
+    label: target.label,
+    ok: false,
+    exitCode: null,
+    durationMs: 0,
+    command: target.command ? [target.command, ...(target.args ?? [])].join(' ') : '<missing>',
+    stdout: '',
+    stderr: reason,
+    skipped: true,
+  };
+}
+
 function assertLiveTargetApproval(expandedTargets: HarnessTarget[]): void {
   const liveTargets = expandedTargets.filter((target) => LIVE_SIDE_EFFECT_TARGETS.has(target.id));
   if (liveTargets.length === 0) return;
@@ -444,6 +487,7 @@ function runTarget(target: HarnessTarget): HarnessResult {
       cwd: target.cwd ?? backendRoot,
       encoding: 'utf8',
       env: buildTargetEnv(target),
+      timeout: target.timeoutMs ?? DEFAULT_TARGET_TIMEOUT_MS,
     });
     const ok = result.status === 0;
     const durationMs = Date.now() - startedAt;
@@ -463,7 +507,10 @@ function runTarget(target: HarnessTarget): HarnessResult {
       durationMs,
       command: [target.command, ...(target.args ?? [])].join(' '),
       stdout: redactHarnessText(result.stdout.trim()),
-      stderr: redactHarnessText(result.stderr.trim()),
+      stderr: redactHarnessText([
+        result.stderr.trim(),
+        result.error ? `spawn error: ${result.error.message}` : '',
+      ].filter(Boolean).join('\n')),
     };
   } catch (error) {
     span.recordException(error);
@@ -507,7 +554,8 @@ function formatMarkdownReport(report: {
     '| Target | Status | Exit | Duration |',
     '| --- | --- | ---: | ---: |',
     ...report.results.map((result) => {
-      return `| \`${result.id}\` | ${result.ok ? 'ok' : 'failed'} | ${result.exitCode ?? 'n/a'} | ${result.durationMs}ms |`;
+      const status = result.skipped ? 'skipped' : result.ok ? 'ok' : 'failed';
+      return `| \`${result.id}\` | ${status} | ${result.exitCode ?? 'n/a'} | ${result.durationMs}ms |`;
     }),
     '',
   ];
