@@ -26,6 +26,10 @@ describe('E2B workspace smoke scripts', () => {
   it('keeps IDE smoke pinned to MyCC proxy-only E2B access', () => {
     const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-ide.ts'), 'utf8');
 
+    expect(source).toContain('runSmokeWithCleanup');
+    expect(source).toContain("label: 'E2B IDE smoke'");
+    expect(source).toContain('finally');
+    expect(source).toContain('await pool.end()');
     expect(source).toContain('assertDirectHostRejectsUnauthenticatedTraffic');
     expect(source).toContain('https://${session.host}/healthz');
     expect(source).toContain('Direct E2B host accepted unauthenticated traffic');
@@ -38,6 +42,8 @@ describe('E2B workspace smoke scripts', () => {
   it('keeps agent workspace smoke polling code-server health after command failures', () => {
     const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-agent-workspace.ts'), 'utf8');
 
+    expect(source).toContain('runSmokeWithCleanup');
+    expect(source).toContain("label: 'E2B Agent+IDE workspace smoke'");
     expect(source).toContain('assertCodeServerLocalHealth');
     expect(source).toContain('lastError = error instanceof Error ? error.message : String(error)');
     expect(source).toContain('code-server health check timed out');
@@ -53,6 +59,10 @@ describe('E2B workspace smoke scripts', () => {
   it('keeps desktop smoke pinned to MyCC proxy-only E2B access', () => {
     const source = readFileSync(path.join(backendRoot, 'scripts/smoke-e2b-desktop.ts'), 'utf8');
 
+    expect(source).toContain('runSmokeWithCleanup');
+    expect(source).toContain("label: 'E2B desktop smoke'");
+    expect(source).toContain('finally');
+    expect(source).toContain('await pool.end()');
     expect(source).toContain('assertDirectDesktopHostRejectsUnauthenticatedTraffic');
     expect(source).toContain('https://${session.desktopHost}/vnc.html');
     expect(source).toContain('Direct E2B desktop host accepted unauthenticated traffic');

@@ -5,6 +5,7 @@ import { requireE2bApiKey } from '../src/ide/e2b-api-key.js';
 import { DEFAULT_E2B_AGENT_TEMPLATE_NAME } from '../src/ide/e2b-preflight.js';
 import { PostgresIdeSessionStore, type StoredIdeSession } from '../src/ide/session-store.js';
 import { pool } from '../src/db/client.js';
+import { runSmokeWithCleanup } from '../src/scripts/smoke-cleanup.js';
 
 dotenv.config();
 
@@ -55,41 +56,45 @@ async function main() {
   }, JWT_SECRET, { expiresIn: '15m' });
   const authorization = `Bearer ${token}`;
 
-  try {
-    const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
-      headers: { authorization },
-    });
-    if (!config.data.enabled) {
-      throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
-    }
-
-    const created = await requestJsonWithHeaders<IdeSessionResponse>('/api/ide/sessions', {
-      method: 'POST',
-      headers: { authorization },
-    });
-    sessionId = created.body.data.id;
-    assertNoProviderSecrets(created.body.data);
-
-    const privateSession = await getPrivateSession(sessionId);
-    await assertDirectHostRejectsUnauthenticatedTraffic(privateSession);
-
-    const cookie = extractProxyCookie(created.headers);
-    const location = created.body.data.openPath;
-    if (!location?.endsWith(`/api/ide/sessions/${sessionId}/proxy/`) && location !== `/api/ide/sessions/${sessionId}/proxy/`) {
-      throw new Error(`Unexpected proxy location: ${location}`);
-    }
-
-    await waitForProxyHealth(sessionId, cookie);
-    console.log(`[ok] E2B IDE smoke passed: session=${sessionId}, template=${TEMPLATE_NAME}`);
-  } finally {
-    try {
-      if (sessionId) {
-        await cleanupSession(sessionId, authorization);
+  await runSmokeWithCleanup({
+    label: 'E2B IDE smoke',
+    run: async () => {
+      const config = await requestJson<IdeConfigResponse>('/api/ide/config', {
+        headers: { authorization },
+      });
+      if (!config.data.enabled) {
+        throw new Error(`IDE is not enabled: ${JSON.stringify(config.data)}`);
       }
-    } finally {
-      await pool.end();
-    }
-  }
+
+      const created = await requestJsonWithHeaders<IdeSessionResponse>('/api/ide/sessions', {
+        method: 'POST',
+        headers: { authorization },
+      });
+      sessionId = created.body.data.id;
+      assertNoProviderSecrets(created.body.data);
+
+      const privateSession = await getPrivateSession(sessionId);
+      await assertDirectHostRejectsUnauthenticatedTraffic(privateSession);
+
+      const cookie = extractProxyCookie(created.headers);
+      const location = created.body.data.openPath;
+      if (!location?.endsWith(`/api/ide/sessions/${sessionId}/proxy/`) && location !== `/api/ide/sessions/${sessionId}/proxy/`) {
+        throw new Error(`Unexpected proxy location: ${location}`);
+      }
+
+      await waitForProxyHealth(sessionId, cookie);
+      console.log(`[ok] E2B IDE smoke passed: session=${sessionId}, template=${TEMPLATE_NAME}`);
+    },
+    cleanup: async () => {
+      try {
+        if (sessionId) {
+          await cleanupSession(sessionId, authorization);
+        }
+      } finally {
+        await pool.end();
+      }
+    },
+  });
 }
 
 async function requestJson<T>(pathOrUrl: string, init: RequestInit = {}): Promise<T> {
