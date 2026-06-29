@@ -1,4 +1,11 @@
-import type { LoginRequest, RegisterRequest, AuthResponse, User, UpdateProfileRequest } from '../types/auth';
+import type {
+  LoginRequest,
+  RegisterRequest,
+  AuthConfigResponse,
+  AuthResponse,
+  User,
+  UpdateProfileRequest,
+} from '../types/auth';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 const apiUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
@@ -18,6 +25,11 @@ export async function register(data: RegisterRequest): Promise<AuthResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  return res.json();
+}
+
+export async function getAuthConfig(): Promise<AuthConfigResponse> {
+  const res = await fetch(apiUrl('/api/auth/config'));
   return res.json();
 }
 

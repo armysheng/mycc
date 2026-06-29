@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRightIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
-import { login as apiLogin, register as apiRegister } from "../api/auth";
+import { getAuthConfig, login as apiLogin, register as apiRegister } from "../api/auth";
 import { PRODUCT_COPY } from "../utils/productCopy";
+import type { RegistrationMode } from "../types/auth";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -17,8 +18,30 @@ export function LoginPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState(devPassword);
+  const [inviteCode, setInviteCode] = useState("");
+  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("open");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const registrationClosed = registrationMode === "closed";
+  const inviteRequired = registrationMode === "invite";
+
+  useEffect(() => {
+    let cancelled = false;
+    getAuthConfig()
+      .then((res) => {
+        const mode = res.data?.registration.mode;
+        if (!cancelled && mode) {
+          setRegistrationMode(mode);
+        }
+      })
+      .catch(() => {
+        // The backend remains the source of truth if this lightweight config fetch fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clearStaleSessionQuery = () => {
     if (typeof window === "undefined") return;
@@ -50,7 +73,12 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await apiRegister({ phone, email, password });
+      const res = await apiRegister({
+        phone,
+        email,
+        password,
+        ...(inviteRequired ? { inviteCode } : {}),
+      });
       if (res.success && res.data) {
         clearStaleSessionQuery();
         login(res.data.token, res.data.user);
@@ -208,6 +236,12 @@ export function LoginPage() {
             </div>
           )}
 
+          {mode === "register" && registrationClosed && (
+            <div className="mt-4 rounded-xl border px-3 py-2.5 text-sm text-[var(--text-secondary)] bg-[var(--accent-subtle)] border-[var(--accent-border)]">
+              当前为邀请内测阶段，请联系团队开通账号。
+            </div>
+          )}
+
           {mode === "login" ? (
             <form onSubmit={handleLogin} className="mt-5 space-y-3.5">
               <div>
@@ -294,16 +328,36 @@ export function LoginPage() {
                   minLength={6}
                 />
               </div>
+              {inviteRequired && (
+                <div>
+                  <label
+                    htmlFor="invite-code"
+                    className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
+                  >
+                    内测邀请码
+                  </label>
+                  <input
+                    id="invite-code"
+                    type="text"
+                    placeholder="请输入邀请码"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    className={inputClassName}
+                    style={{ borderColor: "var(--surface-border)" }}
+                    required
+                  />
+                </div>
+              )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || registrationClosed}
                 className="mt-2 w-full rounded-xl px-4 py-3 text-sm font-semibold text-[var(--text-inverse)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{
-                  background: loading ? "var(--accent-hover)" : "var(--accent)",
+                  background: loading || registrationClosed ? "var(--accent-hover)" : "var(--accent)",
                 }}
               >
-                {loading ? "注册中..." : "创建并进入"}
+                {registrationClosed ? "邀请内测中" : loading ? "注册中..." : "创建并进入"}
               </button>
             </form>
           )}

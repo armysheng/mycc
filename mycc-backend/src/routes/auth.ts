@@ -19,6 +19,7 @@ const registerSchema = z.object({
     return trimmed ? trimmed.toLowerCase() : undefined;
   }, z.string().email().optional()),
   password: z.string().min(6),
+  inviteCode: optionalTrimmedString,
 }).refine(data => data.phone || data.email, {
   message: '手机号或邮箱必须提供一个',
 });
@@ -48,6 +49,73 @@ function authErrorMessage(err: unknown, fallback: string): string {
 
 const authRateLimiter = new InMemoryAuthRateLimiter();
 const AUTH_RATE_LIMIT_MESSAGE = '尝试次数过多，请稍后再试';
+const REGISTRATION_CLOSED_MESSAGE = '注册当前仅面向内测邀请开放，请联系团队开通账号';
+const REGISTRATION_INVITE_MESSAGE = '注册当前仅面向内测邀请开放，请填写有效邀请码';
+
+type RegistrationMode = 'open' | 'invite' | 'closed';
+
+function getRegistrationMode(env: NodeJS.ProcessEnv = process.env): RegistrationMode {
+  const rawMode = env.MYCC_REGISTRATION_MODE?.trim().toLowerCase();
+  if (rawMode === 'invite' || rawMode === 'closed' || rawMode === 'open') {
+    return rawMode;
+  }
+  if (env.MYCC_REGISTRATION_ENABLED?.trim().toLowerCase() === 'false') {
+    return 'closed';
+  }
+  return 'open';
+}
+
+function getRegistrationInviteCodes(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set(
+    (env.MYCC_REGISTRATION_INVITE_CODES || '')
+      .split(/[\n,]/)
+      .map((code) => code.trim())
+      .filter(Boolean),
+  );
+}
+
+function registrationConfig(env: NodeJS.ProcessEnv = process.env) {
+  const mode = getRegistrationMode(env);
+  return {
+    mode,
+    enabled: mode !== 'closed',
+    inviteRequired: mode === 'invite',
+  };
+}
+
+function validateRegistrationGate(inviteCode?: string, env: NodeJS.ProcessEnv = process.env) {
+  const config = registrationConfig(env);
+  if (config.mode === 'open') {
+    return { allowed: true as const };
+  }
+  if (config.mode === 'closed') {
+    return {
+      allowed: false as const,
+      statusCode: 403,
+      code: 'registration_closed',
+      error: REGISTRATION_CLOSED_MESSAGE,
+    };
+  }
+
+  const inviteCodes = getRegistrationInviteCodes(env);
+  if (inviteCodes.size === 0) {
+    return {
+      allowed: false as const,
+      statusCode: 503,
+      code: 'registration_invite_unconfigured',
+      error: REGISTRATION_CLOSED_MESSAGE,
+    };
+  }
+  if (!inviteCode || !inviteCodes.has(inviteCode)) {
+    return {
+      allowed: false as const,
+      statusCode: 403,
+      code: 'registration_invite_required',
+      error: REGISTRATION_INVITE_MESSAGE,
+    };
+  }
+  return { allowed: true as const };
+}
 
 function getClientIp(request: FastifyRequest): string {
   const forwardedFor = request.headers['x-forwarded-for'];
@@ -87,6 +155,16 @@ const profileUpdateSchema = z.object({
 });
 
 export async function authRoutes(fastify: FastifyInstance) {
+  // GET /api/auth/config - 公开认证配置
+  fastify.get('/api/auth/config', async (_request, reply) => {
+    return reply.send({
+      success: true,
+      data: {
+        registration: registrationConfig(),
+      },
+    });
+  });
+
   // POST /api/auth/register - 用户注册
   fastify.post('/api/auth/register', async (request, reply) => {
     try {
@@ -101,7 +179,17 @@ export async function authRoutes(fastify: FastifyInstance) {
           error: AUTH_RATE_LIMIT_MESSAGE,
         });
       }
-      const result = await register(body);
+      const gate = validateRegistrationGate(body.inviteCode);
+      if (!gate.allowed) {
+        return reply.status(gate.statusCode).send({
+          success: false,
+          code: gate.code,
+          error: gate.error,
+        });
+      }
+
+      const { inviteCode: _inviteCode, ...registrationParams } = body;
+      const result = await register(registrationParams);
 
       return reply.status(201).send({
         success: true,

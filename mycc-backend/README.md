@@ -156,6 +156,8 @@ Authorization: Bearer <token>
 | DATABASE_URL | PostgreSQL 连接字符串 | - |
 | REDIS_URL | Redis 连接字符串（可选） | - |
 | JWT_SECRET | JWT 签名密钥 | - |
+| MYCC_REGISTRATION_MODE | 注册入口控制：`open` 开放注册，`invite` 必须提供邀请码，`closed` 关闭新注册 | open |
+| MYCC_REGISTRATION_INVITE_CODES | 邀请码列表，逗号或换行分隔；仅 `MYCC_REGISTRATION_MODE=invite` 时使用 | - |
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |
