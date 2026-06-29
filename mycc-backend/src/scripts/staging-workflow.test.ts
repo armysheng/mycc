@@ -48,7 +48,7 @@ describe('staging deploy workflow', () => {
   it('skips remote deploy work for docs-only main pushes', () => {
     expect(workflow).toContain('id: deployment_impact');
     expect(workflow).toContain('${{ github.event.workflow_run.head_sha }}');
-    expect(workflow).toContain('git diff --name-only HEAD^ HEAD');
+    expect(workflow).toContain('git -c core.quotePath=false diff --name-only HEAD^ HEAD');
     expect(workflow).toContain('mycc-backend/docs/*');
     expect(workflow).toContain('docs/*');
     expect(workflow).toContain("should_deploy=false");
