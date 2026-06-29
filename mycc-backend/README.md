@@ -162,6 +162,7 @@ Authorization: Bearer <token>
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |
+| MYCC_CORS_ORIGINS | CORS origin allowlist，逗号分隔；未设置、空字符串、纯空白或只包含空项时使用本地开发默认值。由于后端启用 `credentials=true`，不能使用 `*`，否则启动会失败 | `http://localhost:3001`, `http://localhost:3000`, `http://127.0.0.1:3001` |
 | PLAN_FREE_TOKENS | 免费版额度 | 300000 |
 | PLAN_BASIC_TOKENS | 基础版额度 | 3000000 |
 | PLAN_PRO_TOKENS | 专业版额度 | 12000000 |
