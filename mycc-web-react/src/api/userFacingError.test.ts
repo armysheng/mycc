@@ -10,4 +10,20 @@ describe("userFacingError", () => {
       "操作失败，请稍后重试",
     );
   });
+
+  it("hides secret-bearing API errors from users", () => {
+    const messages = [
+      "missing secret in OAuth callback",
+      "invalid client_secret for provider",
+      "api_key rejected by upstream",
+      "Authorization header expired",
+      "password grant denied",
+    ];
+
+    for (const message of messages) {
+      expect(toRetryableUserFacingError(message, "登录失败")).toBe(
+        "登录失败，请稍后重试",
+      );
+    }
+  });
 });

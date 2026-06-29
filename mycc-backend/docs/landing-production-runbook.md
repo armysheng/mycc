@@ -27,7 +27,7 @@ database changes, or service restarts needs an explicit release decision.
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
   - Authorized local `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `database=pass`, `skills=pass`, `runtime=pass`, `ssh=skipped`
-  - Production `schema_migrations`: 8 applied migrations; `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied
+  - Production `schema_migrations`: 8 applied migrations; `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; OAuth release candidates must also apply `009-add-oauth-accounts.sql` before enabling callbacks
   - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
   - `GET /favicon.svg`: `200`, `content-type=image/svg+xml`
   - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed
@@ -68,6 +68,10 @@ Needs explicit authorization:
 
 - `smoke:auth-onboarding`, because it registers or reuses a test identity and
   initializes workspace state.
+- Google/GitHub OAuth live callback smoke, because it uses a third-party
+  provider identity and may create or link a production account. Provider apps,
+  secrets, callback domains, migration `009-add-oauth-accounts.sql`, test
+  identity, side effects, and cleanup owner must be recorded first.
 - E2B IDE, desktop, and Agent SDK workspace smoke tests, because they provision
   sandboxes and may consume model/provider resources.
 - `landing-live`, because it includes live E2B and auth/onboarding smokes.
@@ -207,7 +211,11 @@ set -a
 set +a
 node - <<'"'"'NODE'"'"'
 const pg = require("pg");
-const required = ["007-add-agent-run-trace.sql", "008-add-ide-session-identity.sql"];
+const required = [
+  "007-add-agent-run-trace.sql",
+  "008-add-ide-session-identity.sql",
+  "009-add-oauth-accounts.sql",
+];
 (async () => {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
   try {
@@ -225,7 +233,7 @@ NODE
 '
 ```
 
-Expected: `migration_count` includes all repo migrations through `008`, and both required landing migrations report `applied`. This command is read-only and must not be replaced with `npm run db:migrate` unless the migration gate is explicitly open.
+Expected for non-OAuth landing releases: `migration_count` includes all repo migrations through `008`, and required landing migrations `007`/`008` report `applied`. Expected for PR #124 / OAuth releases: `009-add-oauth-accounts.sql` also reports `applied` before live callback smoke. This command is read-only and must not be replaced with `npm run db:migrate` unless the migration gate is explicitly open.
 
 ## Auth Privacy Smoke
 
@@ -259,6 +267,9 @@ Approval timestamp:
 Release window:
 Evidence path:
 Approved checks:
+  [ ] OAuth provider app/secrets and callback domains verified
+  [ ] migration 009-add-oauth-accounts.sql applied when OAuth is in scope
+  [ ] Google/GitHub live callback smoke
   [ ] smoke:auth-onboarding
   [ ] smoke:e2b-ide
   [ ] smoke:e2b-desktop

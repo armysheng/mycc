@@ -35,6 +35,15 @@ export async function register(data: RegisterRequest): Promise<AuthResponse> {
   return res.json();
 }
 
+export async function exchangeOAuthLoginCode(code: string): Promise<AuthResponse> {
+  const res = await fetch(apiUrl('/api/auth/oauth/exchange'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return res.json();
+}
+
 export async function getAuthConfig(): Promise<AuthConfigResponse> {
   const res = await fetch(apiUrl('/api/auth/config'));
   return res.json();

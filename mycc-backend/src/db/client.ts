@@ -201,7 +201,8 @@ export async function findUserByOAuthAccount(
 export async function linkOAuthAccount(params: OAuthAccountParams): Promise<void> {
   await pool.query(
     `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, email_verified)
-     VALUES ($1, $2, $3, $4, $5)`,
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (provider, provider_user_id) DO NOTHING`,
     [
       params.userId,
       params.provider,

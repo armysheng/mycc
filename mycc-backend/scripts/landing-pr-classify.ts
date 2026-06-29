@@ -168,6 +168,8 @@ const rules: Rule[] = [
       'mycc-web-react/src/App.tsx',
       'mycc-web-react/src/App.test.tsx',
       'mycc-web-react/src/api/auth.ts',
+      'mycc-web-react/src/api/userFacingError.ts',
+      'mycc-web-react/src/api/userFacingError.test.ts',
       'mycc-web-react/src/components/ChatPage.tsx',
       'mycc-web-react/src/components/ChatPage.workbench.test.tsx',
       'mycc-web-react/src/components/LoginPage.tsx',

@@ -437,7 +437,8 @@ export async function loginWithOAuthProfile(profile: OAuthProfile): Promise<{ to
       email,
       emailVerified: true,
     });
-    return issueAuthResult(existingUser);
+    const linkedUserAfterInsert = await findUserByOAuthAccount(profile.provider, providerUserId);
+    return issueAuthResult(linkedUserAfterInsert || existingUser);
   }
 
   if (!allowsNewOAuthRegistration()) {
@@ -492,13 +493,13 @@ export async function completeOAuthCodeLogin(
 }
 
 export function buildOAuthFrontendRedirect(params: {
-  token?: string;
+  code?: string;
   returnTo?: string;
   error?: string;
 }, env: NodeJS.ProcessEnv = process.env): string {
   const base = normalizeFrontendBaseUrl(env);
   const fragment = new URLSearchParams();
-  if (params.token) fragment.set('oauth_token', params.token);
+  if (params.code) fragment.set('oauth_code', params.code);
   if (params.returnTo) fragment.set('return_to', normalizeReturnTo(params.returnTo));
   if (params.error) fragment.set('oauth_error', params.error);
   const path = `/login${fragment.toString() ? `#${fragment.toString()}` : ''}`;

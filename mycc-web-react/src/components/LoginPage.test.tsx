@@ -16,6 +16,7 @@ vi.mock("../contexts/AuthContext", () => ({
 }));
 
 const authMocks = vi.hoisted(() => ({
+  exchangeOAuthLoginCode: vi.fn(),
   getCurrentUser: vi.fn(),
   getAuthConfig: vi.fn(),
   login: vi.fn(),
@@ -23,6 +24,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/auth", () => ({
+  exchangeOAuthLoginCode: authMocks.exchangeOAuthLoginCode,
   getCurrentUser: authMocks.getCurrentUser,
   getAuthConfig: authMocks.getAuthConfig,
   login: authMocks.login,
@@ -240,23 +242,28 @@ describe("LoginPage", () => {
     );
   });
 
-  it("accepts an OAuth callback token and clears it from the URL", async () => {
+  it("exchanges an OAuth callback code and clears it from the URL before login", async () => {
     window.history.replaceState(
       null,
       "",
-      "/login#oauth_token=oauth.jwt.token&return_to=%2Fprojects%2Fdemo",
+      "/login#oauth_code=one-time-code&return_to=%2Fprojects%2Fdemo",
     );
-    authMocks.getCurrentUser.mockResolvedValueOnce({
+    authMocks.exchangeOAuthLoginCode.mockResolvedValueOnce({
       success: true,
       data: {
-        id: 9,
-        email: "oauth@example.test",
-        plan: "free",
-        is_initialized: true,
+        token: "oauth.jwt.token",
+        user: {
+          id: 9,
+          email: "oauth@example.test",
+          plan: "free",
+          is_initialized: true,
+        },
       },
     });
 
     render(<LoginPage />);
+
+    expect(window.location.hash).not.toContain("one-time-code");
 
     await waitFor(() => {
       expect(authContextMocks.login).toHaveBeenCalledWith("oauth.jwt.token", {
@@ -267,8 +274,26 @@ describe("LoginPage", () => {
       });
     });
     expect(window.location.pathname).toBe("/projects/demo");
-    expect(window.location.search).not.toContain("oauth_token");
-    expect(window.location.hash).not.toContain("oauth_token");
+    expect(window.location.search).not.toContain("oauth_code");
+    expect(window.location.hash).not.toContain("oauth_code");
+    expect(authMocks.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("does not accept OAuth JWTs directly from the URL", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/login?token=oauth.jwt.token#oauth_token=oauth.jwt.token",
+    );
+
+    render(<LoginPage />);
+
+    await waitFor(() => {
+      expect(authMocks.getAuthConfig).toHaveBeenCalledTimes(1);
+    });
+    expect(authContextMocks.login).not.toHaveBeenCalled();
+    expect(authMocks.getCurrentUser).not.toHaveBeenCalled();
+    expect(authMocks.exchangeOAuthLoginCode).not.toHaveBeenCalled();
   });
 
   it("shows a product-facing OAuth callback error without leaking query details", async () => {

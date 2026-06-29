@@ -5,8 +5,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  exchangeOAuthLoginCode,
   getAuthConfig,
-  getCurrentUser,
   login as apiLogin,
   register as apiRegister,
   resolveAuthUrl,
@@ -105,10 +105,10 @@ export function LoginPage() {
         ? window.location.hash.slice(1)
         : window.location.hash,
     );
-    const getOAuthParam = (name: string) => searchParams.get(name) || hashParams.get(name);
-    const oauthError = getOAuthParam("oauth_error") || getOAuthParam("auth_error");
-    const oauthToken = getOAuthParam("oauth_token") || getOAuthParam("token");
-    const returnTo = safeReturnPath(getOAuthParam("return_to"));
+    const getCallbackParam = (name: string) => searchParams.get(name) || hashParams.get(name);
+    const oauthError = getCallbackParam("oauth_error") || getCallbackParam("auth_error");
+    const oauthCode = getCallbackParam("oauth_code");
+    const returnTo = safeReturnPath(getCallbackParam("return_to"));
 
     if (oauthError) {
       setError(toRetryableUserFacingError(oauthError, "第三方登录失败"));
@@ -116,32 +116,38 @@ export function LoginPage() {
       return;
     }
 
-    if (!oauthToken) return;
+    if (!oauthCode) return;
 
+    window.history.replaceState(null, "", window.location.pathname);
     setError("");
     setLoading(true);
-    getCurrentUser(oauthToken)
+    let cancelled = false;
+    exchangeOAuthLoginCode(oauthCode)
       .then((res) => {
+        if (cancelled) return;
         if (res.success && res.data) {
-          login(oauthToken, res.data);
           window.history.replaceState(null, "", returnTo);
+          login(res.data.token, res.data.user);
           return;
         }
         setError(toRetryableUserFacingError(res.error, "第三方登录失败"));
-        window.history.replaceState(null, "", window.location.pathname);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(
           toRetryableUserFacingError(
             err instanceof Error ? err.message : undefined,
             "第三方登录失败",
           ),
         );
-        window.history.replaceState(null, "", window.location.pathname);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [login]);
 
   const clearStaleSessionQuery = () => {

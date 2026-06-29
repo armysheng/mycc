@@ -15,6 +15,7 @@ import { vpsUserManager } from '../vps/user-manager.js';
 import {
   getCurrentUser,
   buildOAuthAuthorizationUrl,
+  buildOAuthFrontendRedirect,
   getOAuthPublicConfig,
   loginWithOAuthProfile,
   login,
@@ -95,6 +96,18 @@ describe('OAuth provider config', () => {
       provider: 'google',
       returnTo: '/projects/demo',
     });
+  });
+
+  it('builds frontend redirects with one-time OAuth codes instead of tokens', () => {
+    const redirect = buildOAuthFrontendRedirect({
+      code: 'login-code',
+      returnTo: '/projects/demo',
+    }, {
+      MYCC_AUTH_FRONTEND_BASE_URL: 'https://app.example.test/',
+    });
+
+    expect(redirect).toBe('https://app.example.test/login#oauth_code=login-code&return_to=%2Fprojects%2Fdemo');
+    expect(redirect).not.toContain('oauth_token');
   });
 });
 
@@ -424,6 +437,34 @@ describe('OAuth login', () => {
     });
     expect(createOAuthUserWithAccount).not.toHaveBeenCalled();
     expect(result.user.id).toBe(42);
+  });
+
+  it('uses the provider-linked account after an OAuth link race', async () => {
+    const raceWinner = {
+      ...userRecord,
+      id: 84,
+      email: 'winner@example.test',
+      linux_user: 'mycc_u84',
+    };
+    vi.mocked(findUserByOAuthAccount)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(raceWinner);
+    vi.mocked(findUserByCredential).mockResolvedValue(userRecord);
+
+    const result = await loginWithOAuthProfile({
+      provider: 'google',
+      providerUserId: 'google-sub-race',
+      email: 'linked@example.test',
+      emailVerified: true,
+    });
+
+    expect(linkOAuthAccount).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 42,
+      provider: 'google',
+      providerUserId: 'google-sub-race',
+    }));
+    expect(findUserByOAuthAccount).toHaveBeenLastCalledWith('google', 'google-sub-race');
+    expect(result.user.id).toBe(84);
   });
 
   it('rejects first-time OAuth login when the provider email is unverified', async () => {
