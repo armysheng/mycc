@@ -354,15 +354,6 @@ export interface ChatImageAttachment {
   mediaType: string;
 }
 
-export interface ProjectsResponse {
-  projects: ProjectInfo[];
-}
-
-export interface ProjectInfo {
-  path: string;
-  encodedName: string;
-}
-
 // Re-export SDK types
 export type {
   SDKMessage,
