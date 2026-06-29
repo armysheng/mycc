@@ -38,6 +38,7 @@ database changes, or service restarts needs an explicit release decision.
   - `npm run doctor:e2b-agent`: E2B Agent preflight ready
   - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
   - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed; one failed-login privacy probe was run
+  - Playwright product-surface audit: desktop login, 390x844 mobile login, and registration closed state passed without forbidden public text or mobile horizontal overflow
 
 Always use `systemctl --user` for backend service checks. System-level
 `systemctl status mycc-backend.service` can report a misleading inactive state

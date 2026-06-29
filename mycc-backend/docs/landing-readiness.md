@@ -38,6 +38,14 @@ Current no-side-effect production evidence from 2026-06-29 CST:
   - Visible body text did not expose `MyCC`, `linuxUser`, `E2B`, `sandbox`, `token`, `mycc_u`, `大辉哥`, `老板`, or `主人`.
   - A previously observed old login hero was not reproducible after cache-busting navigation and matches a stale browser SPA chunk/cache symptom rather than the deployed asset state.
 
+Current Playwright product-surface evidence from 2026-06-29 CST:
+
+- Desktop viewport `1440x1000` at `/projects/demo?codex_audit=<timestamp>` rendered title `道友 AI`, login hero `问清楚，再动手。把念头落成结果。`, `道友 AI`, and `念头通达出品`.
+- Mobile viewport `390x844` rendered the compact login card with `道友 AI` and `念头通达出品`; `documentElement.scrollWidth=390` and `body.scrollWidth=390`, so no horizontal overflow was observed.
+- Registration tab was opened without submitting a form. It showed `当前为邀请内测阶段，请联系团队开通账号。`; phone, email, password, and `邀请内测中` submit button were disabled.
+- Visible body text in the desktop, mobile, and registration-tab audits did not match `MyCC`, `linuxUser`, `E2B`, `sandbox`, `token`, `mycc_u`, `大辉哥`, `老板`, or `主人`.
+- Browser console only reported a password-field autocomplete hint; no runtime error was observed during the readonly audit.
+
 Current ops-only production evidence from 2026-06-29 CST:
 
 - Authorized local `GET http://127.0.0.1:8080/readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `status=ok`.
@@ -140,7 +148,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | --- | --- | --- | --- |
 | No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `23074b0` | No extra authorization needed. |
 | Auth privacy smoke | `smoke:auth-privacy` | Passed on 2026-06-29 against deployed commit `23074b0`; generic credential error confirmed | Creates one failed-login audit/rate-limit event; no registration, onboarding, E2B session, or chat. |
-| Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed on 2026-06-29 after cache-busting navigation | No account action, no form submission. |
+| Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed again on 2026-06-29 with Playwright: desktop login, mobile login, registration closed state, no forbidden public text, no mobile horizontal overflow | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
 | Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |
 | Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
