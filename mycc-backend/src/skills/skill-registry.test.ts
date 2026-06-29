@@ -12,6 +12,26 @@ import {
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const catalogRoot = path.join(currentDir, 'catalog');
 const imagePreloadManifestPath = path.join(currentDir, 'image-preload-skills.json');
+const forbiddenPublicSkillMarkdown = [
+  /MyCC/,
+  /assistant sandbox/i,
+  /CC computer browser/i,
+  /CC 电脑/i,
+  /mycc 后端/i,
+  /\.claude\/skills\/mycc/i,
+  /\/mycc-regression/,
+  /E2B hosts/i,
+  /code-server/i,
+];
+
+function listCatalogMarkdownFiles(root: string): string[] {
+  return fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return listCatalogMarkdownFiles(entryPath);
+    if (entry.isFile() && entry.name.endsWith('.md')) return [entryPath];
+    return [];
+  });
+}
 
 describe('skill registry image preload contract', () => {
   it('exposes the skill set that must be preloaded into the assistant image', () => {
@@ -73,5 +93,15 @@ describe('skill registry image preload contract', () => {
 
     const tellMeSop = fs.readFileSync(path.join(catalogRoot, 'tell-me/配置SOP.md'), 'utf8');
     expect(tellMeSop).not.toMatch(forbiddenPublicCopy);
+  });
+
+  it('keeps built-in skill markdown free of public implementation names', () => {
+    for (const markdownPath of listCatalogMarkdownFiles(catalogRoot)) {
+      const content = fs.readFileSync(markdownPath, 'utf8');
+
+      for (const forbiddenTerm of forbiddenPublicSkillMarkdown) {
+        expect(content, `${markdownPath} contains ${forbiddenTerm}`).not.toMatch(forbiddenTerm);
+      }
+    }
   });
 });
