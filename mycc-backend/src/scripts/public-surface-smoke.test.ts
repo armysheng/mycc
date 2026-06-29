@@ -29,6 +29,23 @@ const homeHtml = `
 `;
 
 describe('public surface smoke', () => {
+  it('includes the failing check label, URL, and cause when a request throws', async () => {
+    const fetchError = new TypeError('fetch failed');
+    Object.defineProperty(fetchError, 'cause', {
+      value: new Error('connect ETIMEDOUT 203.0.113.10:443'),
+    });
+    const fetchMock = vi.fn(async () => {
+      throw fetchError;
+    });
+
+    await expect(runPublicSurfaceSmoke({
+      baseUrl: 'https://daoyou.example.test',
+      fetch: fetchMock,
+    })).rejects.toThrow(
+      /health request failed.*https:\/\/daoyou\.example\.test\/health.*fetch failed.*ETIMEDOUT/,
+    );
+  });
+
   it('checks only public no-side-effect endpoints and static assets', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(init?.method ?? 'GET').toBe('GET');

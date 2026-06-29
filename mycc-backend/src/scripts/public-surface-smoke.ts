@@ -51,13 +51,30 @@ function resolveFetch(fetchImpl?: FetchLike): FetchLike {
   return candidate.bind(globalThis) as FetchLike;
 }
 
-async function get(fetchImpl: FetchLike, baseUrl: string, path: string): Promise<Response> {
-  return fetchImpl(`${baseUrl}${path}`, {
-    method: 'GET',
-    headers: {
-      Connection: 'close',
-    },
-  });
+function describeThrown(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as Error & { cause?: unknown }).cause;
+    const parts = [error.message || error.name];
+    if (cause) {
+      parts.push(`cause=${describeThrown(cause)}`);
+    }
+    return parts.join('; ');
+  }
+  return String(error);
+}
+
+async function get(fetchImpl: FetchLike, baseUrl: string, path: string, label: string): Promise<Response> {
+  const url = `${baseUrl}${path}`;
+  try {
+    return await fetchImpl(url, {
+      method: 'GET',
+      headers: {
+        Connection: 'close',
+      },
+    });
+  } catch (error) {
+    throw new Error(`${label} request failed url=${url}: ${describeThrown(error)}`);
+  }
 }
 
 async function readJson(response: Response, label: string): Promise<JsonObject> {
@@ -124,7 +141,7 @@ function readRegistrationMode(body: JsonObject): unknown {
 }
 
 async function assertPublicHealth(fetchImpl: FetchLike, baseUrl: string): Promise<void> {
-  const response = await get(fetchImpl, baseUrl, '/health');
+  const response = await get(fetchImpl, baseUrl, '/health', 'health');
   assertOk(response, 'health');
   const body = await readJson(response, 'health');
   if (body.status !== 'ok') {
@@ -133,7 +150,7 @@ async function assertPublicHealth(fetchImpl: FetchLike, baseUrl: string): Promis
 }
 
 async function assertPublicReadiness(fetchImpl: FetchLike, baseUrl: string): Promise<void> {
-  const response = await get(fetchImpl, baseUrl, '/readyz');
+  const response = await get(fetchImpl, baseUrl, '/readyz', 'readyz');
   assertOk(response, 'readyz');
   const body = await readJson(response, 'readyz');
   if (body.ready !== true) {
@@ -142,7 +159,7 @@ async function assertPublicReadiness(fetchImpl: FetchLike, baseUrl: string): Pro
 }
 
 async function assertDeepReadinessUnauthorized(fetchImpl: FetchLike, baseUrl: string): Promise<void> {
-  const response = await get(fetchImpl, baseUrl, '/readyz/deep');
+  const response = await get(fetchImpl, baseUrl, '/readyz/deep', 'deep readiness');
   if (response.status !== 401 && response.status !== 403) {
     throw new Error(`deep readiness should be unauthorized publicly, got status=${response.status}`);
   }
@@ -158,7 +175,7 @@ async function assertRegistrationConfig(
   baseUrl: string,
   expectedMode: RegistrationMode,
 ): Promise<void> {
-  const response = await get(fetchImpl, baseUrl, '/api/auth/config');
+  const response = await get(fetchImpl, baseUrl, '/api/auth/config', 'auth config');
   assertOk(response, 'auth config');
   const body = await readJson(response, 'auth config');
   const mode = readRegistrationMode(body);
@@ -168,7 +185,7 @@ async function assertRegistrationConfig(
 }
 
 async function assertHomeSurface(fetchImpl: FetchLike, baseUrl: string): Promise<string[]> {
-  const response = await get(fetchImpl, baseUrl, '/');
+  const response = await get(fetchImpl, baseUrl, '/', 'home HTML');
   const html = await readText(response, 'home HTML');
   assertHomeBrand(html);
   assertNoForbiddenPublicHtml(html);
@@ -181,7 +198,7 @@ async function assertHomeSurface(fetchImpl: FetchLike, baseUrl: string): Promise
 }
 
 async function assertFavicon(fetchImpl: FetchLike, baseUrl: string): Promise<void> {
-  const response = await get(fetchImpl, baseUrl, '/favicon.svg');
+  const response = await get(fetchImpl, baseUrl, '/favicon.svg', 'favicon');
   if (!response.ok) {
     throw new Error(`favicon failed status=${response.status}`);
   }
@@ -190,7 +207,7 @@ async function assertFavicon(fetchImpl: FetchLike, baseUrl: string): Promise<voi
 async function assertAssets(fetchImpl: FetchLike, baseUrl: string, assetPaths: string[]): Promise<void> {
   for (const assetPath of assetPaths) {
     const path = normalizeAssetPath(assetPath);
-    const response = await get(fetchImpl, baseUrl, path);
+    const response = await get(fetchImpl, baseUrl, path, `asset ${path}`);
     if (!response.ok) {
       throw new Error(`asset ${path} failed status=${response.status}`);
     }
