@@ -112,3 +112,4 @@ update-cmd-gitbash.ps1
 ieee.png
 ieee_results.html
 package-lock.json
+!mycc-sandbox/package-lock.json

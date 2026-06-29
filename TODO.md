@@ -12,9 +12,9 @@
 
 ### P0 - 内测前必须闭环
 
-- [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态都符合道友 AI 的产品气质。
+- [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态符合“轻修仙但严肃工作”的道友 AI 产品气质。
 - [x] **初始化称呼和参考资料清理** - 初始化写入内容、用户 workspace 模板、预置浏览器 skill 已清理早期内测称呼和不适合公开内测的上下文。
-- [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹。
+- [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹；异步上线前需专门验收“用户等待久”的感知是否被明显改善。
 - [x] **动态错误前台清洗** - 登录/注册、初始化、技能、工具结果、过程详情和系统 hook 的用户可见错误已增加产品化清洗与回归测试，避免 raw `MyCC/E2B/sandbox/token/mycc_u/linuxUser` 等内部细节直接进前台。
 - [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成无副作用公网表面复核和 ops-only 授权 deep readiness，剩余需测试账号/E2B live smoke 和回滚演练。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,9 +6,22 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const workflowPath = path.join(repoRoot, '.github/workflows/deploy-staging.yml');
+const ciWorkflowPath = path.join(repoRoot, '.github/workflows/ci.yml');
+const gitignorePath = path.join(repoRoot, '.gitignore');
+
+function yamlJob(source: string, jobName: string): string {
+  const start = source.indexOf(`  ${jobName}:`);
+  expect(start).toBeGreaterThan(-1);
+
+  const rest = source.slice(start + 1);
+  const nextJob = rest.search(/\n  [A-Za-z0-9_-]+:\n/);
+  return nextJob === -1 ? source.slice(start) : source.slice(start, start + 1 + nextJob);
+}
 
 describe('staging deploy workflow', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
+  const ciWorkflow = readFileSync(ciWorkflowPath, 'utf8');
+  const gitignore = readFileSync(gitignorePath, 'utf8');
 
   it('runs database migrations before backend build and restart', () => {
     const migrateIndex = workflow.indexOf('npm -C mycc-backend run db:migrate');
@@ -98,5 +112,40 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('Authorization: Bearer %s');
     expect(workflow).toContain('READY_CURL_ARGS=(-H "$(printf');
     expect(workflow).not.toContain('STAGING_BACKEND_READY_URL:-http://127.0.0.1:8080/readyz/deep?token=');
+  });
+
+  it('keeps the sandbox package lockfile trackable for reproducible installs', () => {
+    expect(gitignore).toContain('package-lock.json');
+    expect(gitignore).toContain('!mycc-sandbox/package-lock.json');
+
+    const lockfile = spawnSync('git', ['ls-files', '--error-unmatch', 'mycc-sandbox/package-lock.json'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
+    expect(lockfile.status).toBe(0);
+  });
+
+  it('uses the sandbox package lockfile for CI installs', () => {
+    const sandboxCi = yamlJob(ciWorkflow, 'sandbox-ci');
+
+    expect(sandboxCi).toContain('cache-dependency-path: mycc-sandbox/package-lock.json');
+    expect(sandboxCi).toContain('test -f package-lock.json');
+
+    const installIndex = sandboxCi.indexOf('run: npm ci');
+    const testIndex = sandboxCi.indexOf('run: npm test');
+
+    expect(installIndex).toBeGreaterThan(-1);
+    expect(testIndex).toBeGreaterThan(installIndex);
+    expect(sandboxCi).not.toContain('run: npm install');
+  });
+
+  it('installs sandbox dependencies before backend deploy verification can use sandbox doctors', () => {
+    const sandboxInstallIndex = workflow.indexOf('npm -C mycc-sandbox ci');
+    const backendMigrateIndex = workflow.indexOf('npm -C mycc-backend run db:migrate');
+    const backendBuildIndex = workflow.indexOf('npm -C mycc-backend run build');
+
+    expect(sandboxInstallIndex).toBeGreaterThan(-1);
+    expect(backendMigrateIndex).toBeGreaterThan(sandboxInstallIndex);
+    expect(backendBuildIndex).toBeGreaterThan(backendMigrateIndex);
   });
 });
