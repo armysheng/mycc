@@ -22,6 +22,7 @@ import {
 import { CollapsibleDetails } from "../messages/CollapsibleDetails";
 import { useSettings } from "../../hooks/useSettings";
 import { getToolActivityLabel } from "../../utils/toolDisplayMapper";
+import { containsRuntimeErrorDetails } from "../../api/userFacingError";
 // import { UI_CONSTANTS } from "../../utils/constants"; // Unused for now
 
 interface ChatMessagesProps {
@@ -42,6 +43,9 @@ type ConversationActivity = {
   details: string;
   badge: string;
 };
+const PROCESS_ERROR_TEXT =
+  "这次操作没有跑通。可以直接重试，或让我换个方式继续。";
+const PROCESS_DETAIL_RECORDED_TEXT = "处理动态已记录。";
 
 export function ChatMessages({
   messages,
@@ -337,7 +341,7 @@ function buildProcessDetails(messages: ToolProcessMessage[]): string {
       if (isToolMessage(message)) {
         return [
           `${index + 1}. ${summarizeProcessMessage(message)}`,
-          message.content.trim(),
+          getUserFacingProcessContent(message.content, false),
         ]
           .filter(Boolean)
           .join("\n");
@@ -345,7 +349,7 @@ function buildProcessDetails(messages: ToolProcessMessage[]): string {
 
       return [
         `${index + 1}. ${summarizeProcessMessage(message)}`,
-        message.content.trim(),
+        getUserFacingProcessContent(message.content, true),
       ]
         .filter(Boolean)
         .join("\n");
@@ -358,7 +362,7 @@ function summarizeProcessMessage(message: ToolProcessMessage): string {
     return cleanActivityLabel(getToolActivityLabel(message.toolName, message.input));
   }
   const source = message.summary || message.content;
-  return compactText(source, 22);
+  return compactText(getUserFacingProcessContent(source, true), 22);
 }
 
 function cleanActivityLabel(label: string): string {
@@ -370,6 +374,18 @@ function compactText(value: string, maxLength: number): string {
   const chars = Array.from(normalized);
   if (chars.length <= maxLength) return normalized;
   return `${chars.slice(0, maxLength).join("")}…`;
+}
+
+function getUserFacingProcessContent(
+  value: string,
+  isResult: boolean,
+): string {
+  const cleaned = value.trim();
+  if (!cleaned) return "";
+  if (containsRuntimeErrorDetails(cleaned)) {
+    return isResult ? PROCESS_ERROR_TEXT : PROCESS_DETAIL_RECORDED_TEXT;
+  }
+  return cleaned;
 }
 
 function EmptyState({ assistantDisplayName }: { assistantDisplayName: string }) {

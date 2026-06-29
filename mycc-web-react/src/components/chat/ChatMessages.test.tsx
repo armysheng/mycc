@@ -205,6 +205,36 @@ describe("ChatMessages conversation actions", () => {
     expect(container).toHaveTextContent("typecheck passed with no errors");
   });
 
+  it("cleans internal tool result details in running activity details", () => {
+    const { container } = renderMessages(
+      [
+        {
+          type: "tool",
+          toolName: "Read",
+          content: "Reading /home/mycc/.claude/skills/browser-use/SKILL.md",
+          input: { file_path: "/home/mycc/.claude/skills/browser-use/SKILL.md" },
+          timestamp: 1710000000100,
+        },
+        {
+          type: "tool_result",
+          toolName: "Read",
+          content:
+            "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+          summary: "MyCC E2B sandbox token",
+          timestamp: 1710000000200,
+        },
+      ],
+      { isLoading: true },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /查看处理详情/ }));
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
   it("groups completed tool details into a collapsed process item", () => {
     const { container } = renderMessages([
       {
@@ -237,5 +267,98 @@ describe("ChatMessages conversation actions", () => {
 
     expect(container).toHaveTextContent("正在读取 README.md");
     expect(container).toHaveTextContent("README content");
+  });
+
+  it("cleans internal tool result details in collapsed process groups", () => {
+    const { container } = renderMessages([
+      {
+        type: "tool",
+        toolName: "Read",
+        content: "Reading /tmp/project/README.md",
+        input: { file_path: "/tmp/project/README.md" },
+        timestamp: 1710000000100,
+      },
+      {
+        type: "tool_result",
+        toolName: "Read",
+        content:
+          "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+        summary: "MyCC E2B sandbox token",
+        timestamp: 1710000000200,
+      },
+      {
+        type: "chat",
+        role: "assistant",
+        content: "我看完了。",
+        timestamp: 1710000000300,
+      },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: /过程/ }));
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
+  it("cleans contextual sandbox token failures in collapsed process groups", () => {
+    const { container } = renderMessages([
+      {
+        type: "tool",
+        toolName: "Read",
+        content: "Reading /tmp/project/README.md",
+        input: { file_path: "/tmp/project/README.md" },
+        timestamp: 1710000000100,
+      },
+      {
+        type: "tool_result",
+        toolName: "Read",
+        content: "sandbox init failed: missing token",
+        summary: "sandbox init failed: missing token",
+        timestamp: 1710000000200,
+      },
+      {
+        type: "chat",
+        role: "assistant",
+        content: "我看完了。",
+        timestamp: 1710000000300,
+      },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: /过程/ }));
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(/sandbox|token/i);
+  });
+
+  it("cleans short provider timeout errors in collapsed process groups", () => {
+    const { container } = renderMessages([
+      {
+        type: "tool",
+        toolName: "Read",
+        content: "Reading /tmp/project/README.md",
+        input: { file_path: "/tmp/project/README.md" },
+        timestamp: 1710000000100,
+      },
+      {
+        type: "tool_result",
+        toolName: "Read",
+        content: "provider timeout",
+        summary: "provider timeout",
+        timestamp: 1710000000200,
+      },
+      {
+        type: "chat",
+        role: "assistant",
+        content: "我看完了。",
+        timestamp: 1710000000300,
+      },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: /过程/ }));
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(/provider timeout/i);
   });
 });

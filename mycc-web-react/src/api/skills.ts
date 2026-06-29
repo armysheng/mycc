@@ -11,6 +11,7 @@ import {
   getSkillDetailUrl,
   getSkillsDebugUrl,
 } from "../config/api";
+import { toRetryableUserFacingError } from "./userFacingError";
 
 export type SkillStatus = "installed" | "available" | "disabled";
 
@@ -128,7 +129,7 @@ async function parseJsonOrThrow<T>(
 ): Promise<T> {
   const json = await response.json().catch(() => ({}));
   if (!response.ok || !json?.success) {
-    throw new Error(json?.error || fallbackError);
+    throw new Error(toRetryableUserFacingError(json?.error, fallbackError));
   }
   return json.data as T;
 }

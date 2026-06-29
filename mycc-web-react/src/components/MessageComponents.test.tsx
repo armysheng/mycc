@@ -46,6 +46,22 @@ describe("MessageComponents productized system copy", () => {
     expect(screen.queryByText("运行记录")).not.toBeInTheDocument();
   });
 
+  it("does not display internal hook details", () => {
+    const message = {
+      type: "system",
+      content:
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+      timestamp: 1710000000000,
+    } as unknown as SystemMessage;
+
+    const { container } = render(<SystemMessageComponent message={message} />);
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
   it("hides internal API retry telemetry from the chat surface", () => {
     const message = {
       type: "system",
@@ -63,7 +79,7 @@ describe("MessageComponents productized system copy", () => {
     expect(container).not.toHaveTextContent('"type"');
   });
 
-  it("collapses verbose skill runtime details until expanded", () => {
+  it("hides verbose skill runtime details from the chat surface", () => {
     const message = {
       type: "system",
       content: [
@@ -79,16 +95,12 @@ describe("MessageComponents productized system copy", () => {
 
     const { container } = render(<SystemMessageComponent message={message} />);
 
-    expect(
-      screen.getByRole("button", { name: /处理动态/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("处理动态")).toBeInTheDocument();
+    expect(container).toHaveTextContent("处理动态已记录");
+    expect(container).not.toHaveTextContent("这次操作没有跑通");
     expect(container).not.toHaveTextContent("Base directory for this skill");
     expect(container).not.toHaveTextContent("道友 AI 助理浏览器");
-
-    fireEvent.click(screen.getByRole("button", { name: /处理动态/ }));
-
-    expect(container).toHaveTextContent("Base directory for this skill");
-    expect(container).toHaveTextContent("道友 AI 助理浏览器");
+    expect(container).not.toHaveTextContent(/MyCC|sandbox|\/home\/mycc/i);
   });
 
   it("hides successful result metadata from the chat surface", () => {
@@ -214,5 +226,124 @@ describe("MessageComponents productized system copy", () => {
 
     expect(screen.getByText("本地操作结果")).toBeInTheDocument();
     expect(container).not.toHaveTextContent(forbiddenVisibleWords);
+  });
+
+  it("does not display internal tool result details when expanded", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content:
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+      summary: "internal detail",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /资料查找结果/ }));
+
+    expect(container).toHaveTextContent("这次操作没有跑通");
+    expect(container).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
+
+  it("does not display internal tool result summary badges", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content: "读取完成",
+      summary: "MyCC E2B sandbox token /home/mycc",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    expect(container).toHaveTextContent("完成");
+    expect(container).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|\/home\/mycc/i,
+    );
+  });
+
+  it("does not display contextual sandbox token errors in summary badges", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content: "读取完成",
+      summary: "sandbox init failed: missing token",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    expect(container).toHaveTextContent("完成");
+    expect(container).not.toHaveTextContent(/sandbox|token/i);
+  });
+
+  it("does not display short internal expiry errors in summary badges", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content: "读取完成",
+      summary: "token expired",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    expect(container).toHaveTextContent("完成");
+    expect(container).not.toHaveTextContent(/token expired/i);
+  });
+
+  it("does not treat successful code snippets as low-level errors", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content:
+        '<iframe sandbox=""></iframe>\nconst input_tokens = 12;\nconst provider = "local";',
+      summary: "3 lines",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /资料查找结果/ }));
+
+    expect(container).toHaveTextContent('<iframe sandbox=""></iframe>');
+    expect(container).toHaveTextContent("input_tokens");
+    expect(container).toHaveTextContent("provider");
+    expect(container).not.toHaveTextContent("这次操作没有跑通");
+  });
+
+  it("does not treat successful code snippets with error constants as failures", () => {
+    const message: ToolResultMessage = {
+      type: "tool_result",
+      toolName: "Read",
+      content:
+        'const message = "Command failed with exit code 1";\n#!/bin/bash\necho "Bad Request fixture";',
+      summary: "3 lines",
+      timestamp: 1710000000000,
+    };
+
+    const { container } = render(
+      <ToolResultMessageComponent message={message} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /资料查找结果/ }));
+
+    expect(container).toHaveTextContent("Command failed with exit code 1");
+    expect(container).toHaveTextContent("#!/bin/bash");
+    expect(container).toHaveTextContent("Bad Request fixture");
+    expect(container).not.toHaveTextContent("这次操作没有跑通");
   });
 });

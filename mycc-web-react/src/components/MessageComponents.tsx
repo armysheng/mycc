@@ -31,6 +31,7 @@ import {
 } from "../utils/contentUtils";
 import { getToolActivityLabel } from "../utils/toolDisplayMapper";
 import { PRODUCT_COPY } from "../utils/productCopy";
+import { containsRuntimeErrorDetails } from "../api/userFacingError";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -88,8 +89,11 @@ function AssistantMarkdown({ content }: { content: string }) {
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const PRODUCTIZED_RUNTIME_ERROR =
+  "这次操作没有跑通。可以直接重试，或让我换个方式继续。";
+const RECORDED_RUNTIME_DETAIL = "处理动态已记录。";
 const LOW_LEVEL_SYSTEM_ERROR_PATTERN =
-  /E2B|CCR|Agent SDK|code-server|GNU|Remote IDE|sandbox|Claude Code|base url|traffic|tokens?|provider|desktop_pid|websockify|Bad Request|Internal Server Error|request failed|Command failed|exit status \d+|exit code \d+|invalid_argument|starting process|fork\/exec|argument list too long|\/bin\/(?:ba)?sh|\/opt\/mycc-agent-runtime|bridge\.mjs/i;
+  /CCR|Agent SDK|code-server|GNU|Remote IDE|Claude Code|base url|traffic|provider|desktop_pid|websockify|Bad Request|Internal Server Error|request failed|Command failed|exit status \d+|exit code \d+|invalid_argument|starting process|fork\/exec|argument list too long|\/bin\/(?:ba)?sh|\/opt\/mycc-agent-runtime/i;
 
 function getToolResultLabel(toolName: string): string {
   if (toolName === "Bash") return "本地操作结果";
@@ -111,8 +115,41 @@ function isVerboseSkillRuntimeDetails(content: string): boolean {
 
 function getUserFacingSystemError(message: string): string {
   const cleaned = message.trim();
-  if (!cleaned || LOW_LEVEL_SYSTEM_ERROR_PATTERN.test(cleaned)) {
-    return "这次操作没有跑通。可以直接重试，或让我换个方式继续。";
+  if (
+    !cleaned ||
+    LOW_LEVEL_SYSTEM_ERROR_PATTERN.test(cleaned) ||
+    containsRuntimeErrorDetails(cleaned)
+  ) {
+    return PRODUCTIZED_RUNTIME_ERROR;
+  }
+  return cleaned;
+}
+
+function getUserFacingProcessDetail(message: string): string {
+  return getUserFacingToolResultContent(message);
+}
+
+function getUserFacingRuntimeNote(message: string): string {
+  const cleaned = message.trim();
+  if (isVerboseSkillRuntimeDetails(cleaned)) {
+    return RECORDED_RUNTIME_DETAIL;
+  }
+  return getUserFacingSystemError(cleaned);
+}
+
+function getUserFacingSummary(summary: string | undefined): string | undefined {
+  if (!summary) return undefined;
+  return containsRuntimeErrorDetails(summary) ? "完成" : summary;
+}
+
+function getUserFacingToolResultContent(message: string): string {
+  const cleaned = message.trim();
+  if (!cleaned) return "";
+  if (isVerboseSkillRuntimeDetails(cleaned)) {
+    return RECORDED_RUNTIME_DETAIL;
+  }
+  if (containsRuntimeErrorDetails(cleaned)) {
+    return PRODUCTIZED_RUNTIME_ERROR;
   }
   return cleaned;
 }
@@ -400,7 +437,7 @@ export function SystemMessageComponent({
     } else if (isHooksMessage(message)) {
       // This is a hooks message - show only the content
       // Remove ANSI escape sequences for cleaner display
-      return message.content.replace(ANSI_REGEX, "");
+      return getUserFacingRuntimeNote(message.content.replace(ANSI_REGEX, ""));
     }
     return JSON.stringify(message, null, 2);
   };
@@ -567,12 +604,17 @@ export function ToolResultMessageComponent({
     message.toolName === "Bash" ||
     message.toolName === "Edit" ||
     message.toolName === "Grep";
+  displayContent = getUserFacingToolResultContent(displayContent);
+  if (previewContent) {
+    previewContent = getUserFacingProcessDetail(previewContent);
+  }
+  const safeSummary = getUserFacingSummary(message.summary);
 
   return (
     <CollapsibleDetails
       label={getToolResultLabel(message.toolName)}
       details={displayContent}
-      badge={message.summary}
+      badge={safeSummary}
       icon={<span className="bg-emerald-400 dark:bg-emerald-500">✓</span>}
       colorScheme={{
         header: "text-emerald-800 dark:text-emerald-300",

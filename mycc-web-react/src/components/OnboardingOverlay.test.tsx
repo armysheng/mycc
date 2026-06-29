@@ -150,4 +150,30 @@ describe("OnboardingOverlay", () => {
     expect(screen.getByText("道友 AI")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/大辉哥|老板|主人/);
   });
+
+  it("does not display internal initialization errors", async () => {
+    vi.mocked(initializeOnboarding).mockResolvedValue({
+      success: false,
+      error:
+        "MyCC E2B sandbox failed for mycc_u_123 token at /home/mycc linuxUser",
+    });
+    renderOverlay();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", {
+        name: "稍后设置，使用默认值",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("初始化失败，请稍后重试")).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /MyCC|E2B|sandbox|token|mycc_u|linuxUser|\/home\/mycc/i,
+    );
+  });
 });

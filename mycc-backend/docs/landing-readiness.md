@@ -16,14 +16,14 @@ Current public preview:
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
 - Production operations runbook: `mycc-backend/docs/landing-production-runbook.md`
-- Deployed commit after the latest landing maintenance pass: `e637904363267b78f2598a869878c255c0d99fa1`
+- Deployed commit after the latest landing maintenance pass: `3419c0956364c878d38a5feff3991d9e1a4a10a1`
 
 Current no-side-effect production evidence from 2026-06-29 CST:
 
 - `GET https://daoyou.iaigc.fun/health`: `200`, `status=ok`.
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
-- Remote `/home/armysheng/mycc` is deployed at `e637904`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Remote `/home/armysheng/mycc` is deployed at `3419c09`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
 - `GET https://daoyou.iaigc.fun/api/auth/config`: `registration.mode=closed`, `enabled=false`, `inviteRequired=false`.
 - `GET https://daoyou.iaigc.fun/favicon.svg`: `200`, `content-type=image/svg+xml`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed; this is no-side-effect and covers public health, readiness, unauthenticated deep readiness privacy, auth registration mode, homepage brand, favicon, and built assets.
@@ -31,6 +31,12 @@ Current no-side-effect production evidence from 2026-06-29 CST:
 - Home HTML title is `道友 AI`, and the meta description includes `念头通达`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed after the latest brand deployment; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
 - Production deploys now include `mycc-backend/scripts/guard-production-node.sh`; `npm ci/build` must use the same Node v20.19.5 toolchain as systemd.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed again on deployed commit `3419c09`.
+- Browser product-surface audit of `https://daoyou.iaigc.fun/projects/demo?codex_audit=<timestamp>` passed on desktop and 390x844 mobile viewport after cache-busting navigation:
+  - Login hero shows `问清楚，再动手。把念头落成结果。`, with `道友 AI` and `念头通达出品` visible.
+  - Registration tab shows `当前为邀请内测阶段，请联系团队开通账号。`; phone, email, password, and submit button are disabled; submit text is `邀请内测中`.
+  - Visible body text did not expose `MyCC`, `linuxUser`, `E2B`, `sandbox`, `token`, `mycc_u`, `大辉哥`, `老板`, or `主人`.
+  - A previously observed old login hero was not reproducible after cache-busting navigation and matches a stale browser SPA chunk/cache symptom rather than the deployed asset state.
 
 The core path is proven when all of these are true:
 
@@ -103,6 +109,18 @@ Claude provider credentials should be configured through MyCC/CCR-specific varia
 For the landing cohort, keep the E2B session TTL at 3600 seconds unless the target E2B plan explicitly supports longer leases. Keepalive may renew near-expiring sessions, but the product should not promise a 24-hour always-on sandbox on the default landing path.
 
 ## Remaining Work Before Public Landing
+
+### Remaining Live Validation Matrix
+
+| Category | Check | Current state | Authorization / side effect |
+| --- | --- | --- | --- |
+| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `3419c09` | No extra authorization needed. |
+| Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed on 2026-06-29 after cache-busting navigation | No account action, no form submission. |
+| Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN` | Still required | Requires ops token; do not expose internal checks publicly. |
+| Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
+| E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |
+| Full live gate | `harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
+| Rollback rehearsal | Config-only fallback to `remote-claude` / `IDE disabled` / `workspace ssh`, restart, cleanup, health checks | Still required | Requires planned operations window and release owner notes. |
 
 1. Release boundary cleanup
    - Decide which dirty worktree changes belong to the landing branch.

@@ -5,6 +5,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
 import { getAuthConfig, login as apiLogin, register as apiRegister } from "../api/auth";
+import { toRetryableUserFacingError } from "../api/userFacingError";
 import { PRODUCT_COPY } from "../utils/productCopy";
 import type { RegistrationMode } from "../types/auth";
 
@@ -59,10 +60,15 @@ export function LoginPage() {
         clearStaleSessionQuery();
         login(res.data.token, res.data.user);
       } else {
-        setError(res.error || "登录失败");
+        setError(toRetryableUserFacingError(res.error, "登录失败"));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
+      setError(
+        toRetryableUserFacingError(
+          err instanceof Error ? err.message : undefined,
+          "登录失败",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -83,10 +89,15 @@ export function LoginPage() {
         clearStaleSessionQuery();
         login(res.data.token, res.data.user);
       } else {
-        setError(res.error || "注册失败");
+        setError(toRetryableUserFacingError(res.error, "注册失败"));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "注册失败");
+      setError(
+        toRetryableUserFacingError(
+          err instanceof Error ? err.message : undefined,
+          "注册失败",
+        ),
+      );
     } finally {
       setLoading(false);
     }

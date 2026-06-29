@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getOnboardingStatus, initializeOnboarding } from '../api/auth';
+import { toRetryableUserFacingError } from '../api/userFacingError';
 
 interface OnboardingOverlayProps {
   onComplete: () => Promise<void>;
@@ -186,7 +187,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         setInitializationStatus('正在准备你的专属工作空间...');
         await waitForInitializationReady();
       } else {
-        setError(res.data?.error || res.error || '初始化失败，请重试');
+        setError(toRetryableUserFacingError(res.data?.error || res.error, '初始化失败'));
       }
     } catch {
       setError('网络错误，请重试');
@@ -214,7 +215,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         setInitializationStatus('正在准备你的专属工作空间...');
         await waitForInitializationReady();
       } else {
-        setError(res.data?.error || res.error || '初始化失败，请重试');
+        setError(toRetryableUserFacingError(res.data?.error || res.error, '初始化失败'));
       }
     } catch {
       setError('网络错误，请重试');
@@ -231,7 +232,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
       if (cancelledRef.current) return;
       const status = await getOnboardingStatus(token!);
       if (!status.success) {
-        setError(status.error || '初始化失败，请重试');
+        setError(toRetryableUserFacingError(status.error, '初始化失败'));
         return;
       }
       if (status.data?.status === 'ready') {
@@ -239,7 +240,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         return;
       }
       if (status.data?.status === 'failed') {
-        setError(status.data.error || status.error || '初始化失败，请重试');
+        setError(toRetryableUserFacingError(status.data.error || status.error, '初始化失败'));
         return;
       }
       setInitializationStatus('正在准备你的专属工作空间...');
