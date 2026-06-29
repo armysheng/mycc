@@ -77,10 +77,19 @@ describe('staging deploy workflow', () => {
     expect(workflow).toContain('DEPLOY_FRONTEND=');
     expect(workflow).toContain('DEPLOY_BACKEND=');
     expect(workflow).toContain('mycc-web-react/*');
+    expect(workflow).toContain('STAGING_FRONTEND_DIST_DIR not set, fallback to /var/www/daoyou.iaigc.fun');
+    expect(workflow).toContain('FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-/var/www/daoyou.iaigc.fun}"');
     expect(workflow).toContain('if [ "${DEPLOY_FRONTEND}" = "true" ]; then');
+    expect(workflow).toContain('rsync -a --delete mycc-web-react/dist/ "${FRONTEND_DIST_DIR}/"');
     expect(workflow).toContain('if [ "${DEPLOY_BACKEND}" = "true" ]; then');
     expect(workflow).toContain("steps.deployment_impact.outputs.deploy_backend == 'true'");
-    expect(workflow).toContain("steps.deployment_impact.outputs.deploy_frontend == 'true' && env.STAGING_FRONTEND_URL != ''");
+    expect(workflow).toContain("steps.deployment_impact.outputs.deploy_frontend == 'true'");
+    expect(workflow).toContain('FRONTEND_URL="${STAGING_FRONTEND_URL:-https://daoyou.iaigc.fun}"');
+  });
+
+  it('treats deploy workflow updates as frontend deployment impact', () => {
+    expect(workflow).toContain('.github/workflows/deploy-staging.yml)');
+    expect(workflow).toContain('frontend-deploy-workflow-impacting: ${file}');
   });
 
   it('can authenticate protected deep readiness probes without exposing the token in the URL', () => {
