@@ -77,6 +77,7 @@ const rules: Rule[] = [
       'mycc-backend/src/scripts/apply-migrations.test.ts',
       'mycc-backend/src/scripts/staging-workflow.test.ts',
       'mycc-backend/docs/landing-readiness.md',
+      'mycc-backend/docs/landing-production-runbook.md',
       'mycc-backend/docs/landing-pr-coordination.md',
       'mycc-backend/docs/landing-pr-submit-checklist.md',
       'mycc-backend/docs/landing-pr-staging-plan.md',
