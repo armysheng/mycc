@@ -12,7 +12,7 @@
 
 ### P0 - 内测前必须闭环
 
-- [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态符合“轻修仙但严肃工作”的道友 AI 产品气质。
+- [x] **首页道友 AI 气质二轮验收** - 2026-06-29 二轮 Playwright 只读验收 `https://daoyou.iaigc.fun/projects/demo`：桌面登录首屏、390x844 移动首屏、注册邀请内测关闭态均符合“轻修仙但严肃工作”的道友 AI 产品气质；未提交表单。
 - [x] **初始化称呼和参考资料清理** - 初始化写入内容、用户 workspace 模板、预置浏览器 skill 已清理早期内测称呼和不适合公开内测的上下文。
 - [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹；异步上线前需专门验收“用户等待久”的感知是否被明显改善。
 - [x] **动态错误前台清洗** - 登录/注册、初始化、技能、工具结果、过程详情和系统 hook 的用户可见错误已增加产品化清洗与回归测试，避免 raw `MyCC/E2B/sandbox/token/mycc_u/linuxUser` 等内部细节直接进前台。
@@ -47,7 +47,7 @@
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、auth privacy、授权 deep readiness、生产迁移 007/008、Node/E2B/sandbox doctors 已验证到 `23074b0`；登录初始化和 E2B live smokes 仍需 release 授权。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
-- [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：强刷新后桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 新首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
+- [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 首屏；注册页为邀请内测关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`；移动端 `scrollWidth=390` 无横向溢出。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
 
 ## Landing P1 - 内测期
 
