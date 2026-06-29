@@ -62,6 +62,11 @@ jobs:
             fi
 
             case "${file}" in
+              .github/workflows/deploy-staging.yml)
+                should_deploy=true
+                deploy_frontend=true
+                echo "frontend-deploy-workflow-impacting: ${file}"
+                ;;
               docs/*|mycc-backend/docs/*|*.md|TODO.md|MYCC_STARTUP_GUIDE.md|.github/workflows/*|mycc-backend/test-api.sh|mycc-backend/test-full.sh|mycc-backend/src/scripts/staging-workflow.test.ts|mycc-backend/scripts/landing-pr-classify.ts|mycc-backend/scripts/verify-e2b-release-readiness.ts|mycc-backend/scripts/harness-verify.ts|mycc-backend/scripts/agent-eval-static.ts|mycc-backend/scripts/smoke-auth-onboarding.ts|mycc-backend/scripts/smoke-auth-privacy.ts|mycc-backend/scripts/smoke-e2b-*.ts)
                 echo "non-deploying: ${file}"
                 ;;
@@ -108,6 +113,9 @@ jobs:
           if [ -z "${STAGING_PROJECT_DIR:-}" ]; then
             echo "STAGING_PROJECT_DIR not set, fallback to /home/armysheng/mycc"
           fi
+          if [ -z "${STAGING_FRONTEND_DIST_DIR:-}" ]; then
+            echo "STAGING_FRONTEND_DIST_DIR not set, fallback to /var/www/daoyou.iaigc.fun"
+          fi
 
       - name: Setup SSH agent
         if: steps.deployment_impact.outputs.should_deploy == 'true'
@@ -129,7 +137,7 @@ jobs:
           SSH_PORT="${STAGING_PORT:-22}"
           SSH_OPTS=(-p "${SSH_PORT}" -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
           PROJECT_DIR="${STAGING_PROJECT_DIR:-/home/armysheng/mycc}"
-          FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-}"
+          FRONTEND_DIST_DIR="${STAGING_FRONTEND_DIST_DIR:-/var/www/daoyou.iaigc.fun}"
           NODE_BIN_DIR="${STAGING_NODE_BIN_DIR:-}"
           DEPLOY_FRONTEND="${{ steps.deployment_impact.outputs.deploy_frontend }}"
           DEPLOY_BACKEND="${{ steps.deployment_impact.outputs.deploy_backend }}"
@@ -306,7 +314,8 @@ jobs:
           fi
 
       - name: Verify frontend endpoint (optional)
-        if: steps.deployment_impact.outputs.deploy_frontend == 'true' && env.STAGING_FRONTEND_URL != ''
+        if: steps.deployment_impact.outputs.deploy_frontend == 'true'
         run: |
           set -euo pipefail
-          curl -fsSIL "${STAGING_FRONTEND_URL}" | head -n 20
+          FRONTEND_URL="${STAGING_FRONTEND_URL:-https://daoyou.iaigc.fun}"
+          curl -fsSIL "${FRONTEND_URL}" | head -n 20
