@@ -17,13 +17,15 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `84f984e`
+- Current deployed commit: `37c72d7`
 - Current production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
   - `GET /health`: `200`
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
+  - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
+  - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
 

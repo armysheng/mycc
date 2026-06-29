@@ -14,7 +14,7 @@
 
 - [ ] **首页道友 AI 气质二轮验收** - 二轮只读验收 `https://daoyou.iaigc.fun/projects/demo`，确认第一屏、核心路径和失败态都符合道友 AI 的产品气质。
 - [ ] **初始化称呼和参考资料清理** - 初始化写入内容、模板、参考资料不再出现早期内测称呼或不适合公开内测的上下文。
-- [ ] **初始化过程不暴露内部会话** - 用户完成初始化时不看到隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹。
+- [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹。
 - [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
 
@@ -41,6 +41,7 @@
 - [x] **Auth / readiness P1 hotfix** - 登录不存在账号不再返回“用户不存在”；公网 `/readyz/deep` 无 token 返回 401 且不暴露内部 checks/runtime/E2B。
 - [x] **生产发布工具链 guard** - 生产 `npm ci/build` 必须使用 systemd 同款 Node v20.19.5，避免 native addon ABI 错配导致 SIGSEGV。
 - [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
+- [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
