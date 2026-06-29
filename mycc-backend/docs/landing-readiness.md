@@ -29,7 +29,7 @@ Current no-side-effect production evidence from 2026-06-29 CST:
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed; this is no-side-effect and covers public health, readiness, unauthenticated deep readiness privacy, auth registration mode, homepage brand, favicon, and built assets.
 - `MYCC_ONBOARDING_ASYNC` is `false_or_unset` in production; async onboarding code is deployed but not yet enabled for live users.
 - Home HTML title is `道友 AI`, and the meta description includes `念头通达`.
-- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed after the latest brand deployment; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed again on deployed commit `23074b0`; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
 - Production deploys now include `mycc-backend/scripts/guard-production-node.sh`; `npm ci/build` must use the same Node v20.19.5 toolchain as systemd.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed again on deployed commit `23074b0`.
 - Browser product-surface audit of `https://daoyou.iaigc.fun/projects/demo?codex_audit=<timestamp>` passed on desktop and 390x844 mobile viewport after cache-busting navigation:
@@ -54,6 +54,13 @@ Post-#111 production evidence from 2026-06-29 CST:
 - `mycc-sandbox npm run doctor:template` now passes on production: credentials are present and `e2b-template-exists` reports `Template mycc-assistant-sandbox-dev exists`.
 - Production Node guard passes with Node `v20.19.5`, and `npm run doctor:e2b-agent` reports E2B Agent preflight ready.
 - `curl -fsSIL https://daoyou.iaigc.fun` returned `HTTP/1.1 200 OK`, and `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface` passed.
+
+Post-#112 local release evidence from 2026-06-29 CST:
+
+- Latest main commit `771417976adc7ce61e51b9d56b51d2cc05ee2064` is docs-only after the production deployment commit `23074b0`; Deploy Staging run `28364806650` classified it as non-deploying and skipped remote SSH deployment.
+- `npm run harness:verify -- --target=landing --no-write` on commit `7714179` completed 7 of 8 sub-gates successfully: backend build, frontend build, backend tests, frontend product tests, static agent evals, E2B release readiness, and sandbox template doctor.
+- The only local landing gate failure was `e2b-agent`, caused by missing local `MYCC_E2B_API_KEY` or `E2B_API_KEY` and missing local Claude credential. Production `doctor:e2b-agent` and `mycc-sandbox doctor:template` passed on deployed commit `23074b0`.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy` passed on deployed commit `23074b0`; this performs one failed-login privacy probe and does not register, initialize onboarding, create E2B sessions, or call chat.
 
 The core path is proven when all of these are true:
 
@@ -132,6 +139,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 | Category | Check | Current state | Authorization / side effect |
 | --- | --- | --- | --- |
 | No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 against deployed commit `23074b0` | No extra authorization needed. |
+| Auth privacy smoke | `smoke:auth-privacy` | Passed on 2026-06-29 against deployed commit `23074b0`; generic credential error confirmed | Creates one failed-login audit/rate-limit event; no registration, onboarding, E2B session, or chat. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed on 2026-06-29 after cache-busting navigation | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
 | Database migrations | Read-only `schema_migrations` query for landing migrations `007` and `008` | Passed on 2026-06-29: both required migrations are applied | No migration was executed. |
