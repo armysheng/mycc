@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   runAuthOnboardingSmoke,
   runAuthPrivacySmoke,
@@ -11,11 +11,26 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function authConfigResponse(mode: 'open' | 'invite' | 'closed' = 'open'): Response {
+  return jsonResponse(200, {
+    success: true,
+    data: {
+      registration: {
+        mode,
+      },
+    },
+  });
+}
+
 function requestBody(init: RequestInit | undefined): Record<string, unknown> {
   return JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
 }
 
 describe('auth smoke gates', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('privacy smoke only posts login and requires a generic 401 without internal details', async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(401, {
       success: false,
@@ -52,6 +67,9 @@ describe('auth smoke gates', () => {
 
   it('onboarding smoke registers, initializes, then reads current user without chat', async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse();
+      }
       if (url.endsWith('/api/auth/register')) {
         return jsonResponse(201, {
           success: true,
@@ -92,19 +110,192 @@ describe('auth smoke gates', () => {
     });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
       'http://127.0.0.1:8080/api/auth/register',
       'http://127.0.0.1:8080/api/onboarding/initialize',
       'http://127.0.0.1:8080/api/auth/me',
     ]);
-    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'POST', 'GET']);
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'POST', 'GET']);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/chat'))).toBe(false);
-    expect(fetchMock.mock.calls[1]![1]?.headers).toMatchObject({
+    expect(fetchMock.mock.calls[2]![1]?.headers).toMatchObject({
       Authorization: 'Bearer jwt-token',
+    });
+  });
+
+  it('onboarding smoke logs in with an explicit test account when registration is closed', async () => {
+    vi.stubEnv('MYCC_AUTH_SMOKE_CREDENTIAL', 'existing-smoke@example.test');
+    vi.stubEnv('MYCC_AUTH_SMOKE_PASSWORD', 'ExistingSmokePass-1!');
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse('closed');
+      }
+      if (url.endsWith('/api/auth/login')) {
+        expect(requestBody(init)).toMatchObject({
+          credential: 'existing-smoke@example.test',
+          password: 'ExistingSmokePass-1!',
+        });
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            token: 'existing-jwt-token',
+            user: {
+              id: 43,
+              email: 'existing-smoke@example.test',
+              is_initialized: true,
+            },
+          },
+        });
+      }
+      if (url.endsWith('/api/onboarding/initialize')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            status: 'ready',
+          },
+        });
+      }
+      if (url.endsWith('/api/auth/me')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            id: 43,
+            email: 'existing-smoke@example.test',
+            is_initialized: true,
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
+      'http://127.0.0.1:8080/api/auth/login',
+      'http://127.0.0.1:8080/api/onboarding/initialize',
+      'http://127.0.0.1:8080/api/auth/me',
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/auth/register'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/chat'))).toBe(false);
+    expect(fetchMock.mock.calls[2]![1]?.headers).toMatchObject({
+      Authorization: 'Bearer existing-jwt-token',
+    });
+  });
+
+  it('onboarding smoke fails before registration when registration is closed without explicit credentials', async () => {
+    vi.stubEnv('MYCC_AUTH_SMOKE_CREDENTIAL', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_EMAIL', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_PHONE', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_PASSWORD', '');
+
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse('closed');
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await expect(runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    })).rejects.toThrow(/MYCC_AUTH_SMOKE_CREDENTIAL.*MYCC_AUTH_SMOKE_PASSWORD/i);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/auth/register'))).toBe(false);
+  });
+
+  it('onboarding smoke fails before registration when invite mode lacks an invite code', async () => {
+    vi.stubEnv('MYCC_AUTH_SMOKE_INVITE_CODE', '');
+
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse('invite');
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await expect(runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    })).rejects.toThrow(/MYCC_AUTH_SMOKE_INVITE_CODE/i);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/auth/register'))).toBe(false);
+  });
+
+  it('onboarding smoke registers with an invite code when registration is invite-only', async () => {
+    vi.stubEnv('MYCC_AUTH_SMOKE_INVITE_CODE', 'invite-smoke-code');
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse('invite');
+      }
+      if (url.endsWith('/api/auth/register')) {
+        expect(requestBody(init)).toMatchObject({
+          inviteCode: 'invite-smoke-code',
+        });
+        return jsonResponse(201, {
+          success: true,
+          data: {
+            token: 'invite-jwt-token',
+            user: {
+              id: 44,
+              email: 'invite-smoke@example.test',
+              is_initialized: false,
+            },
+          },
+        });
+      }
+      if (url.endsWith('/api/onboarding/initialize')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            status: 'ready',
+          },
+        });
+      }
+      if (url.endsWith('/api/auth/me')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            id: 44,
+            email: 'invite-smoke@example.test',
+            is_initialized: true,
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
+      'http://127.0.0.1:8080/api/auth/register',
+      'http://127.0.0.1:8080/api/onboarding/initialize',
+      'http://127.0.0.1:8080/api/auth/me',
+    ]);
+    expect(fetchMock.mock.calls[2]![1]?.headers).toMatchObject({
+      Authorization: 'Bearer invite-jwt-token',
     });
   });
 
   it('onboarding smoke rejects responses that expose linux users', async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse();
+      }
       if (url.endsWith('/api/auth/register')) {
         return jsonResponse(201, {
           success: true,
@@ -125,6 +316,9 @@ describe('auth smoke gates', () => {
 
   it('onboarding smoke rejects camelCase linux user details and legacy bootstrap prompts', async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse();
+      }
       if (url.endsWith('/api/auth/register')) {
         return jsonResponse(201, {
           success: true,
@@ -154,6 +348,9 @@ describe('auth smoke gates', () => {
 
   it('onboarding smoke rejects legacy bootstrap-only initialize responses', async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse();
+      }
       if (url.endsWith('/api/auth/register')) {
         return jsonResponse(201, {
           success: true,

@@ -185,7 +185,18 @@ side effects, and cleanup expectation.
 Notes:
 
 - `smoke:auth-onboarding` does not call `/api/chat`, but it does register or
-  reuse an account and calls `/api/onboarding/initialize`.
+  reuse an account and calls `/api/onboarding/initialize`; depending on the
+  target workspace provider and account initialization state, that initialize
+  step may create or reuse workspace/E2B state.
+- On targets where `GET /api/auth/config` reports `registration.mode=closed`,
+  set an existing test identity before running the auth onboarding smoke or a
+  `landing-live` gate that includes it:
+  `MYCC_AUTH_SMOKE_CREDENTIAL=<email-or-phone>` and
+  `MYCC_AUTH_SMOKE_PASSWORD=<password>`. `MYCC_AUTH_SMOKE_EMAIL` or
+  `MYCC_AUTH_SMOKE_PHONE` can be used instead of
+  `MYCC_AUTH_SMOKE_CREDENTIAL`.
+- On invite-only targets, provide `MYCC_AUTH_SMOKE_INVITE_CODE` so the smoke
+  can still create a new test account before initializing onboarding.
 - `smoke:e2b-ide` may upsert the smoke user identified by
   `MYCC_SMOKE_USER_ID`, defaulting to `42`.
 - `smoke:e2b-agent-sdk-workspace` writes marker files in the sandbox workspace
