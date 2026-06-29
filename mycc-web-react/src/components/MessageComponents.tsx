@@ -104,7 +104,8 @@ function isVerboseSkillRuntimeDetails(content: string): boolean {
   const trimmed = content.trimStart();
   return (
     trimmed.startsWith("Base directory for this skill:") ||
-    trimmed.includes("\n# Browser Use In MyCC Sandbox")
+    trimmed.includes("\n# Browser Use In MyCC Sandbox") ||
+    trimmed.includes("\n# 道友 AI 助理浏览器")
   );
 }
 

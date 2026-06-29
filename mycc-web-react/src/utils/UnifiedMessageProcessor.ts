@@ -76,6 +76,7 @@ function isVerboseSkillRuntimeText(content: string): boolean {
   return (
     trimmed.startsWith("Base directory for this skill:") ||
     trimmed.includes("\n# Browser Use In MyCC Sandbox") ||
+    trimmed.includes("\n# 道友 AI 助理浏览器") ||
     (trimmed.includes("\n# ") && trimmed.includes("\nARGUMENTS:"))
   );
 }
