@@ -74,6 +74,8 @@ interface CreateDraft {
   enabled: boolean;
 }
 
+const INTERNAL_SKILL_IDS = new Set(["/mycc-regression"]);
+
 const CREATE_TEMPLATES: CreateTemplate[] = [
   {
     id: "daily-brief",
@@ -96,7 +98,6 @@ const CREATE_TEMPLATES: CreateTemplate[] = [
     label: "健康巡检",
     name: "系统健康巡检",
     cron: "每2小时",
-    skill: "/mycc-regression",
     description: "巡检核心链路并输出状态",
     prompt: "执行健康检查并输出异常项、影响范围和建议动作。",
   },
@@ -136,6 +137,11 @@ function formatTime(value: string | null): string {
 
 function normalizeList(payload: AutomationListResponse): AutomationItem[] {
   return (payload?.data?.automations || []) as AutomationItem[];
+}
+
+function formatExecutionEntry(skill?: string): string {
+  if (!skill || INTERNAL_SKILL_IDS.has(skill)) return "默认执行";
+  return skill;
 }
 
 export function AutomationsPage() {
@@ -353,7 +359,7 @@ export function AutomationsPage() {
                   <div className="mt-2 text-xs text-slate-500 space-y-1">
                     <div>计划: {item.scheduleText}</div>
                     <div>触发: {item.trigger?.cron || "手动"}</div>
-                    <div>执行入口: {item.execution?.skill || "默认执行"}</div>
+                    <div>执行入口: {formatExecutionEntry(item.execution?.skill)}</div>
                     <div>启用: {item.enabled ? "是" : "否"}</div>
                     <div>执行次数: {item.execution?.runCount ?? 0}</div>
                     <div>最近执行: {formatTime(item.execution?.lastRunAt ?? null)}</div>
