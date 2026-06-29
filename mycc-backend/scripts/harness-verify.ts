@@ -19,6 +19,7 @@ type HarnessTargetId =
   | 'e2b-ide-smoke'
   | 'e2b-desktop-smoke'
   | 'e2b-agent-sdk-smoke'
+  | 'public-surface-smoke'
   | 'auth-privacy-smoke'
   | 'auth-onboarding-smoke'
   | 'frontend-e2e-recent'
@@ -186,6 +187,14 @@ const targets: HarnessTarget[] = [
     expensive: true,
   },
   {
+    id: 'public-surface-smoke',
+    label: 'Public surface smoke',
+    description: 'No-side-effect public checks for health, readiness, auth gate, homepage brand, favicon, and static assets.',
+    command: 'npm',
+    args: ['run', 'smoke:public-surface'],
+    cwd: backendRoot,
+  },
+  {
     id: 'auth-privacy-smoke',
     label: 'Auth privacy smoke',
     description: 'Checks failed login privacy against the target backend without registering users or calling chat.',
@@ -246,6 +255,7 @@ const targets: HarnessTarget[] = [
       'e2b-release',
       'e2b-agent',
       'sandbox-template',
+      'public-surface-smoke',
       'e2b-ide-smoke',
       'e2b-desktop-smoke',
       'e2b-agent-sdk-smoke',
@@ -520,6 +530,7 @@ function printHelp(): void {
     '  npm run harness:verify -- --list',
     '  npm run harness:verify -- --target=agent-eval-static --no-write',
     '  npm run harness:verify -- --target=e2b-release --no-write',
+    '  BASE_URL=https://daoyou.iaigc.fun npm run harness:verify -- --target=public-surface-smoke --no-write',
     '  npm run harness:verify -- --target=e2b-release,sandbox-template',
     '  npm run harness:verify -- --target=landing --no-write',
     '  BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write',

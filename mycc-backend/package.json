@@ -22,6 +22,7 @@
     "template:e2b-code-server:create": "bash scripts/create-e2b-code-server-template.sh",
     "smoke:e2b-ide": "tsx scripts/smoke-e2b-ide.ts",
     "smoke:e2b-desktop": "tsx scripts/smoke-e2b-desktop.ts",
+    "smoke:public-surface": "tsx scripts/smoke-public-surface.ts",
     "smoke:auth-privacy": "tsx scripts/smoke-auth-privacy.ts",
     "smoke:auth-onboarding": "tsx scripts/smoke-auth-onboarding.ts",
     "smoke:local-chat-flow": "tsx scripts/smoke-local-chat-flow.ts",

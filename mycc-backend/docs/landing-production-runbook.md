@@ -17,7 +17,7 @@ database changes, or service restarts needs an explicit release decision.
 - Frontend root: `/var/www/daoyou.iaigc.fun`
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
-- Current deployed commit: `37c72d7`
+- Current deployed commit: `e637904`
 - Current production state checked on 2026-06-29 CST:
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
@@ -25,6 +25,8 @@ database changes, or service restarts needs an explicit release decision.
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
   - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
+  - `GET /favicon.svg`: `200`, `content-type=image/svg+xml`
+  - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed
   - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
@@ -39,6 +41,8 @@ Allowed without an extra release decision:
 
 - Public read-only probes: `/health`, `/readyz`, unauthenticated `/readyz/deep`.
 - Static homepage checks that do not log in.
+- `smoke:public-surface`, because it only reads public health/readiness/auth config,
+  homepage HTML, favicon, and built static assets.
 - Remote git status, service status, and redacted environment shape checks.
 - Local `landing`, `e2b-release`, classifier, build, and test gates in a clean
   worktree.
@@ -105,6 +109,8 @@ curl -fsS -D - https://daoyou.iaigc.fun/readyz
 curl -sS -D - https://daoyou.iaigc.fun/readyz/deep
 curl -fsS -L https://daoyou.iaigc.fun/ -o /tmp/daoyou-home.html
 rg -n "<title|description|道友|念头|MyCC|linuxUser|E2B|sandbox|traffic token|code-server" /tmp/daoyou-home.html
+cd /home/armysheng/mycc/mycc-backend
+BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface
 ```
 
 Expected:
@@ -116,6 +122,7 @@ Expected:
 - Home HTML contains `道友 AI` and `念头通达`.
 - Public HTML does not expose `MyCC`, `linuxUser`, E2B, sandbox, traffic token,
   or raw code-server details.
+- `smoke:public-surface` prints `[ok] public surface smoke passed`.
 
 Remote read-only state check:
 
