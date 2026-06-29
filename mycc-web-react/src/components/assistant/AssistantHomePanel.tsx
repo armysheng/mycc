@@ -56,11 +56,20 @@ export function AssistantHomePanel({
 
   return (
     <section className="mx-auto flex min-h-[min(640px,70vh)] w-full max-w-5xl flex-col items-center justify-center px-2 py-10 text-center sm:px-6 sm:py-14">
-      <div className="w-full max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
-          {PRODUCT_COPY.brandName} 个人助理
+      <div className="relative w-full max-w-3xl">
+        <div className="pointer-events-none absolute -right-4 -top-10 hidden text-[132px] font-semibold leading-none text-slate-950 opacity-[0.035] dark:text-white sm:block">
+          道
+        </div>
+        <div className="relative inline-flex items-center gap-3 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm shadow-slate-200/30 dark:border-slate-700/80 dark:bg-slate-900/55 dark:text-slate-400 dark:shadow-none">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-slate-300 text-sm text-slate-700 dark:border-slate-600 dark:text-slate-200">
+            问
+          </span>
+          <span>{PRODUCT_COPY.brandName} 个人助理</span>
+        </div>
+        <p className="mt-3 text-xs font-medium text-slate-400 dark:text-slate-500">
+          {PRODUCT_COPY.brandProofLine}
         </p>
-        <h2 className="mt-5 text-3xl font-semibold tracking-[-0.035em] text-slate-950 dark:text-slate-50 sm:text-4xl md:text-5xl">
+        <h2 className="relative mt-5 text-4xl font-semibold text-slate-950 dark:text-slate-50">
           {headline}
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">

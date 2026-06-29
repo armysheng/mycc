@@ -1,6 +1,7 @@
 export const PRODUCT_COPY = {
   brandName: "道友 AI",
   companyName: "念头通达",
+  brandProofLine: "念头通达出品 · 问清楚，再动手",
   assistantNameFallback: "道友 AI",
   resultsSpace: "成果空间",
   assistantBrowser: "助理浏览器",

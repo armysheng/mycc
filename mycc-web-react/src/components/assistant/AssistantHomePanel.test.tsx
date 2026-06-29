@@ -75,6 +75,7 @@ describe("AssistantHomePanel", () => {
     );
 
     expect(screen.getByText("道友 AI 个人助理")).toBeInTheDocument();
+    expect(screen.getByText("念头通达出品 · 问清楚，再动手")).toBeInTheDocument();
     expect(screen.getByText("今天想让 小麦 帮你做什么？")).toBeInTheDocument();
     expect(screen.queryByText(/mycc-main/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Personal Assistant/i)).not.toBeInTheDocument();
