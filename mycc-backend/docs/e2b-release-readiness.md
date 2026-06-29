@@ -52,6 +52,7 @@ Run these from `mycc-backend` before pushing a release branch:
 ```bash
 npm run landing:classify -- --fail-on-unclassified
 npm run harness:verify -- --target=landing --no-write
+npm run verify:rollback-preflight
 npm run verify:e2b-release
 npm test -- --run
 npm run build

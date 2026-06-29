@@ -75,6 +75,7 @@ describe('staging deploy workflow', () => {
 
   it('treats release gate script-only pushes as non-deploying', () => {
     expect(workflow).toContain('mycc-backend/scripts/landing-pr-classify.ts');
+    expect(workflow).toContain('mycc-backend/scripts/verify-rollback-preflight.ts');
     expect(workflow).toContain('mycc-backend/scripts/verify-e2b-release-readiness.ts');
     expect(workflow).toContain('mycc-backend/scripts/harness-verify.ts');
     expect(workflow).toContain('mycc-backend/scripts/agent-eval-static.ts');

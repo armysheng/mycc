@@ -171,6 +171,7 @@ Integrated checks after PRs 3, 2, and 4 are stacked:
 ```bash
 cd /Users/armysheng/workspace/mycc-landing-integration/mycc-backend
 npm run landing:classify -- --fail-on-unclassified
+npm run verify:rollback-preflight
 npm run verify:e2b-release
 npm run harness:verify -- --target=landing --no-write
 ```

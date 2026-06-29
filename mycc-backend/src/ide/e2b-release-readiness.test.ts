@@ -13,7 +13,9 @@ describe('E2B release readiness checklist', () => {
 
     expect(stdout).toContain('[ok] package scripts expose E2B release gates');
     expect(stdout).toContain('[ok] env example documents the E2B product path');
+    expect(stdout).toContain('[ok] operator docs expose rollback preflight gate');
     expect(stdout).toContain('[ok] release checklist covers migration, smoke, and rollback');
+    expect(stdout).toContain('[ok] deployment guide documents E2B rollback switches');
     expect(stdout).toContain('[ok] agent run trace migration is idempotent');
     expect(stdout).toContain('[ok] IDE session identity migration is idempotent');
     expect(stdout).toContain('[ok] backend index registers readiness routes');

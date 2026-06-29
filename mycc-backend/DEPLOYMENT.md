@@ -125,6 +125,7 @@ journalctl -u mycc-backend -f
 ```bash
 cd mycc/mycc-backend
 npm run harness:verify -- --target=landing --no-write
+npm run verify:rollback-preflight
 npm run verify:e2b-release
 npm run db:migrate
 npm run doctor:e2b-agent
@@ -135,7 +136,7 @@ npm run doctor:e2b-agent
 在目标环境启动后，再用同一份 `.env` 跑真实 smoke：
 
 ```bash
-BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
+MYCC_LIVE_GATE_APPROVED=1 BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
 BASE_URL=http://localhost:8080 npm run smoke:e2b-ide
 BASE_URL=http://localhost:8080 npm run smoke:e2b-desktop
 BASE_URL=http://localhost:8080 npm run smoke:e2b-agent-sdk-workspace
