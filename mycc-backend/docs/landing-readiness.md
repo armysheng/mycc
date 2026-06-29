@@ -16,15 +16,17 @@ Current public preview:
 - Backend proxy target: `127.0.0.1:8080`
 - Backend service: user systemd `mycc-backend.service`
 - Production operations runbook: `mycc-backend/docs/landing-production-runbook.md`
-- Deployed commit after the latest landing maintenance pass: `37c72d7a09215dac7e3534877ab8325ca7367811`
+- Deployed commit after the latest landing maintenance pass: `e637904363267b78f2598a869878c255c0d99fa1`
 
 Current no-side-effect production evidence from 2026-06-29 CST:
 
 - `GET https://daoyou.iaigc.fun/health`: `200`, `status=ok`.
 - `GET https://daoyou.iaigc.fun/readyz`: `200`, `ready=true`.
 - `GET https://daoyou.iaigc.fun/readyz/deep` without token: `401`, fixed `readyz_deep_unauthorized` body, no internal `checks/runtime/E2B` payload.
-- Remote `/home/armysheng/mycc` is deployed at `37c72d7`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Remote `/home/armysheng/mycc` is deployed at `e637904`, worktree dirty count is `0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
 - `GET https://daoyou.iaigc.fun/api/auth/config`: `registration.mode=closed`, `enabled=false`, `inviteRequired=false`.
+- `GET https://daoyou.iaigc.fun/favicon.svg`: `200`, `content-type=image/svg+xml`.
+- `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed; this is no-side-effect and covers public health, readiness, unauthenticated deep readiness privacy, auth registration mode, homepage brand, favicon, and built assets.
 - `MYCC_ONBOARDING_ASYNC` is `false_or_unset` in production; async onboarding code is deployed but not yet enabled for live users.
 - Home HTML title is `道友 AI`, and the meta description includes `念头通达`.
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed after the latest brand deployment; rerun at most once per release candidate because it creates failed-login audit/rate-limit events.
@@ -40,6 +42,7 @@ The core path is proven when all of these are true:
 - E2B release readiness gate passes.
 - E2B Agent doctor is ready.
 - Sandbox template doctor is ready.
+- No-side-effect public surface live smoke passes against the target environment.
 - No-side-effect auth privacy live smoke passes against the target environment.
 - No-model auth/onboarding live smoke passes against the target environment, with expected registration/onboarding side effects.
 - Live E2B IDE, desktop, and Agent SDK workspace smoke tests pass against the target environment.
@@ -68,6 +71,7 @@ privacy before any live smoke with side effects:
 Production runbook note: before running any `npm run smoke:*` or `npm run harness:verify` command in production, use the Node20 guard and make both local binaries and the guarded Node bin first-class PATH entries, for example `NODE_BIN_DIR="$(./scripts/guard-production-node.sh --print-bin-dir)"` followed by `export PATH="$PWD/node_modules/.bin:$NODE_BIN_DIR:$PATH"`, to avoid `tsx: not found`.
 
 ```bash
+BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface
 BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy
 BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-onboarding
 ```
@@ -111,6 +115,7 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
    - Confirm whether the deployed backend commit includes all release-candidate migrations.
    - Run `npm run db:migrate` against the target database when cutting the release candidate, or explicitly prove it is a no-op.
    - Verify authorized `GET /readyz/deep` over SSH/localhost returns `runtime.status=pass`; public unauthenticated requests must stay 401/403 without internal details.
+   - Run `BASE_URL=<staging-backend> npm run smoke:public-surface` before auth or E2B checks.
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-privacy` before any live check with side effects.
    - Run `BASE_URL=<staging-backend> npm run smoke:auth-onboarding` before model-consuming smoke.
    - Run `BASE_URL=<staging-backend> npm run harness:verify -- --target=landing-live --no-write`.

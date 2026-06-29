@@ -42,6 +42,7 @@
 - [x] **生产发布工具链 guard** - 生产 `npm ci/build` 必须使用 systemd 同款 Node v20.19.5，避免 native addon ABI 错配导致 SIGSEGV。
 - [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
 - [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
+- [x] **公网无副作用表面 smoke gate** - `smoke:public-surface` 已固化 `/health`、`/readyz`、未授权 `/readyz/deep` 隐私、注册 gate、首页品牌、favicon 与静态资源检查。
 - [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。
 - [ ] **Release candidate live gate** - 对当前部署运行 `landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
