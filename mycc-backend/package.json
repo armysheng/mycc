@@ -17,6 +17,7 @@
     "doctor:e2b-agent": "tsx scripts/doctor-e2b-agent.ts",
     "eval:agent-static": "tsx scripts/agent-eval-static.ts",
     "landing:classify": "tsx scripts/landing-pr-classify.ts",
+    "verify:rollback-preflight": "tsx scripts/verify-rollback-preflight.ts",
     "verify:e2b-release": "tsx scripts/verify-e2b-release-readiness.ts",
     "harness:verify": "tsx scripts/harness-verify.ts",
     "template:e2b-code-server:create": "bash scripts/create-e2b-code-server-template.sh",

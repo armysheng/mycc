@@ -259,6 +259,7 @@ MYCC_E2B_ALLOW_PUBLIC_TRAFFIC=false
 
 ```bash
 npm run harness:verify -- --target=landing --no-write
+npm run verify:rollback-preflight
 npm run verify:e2b-release
 npm run doctor:e2b-agent
 npm run smoke:e2b-ide
@@ -270,7 +271,7 @@ npm run smoke:e2b-agent-sdk-workspace
 正式 landing 前，对目标环境运行：
 
 ```bash
-BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
+MYCC_LIVE_GATE_APPROVED=1 BASE_URL=http://localhost:8080 npm run harness:verify -- --target=landing-live --no-write
 ```
 
 生产启用/回滚门禁请按 `docs/e2b-release-readiness.md` 和 `docs/landing-readiness.md` 执行；`verify:e2b-release` 会在不读取外部密钥的前提下确认迁移、template 发布脚本、runtime contract、bridge contract 和 smoke 安全断言没有漂移。
