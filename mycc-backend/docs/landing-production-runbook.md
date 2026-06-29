@@ -37,6 +37,7 @@ database changes, or service restarts needs an explicit release decision.
   - Production Node guard: Node `v20.19.5`, matching systemd service toolchain
   - `npm run doctor:e2b-agent`: E2B Agent preflight ready
   - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
+  - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:auth-privacy`: passed; one failed-login privacy probe was run
 
 Always use `systemctl --user` for backend service checks. System-level
 `systemctl status mycc-backend.service` can report a misleading inactive state
