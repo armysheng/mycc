@@ -71,7 +71,9 @@ describe("App Routing", () => {
     expect(
       await screen.findByRole("button", { name: "进入工作空间" }),
     ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("请输入手机号或邮箱")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("请输入手机号或邮箱"),
+    ).toBeInTheDocument();
   });
 
   it("keeps protected signed-out routes on the auth form", async () => {

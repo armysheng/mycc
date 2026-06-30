@@ -744,7 +744,8 @@ export function LandingPage() {
         <div className="dy-hero-content">
           <h1>随心而动，念头通达</h1>
           <p className="dy-hero-subtitle">
-            将道友 AI 的智能体能力延展到日常工作场景。描述需求，自动执行，直接交付结果。
+            将道友 AI
+            的智能体能力延展到日常工作场景。描述需求，自动执行，直接交付结果。
           </p>
           <div className="dy-cta-row">
             <a className="dy-cta dy-cta-primary" href="/login">
@@ -803,7 +804,9 @@ export function LandingPage() {
           </div>
           <div className="dy-scene-card">
             <div className="dy-scene-copy">
-              <div className="dy-efficiency">效率提升：1 到 2 天 -&gt; 11 分钟</div>
+              <div className="dy-efficiency">
+                效率提升：1 到 2 天 -&gt; 11 分钟
+              </div>
               <h3>{primaryScene.title}</h3>
               <p>{primaryScene.body}</p>
               <div className="dy-compare">
