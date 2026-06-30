@@ -21,6 +21,11 @@ const LoginPage = lazy(() =>
     default: module.LoginPage,
   })),
 );
+const LandingPage = lazy(() =>
+  import("./components/LandingPage").then((module) => ({
+    default: module.LandingPage,
+  })),
+);
 const SkillsPage = lazy(() =>
   import("./components/SkillsPage").then((module) => ({
     default: module.SkillsPage,
@@ -66,9 +71,34 @@ function App() {
 
   if (!user) {
     return (
-      <Suspense fallback={<PageLoading />}>
-        <LoginPage />
-      </Suspense>
+      <Router>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <LandingPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <LoginPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <LoginPage />
+              </Suspense>
+            }
+          />
+        </Routes>
+      </Router>
     );
   }
 
