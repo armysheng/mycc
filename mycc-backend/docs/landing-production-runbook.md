@@ -1,6 +1,6 @@
 # 道友 AI Landing Production Runbook
 
-Date: 2026-06-29
+Date: 2026-06-30
 
 This runbook is the operator checklist for `https://daoyou.iaigc.fun`.
 It is intentionally conservative: production checks are split by side effect
@@ -20,27 +20,28 @@ database changes, or service restarts needs an explicit release decision.
 - Current deployed commit: verify live on the host before a release decision with
   `cd /home/armysheng/mycc && git rev-parse --short HEAD`; do not hard-code it
   as current in this runbook because docs-only maintenance deploys can change it.
-- Latest recorded no-side-effect production state checked on 2026-06-29 CST:
+- Latest recorded no-side-effect production state checked on 2026-06-30 CST:
+  - Remote deployed commit: `cacc9b9`
   - Remote worktree dirty count: `0`
   - `systemctl --user is-active mycc-backend.service`: `active`
   - `GET /health`: `200`
   - `GET /readyz`: `200`, `ready=true`
   - Unauthenticated `GET /readyz/deep`: `401`, `readyz_deep_unauthorized`
   - Authorized local `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `database=pass`, `skills=pass`, `runtime=pass`, `ssh=skipped`
-  - Production `schema_migrations`: 8 applied migrations; `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; OAuth release candidates must also apply `009-add-oauth-accounts.sql` before enabling callbacks
-  - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`
+  - Production `schema_migrations`: 9 applied migrations; `007-add-agent-run-trace.sql`, `008-add-ide-session-identity.sql`, and `009-add-oauth-accounts.sql` are applied
+  - `GET /api/auth/config`: `registration.mode=closed`, `enabled=false`, Google/GitHub OAuth providers disabled
   - `GET /favicon.svg`: `200`, `content-type=image/svg+xml`
   - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface`: passed
   - `MYCC_ONBOARDING_ASYNC`: `false_or_unset`
   - Home HTML title: `道友 AI`
   - Home meta description includes `念头通达`
-  - GitHub `CI` run `28373993080` passed for `82d2fec`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
-  - GitHub `Deploy Staging` run `28374057187` passed for `82d2fec`
+  - GitHub `CI` run `28411561913` passed for `cacc9b99`: `frontend-ci`, `backend-ci`, and `sandbox-ci`
+  - GitHub `Deploy Staging` run `28411602302` passed for `cacc9b99`
   - Production Node guard: Node `v20.19.5`, matching systemd service toolchain
   - `npm run doctor:e2b-agent`: E2B Agent preflight ready
   - `npm --prefix mycc-sandbox run doctor:template`: credentials present and template `mycc-assistant-sandbox-dev` exists
   - Playwright product-surface audit: desktop login, 390x844 mobile login, and registration closed state passed without forbidden public text or mobile horizontal overflow
-  - Latest no-side-effect maintenance through PR #121 has `prod_dirty_count=0`, backend service `active`, public-surface smoke passed, and production `doctor:e2b-agent` reports E2B Agent preflight ready
+  - Latest no-side-effect maintenance through PR #124 has `prod_dirty_count=0`, backend service `active`, OAuth migration `009-add-oauth-accounts.sql` applied, and OAuth providers still disabled until provider credentials are configured
 
 Historical low-side-effect evidence:
 
