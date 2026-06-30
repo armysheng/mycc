@@ -186,6 +186,69 @@ describe('auth smoke gates', () => {
     });
   });
 
+  it('onboarding smoke accepts onboarding-specific credentials when registration is closed', async () => {
+    vi.stubEnv('MYCC_AUTH_SMOKE_CREDENTIAL', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_EMAIL', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_PHONE', '');
+    vi.stubEnv('MYCC_AUTH_SMOKE_PASSWORD', '');
+    vi.stubEnv('MYCC_AUTH_ONBOARDING_SMOKE_CREDENTIAL', 'onboarding-smoke@example.test');
+    vi.stubEnv('MYCC_AUTH_ONBOARDING_SMOKE_PASSWORD', 'OnboardingSmokePass-1!');
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/auth/config')) {
+        return authConfigResponse('closed');
+      }
+      if (url.endsWith('/api/auth/login')) {
+        expect(requestBody(init)).toMatchObject({
+          credential: 'onboarding-smoke@example.test',
+          password: 'OnboardingSmokePass-1!',
+        });
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            token: 'onboarding-jwt-token',
+            user: {
+              id: 45,
+              email: 'onboarding-smoke@example.test',
+              is_initialized: true,
+            },
+          },
+        });
+      }
+      if (url.endsWith('/api/onboarding/initialize')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            status: 'ready',
+          },
+        });
+      }
+      if (url.endsWith('/api/auth/me')) {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            id: 45,
+            email: 'onboarding-smoke@example.test',
+            is_initialized: true,
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    await runAuthOnboardingSmoke({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: fetchMock,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:8080/api/auth/config',
+      'http://127.0.0.1:8080/api/auth/login',
+      'http://127.0.0.1:8080/api/onboarding/initialize',
+      'http://127.0.0.1:8080/api/auth/me',
+    ]);
+  });
+
   it('onboarding smoke fails before registration when registration is closed without explicit credentials', async () => {
     vi.stubEnv('MYCC_AUTH_SMOKE_CREDENTIAL', '');
     vi.stubEnv('MYCC_AUTH_SMOKE_EMAIL', '');

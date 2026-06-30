@@ -22,7 +22,13 @@ const GENERIC_LOGIN_ERROR = '手机号/邮箱或密码错误';
 const INTERNAL_DETAIL_PATTERN = /linux_user|mycc_u\d+|用户不存在|linuxUser/i;
 
 function resolveBaseUrl(baseUrl?: string): string {
-  return (baseUrl || process.env.BASE_URL || process.env.MYCC_AUTH_SMOKE_BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+  return (
+    baseUrl
+    || process.env.MYCC_AUTH_ONBOARDING_SMOKE_BASE_URL
+    || process.env.BASE_URL
+    || process.env.MYCC_AUTH_SMOKE_BASE_URL
+    || 'http://127.0.0.1:8080'
+  ).replace(/\/$/, '');
 }
 
 function resolveFetch(fetchImpl?: FetchLike): FetchLike {
@@ -124,19 +130,38 @@ function readTrimmedEnv(name: string): string | undefined {
   return value || undefined;
 }
 
+function readTrimmedEnvAny(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = readTrimmedEnv(name);
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function resolveExistingTestCredentials(): ExistingTestCredentials | undefined {
-  const credential = readTrimmedEnv('MYCC_AUTH_SMOKE_CREDENTIAL')
-    ?? readTrimmedEnv('MYCC_AUTH_SMOKE_EMAIL')
-    ?? readTrimmedEnv('MYCC_AUTH_SMOKE_PHONE');
-  const password = process.env.MYCC_AUTH_SMOKE_PASSWORD;
+  const credential = readTrimmedEnvAny(
+    'MYCC_AUTH_ONBOARDING_SMOKE_CREDENTIAL',
+    'MYCC_AUTH_SMOKE_CREDENTIAL',
+    'MYCC_AUTH_SMOKE_EMAIL',
+    'MYCC_AUTH_SMOKE_PHONE',
+  );
+  const password = process.env.MYCC_AUTH_ONBOARDING_SMOKE_PASSWORD || process.env.MYCC_AUTH_SMOKE_PASSWORD;
   if (!credential && !password) return undefined;
   if (!credential || !password) {
     throw new Error(
-      'registration is closed; set both MYCC_AUTH_SMOKE_CREDENTIAL (or MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
-      + 'and MYCC_AUTH_SMOKE_PASSWORD for an existing test account',
+      'registration is closed; set both MYCC_AUTH_ONBOARDING_SMOKE_CREDENTIAL '
+      + '(or MYCC_AUTH_SMOKE_CREDENTIAL/MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
+      + 'and MYCC_AUTH_ONBOARDING_SMOKE_PASSWORD (or MYCC_AUTH_SMOKE_PASSWORD) for an existing test account',
     );
   }
   return { credential, password };
+}
+
+function resolveOnboardingNames(): { assistantName: string; ownerName: string } {
+  return {
+    assistantName: readTrimmedEnv('MYCC_AUTH_ONBOARDING_SMOKE_ASSISTANT_NAME') || '道友',
+    ownerName: readTrimmedEnv('MYCC_AUTH_ONBOARDING_SMOKE_OWNER_NAME') || '测试用户',
+  };
 }
 
 async function readTargetRegistrationMode(fetchImpl: FetchLike, baseUrl: string): Promise<RegistrationMode> {
@@ -154,9 +179,12 @@ async function registerNewTestAccount(fetchImpl: FetchLike, baseUrl: string, reg
     email,
     password,
   };
-  const inviteCode = readTrimmedEnv('MYCC_AUTH_SMOKE_INVITE_CODE');
+  const inviteCode = readTrimmedEnvAny('MYCC_AUTH_ONBOARDING_SMOKE_INVITE_CODE', 'MYCC_AUTH_SMOKE_INVITE_CODE');
   if (registrationMode === 'invite' && !inviteCode) {
-    throw new Error('registration is invite-only; set MYCC_AUTH_SMOKE_INVITE_CODE before running smoke:auth-onboarding');
+    throw new Error(
+      'registration is invite-only; set MYCC_AUTH_ONBOARDING_SMOKE_INVITE_CODE '
+      + '(or MYCC_AUTH_SMOKE_INVITE_CODE) before running smoke:auth-onboarding',
+    );
   }
   if (inviteCode) body.inviteCode = inviteCode;
 
@@ -171,8 +199,10 @@ async function loginExistingTestAccount(fetchImpl: FetchLike, baseUrl: string): 
   const credentials = resolveExistingTestCredentials();
   if (!credentials) {
     throw new Error(
-      'registration is closed; set MYCC_AUTH_SMOKE_CREDENTIAL (or MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
-      + 'and MYCC_AUTH_SMOKE_PASSWORD for an existing test account before running smoke:auth-onboarding',
+      'registration is closed; set MYCC_AUTH_ONBOARDING_SMOKE_CREDENTIAL '
+      + '(or MYCC_AUTH_SMOKE_CREDENTIAL/MYCC_AUTH_SMOKE_EMAIL/MYCC_AUTH_SMOKE_PHONE) '
+      + 'and MYCC_AUTH_ONBOARDING_SMOKE_PASSWORD (or MYCC_AUTH_SMOKE_PASSWORD) '
+      + 'for an existing test account before running smoke:auth-onboarding',
     );
   }
 
@@ -214,10 +244,11 @@ export async function runAuthOnboardingSmoke(options: SmokeOptions = {}): Promis
   const token = registrationMode === 'closed'
     ? await loginExistingTestAccount(fetchImpl, baseUrl)
     : await registerNewTestAccount(fetchImpl, baseUrl, registrationMode);
+  const onboardingNames = resolveOnboardingNames();
 
   const initialized = await postJson(fetchImpl, baseUrl, '/api/onboarding/initialize', {
-    assistantName: '道友',
-    ownerName: '测试用户',
+    assistantName: onboardingNames.assistantName,
+    ownerName: onboardingNames.ownerName,
   }, token);
   if (!initialized.response.ok || initialized.json.success !== true) {
     throw new Error(`onboarding initialize failed status=${initialized.response.status}`);
