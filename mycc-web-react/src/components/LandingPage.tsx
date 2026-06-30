@@ -106,7 +106,7 @@ export function LandingPage() {
           gap: 12px;
           font-size: 18px;
           font-weight: 780;
-          letter-spacing: -0.03em;
+          letter-spacing: 0;
           white-space: nowrap;
         }
 
@@ -199,8 +199,13 @@ export function LandingPage() {
           margin: 0;
           font-size: clamp(52px, 7.5vw, 104px);
           line-height: 0.96;
-          letter-spacing: -0.075em;
+          letter-spacing: 0;
           font-weight: 880;
+        }
+
+        .dy-nowrap {
+          display: inline-block;
+          white-space: nowrap;
         }
 
         .dy-hero-subtitle {
@@ -342,7 +347,7 @@ export function LandingPage() {
           margin: 0 auto;
           font-size: clamp(42px, 6vw, 78px);
           line-height: 1.06;
-          letter-spacing: -0.066em;
+          letter-spacing: 0;
           font-weight: 880;
         }
 
@@ -449,7 +454,7 @@ export function LandingPage() {
           margin: 0;
           font-size: clamp(34px, 4.2vw, 60px);
           line-height: 1.02;
-          letter-spacing: -0.06em;
+          letter-spacing: 0;
           font-weight: 860;
         }
 
@@ -564,7 +569,7 @@ export function LandingPage() {
           margin: 0;
           font-size: 26px;
           line-height: 1.08;
-          letter-spacing: -0.05em;
+          letter-spacing: 0;
           font-weight: 860;
         }
 
@@ -609,7 +614,7 @@ export function LandingPage() {
         .dy-daily-item h3 {
           margin: 0 0 8px;
           font-size: 20px;
-          letter-spacing: -0.03em;
+          letter-spacing: 0;
         }
 
         .dy-daily-item span {
@@ -701,7 +706,7 @@ export function LandingPage() {
           .dy-daily h2,
           .dy-final h2 {
             font-size: clamp(36px, 11vw, 48px);
-            letter-spacing: -0.058em;
+            letter-spacing: 0;
           }
           .dy-scene-card {
             padding: 18px;
@@ -742,7 +747,10 @@ export function LandingPage() {
 
       <section className="dy-hero" id="product">
         <div className="dy-hero-content">
-          <h1>随心而动，念头通达</h1>
+          <h1 aria-label="随心而动，念头通达">
+            <span className="dy-nowrap">随心而动，</span>
+            <span className="dy-nowrap">念头通达</span>
+          </h1>
           <p className="dy-hero-subtitle">
             将道友 AI
             的智能体能力延展到日常工作场景。描述需求，自动执行，直接交付结果。
