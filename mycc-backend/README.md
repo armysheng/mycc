@@ -161,10 +161,12 @@ Authorization: Bearer <token>
 | MYCC_ONBOARDING_ASYNC | 初始化异步化开关；设为 `true` 时初始化请求快速返回 `running`，前端轮询 `/api/onboarding/status` 到 `ready` | false |
 | MYCC_AUTH_PUBLIC_BASE_URL | 后端公网地址，用于生成 OAuth callback URL：`${MYCC_AUTH_PUBLIC_BASE_URL}/api/auth/oauth/{provider}/callback` | `http://localhost:8080` |
 | MYCC_AUTH_FRONTEND_BASE_URL | OAuth callback 成功后返回的前端地址；同源部署可留空，使用相对 `/login` | - |
-| MYCC_OAUTH_GOOGLE_CLIENT_ID | Google OAuth Client ID；和 secret 同时配置后才启用 Google 登录入口 | - |
-| MYCC_OAUTH_GOOGLE_CLIENT_SECRET | Google OAuth Client Secret；不要写入仓库或日志 | - |
-| MYCC_OAUTH_GITHUB_CLIENT_ID | GitHub OAuth Client ID；和 secret 同时配置后才启用 GitHub 登录入口 | - |
-| MYCC_OAUTH_GITHUB_CLIENT_SECRET | GitHub OAuth Client Secret；不要写入仓库或日志 | - |
+| MYCC_OAUTH_GOOGLE_CLIENT_ID | Google OAuth Client ID；和真实 secret 同时配置后才启用 Google 登录入口；占位值不会启用 | `__PLACEHOLDER_GOOGLE_CLIENT_ID__` |
+| MYCC_OAUTH_GOOGLE_CLIENT_SECRET | Google OAuth Client Secret；不要写入仓库或日志；占位值不会启用 | `__PLACEHOLDER_GOOGLE_CLIENT_SECRET__` |
+| MYCC_OAUTH_GITHUB_CLIENT_ID | GitHub OAuth Client ID；和真实 secret 同时配置后才启用 GitHub 登录入口；占位值不会启用 | `__PLACEHOLDER_GITHUB_CLIENT_ID__` |
+| MYCC_OAUTH_GITHUB_CLIENT_SECRET | GitHub OAuth Client Secret；不要写入仓库或日志；占位值不会启用 | `__PLACEHOLDER_GITHUB_CLIENT_SECRET__` |
+
+OAuth 配置支持先占位后补真实密钥。空值、`placeholder`、`todo`、`replace-me`、`<...>`、`${...}`、`__...__` 这类占位值都会被视为未配置，`/api/auth/config` 会继续返回 provider `enabled=false`。只有同一 provider 的 client id 和 client secret 都是真实值时，前端才展示对应第三方登录入口。
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |

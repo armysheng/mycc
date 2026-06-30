@@ -207,13 +207,45 @@ function oauthEnvPrefix(provider: OAuthProvider): string {
   return provider === 'google' ? 'MYCC_OAUTH_GOOGLE' : 'MYCC_OAUTH_GITHUB';
 }
 
+function isPlaceholderOAuthCredential(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  if (/^<[^>]+>$/.test(normalized)) return true;
+  if (/^\$\{[^}]+}$/.test(normalized)) return true;
+  if (/^__[^_]+(?:_[^_]+)*__$/.test(normalized)) return true;
+  return [
+    'placeholder',
+    'todo',
+    'tbd',
+    'replace-me',
+    'replace_me',
+    'changeme',
+    'change-me',
+    'change_me',
+    'your-client-id',
+    'your-client-secret',
+    'google-client-id-placeholder',
+    'google-client-secret-placeholder',
+    'github-client-id-placeholder',
+    'github-client-secret-placeholder',
+  ].includes(normalized);
+}
+
+function readConfiguredOAuthCredential(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value || isPlaceholderOAuthCredential(value)) {
+    return null;
+  }
+  return value;
+}
+
 function getOAuthProviderRuntimeConfig(
   provider: OAuthProvider,
   env: NodeJS.ProcessEnv = process.env,
 ): OAuthProviderRuntimeConfig | null {
   const prefix = oauthEnvPrefix(provider);
-  const clientId = env[`${prefix}_CLIENT_ID`]?.trim();
-  const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim();
+  const clientId = readConfiguredOAuthCredential(env[`${prefix}_CLIENT_ID`]);
+  const clientSecret = readConfiguredOAuthCredential(env[`${prefix}_CLIENT_SECRET`]);
   if (!clientId || !clientSecret) {
     return null;
   }
