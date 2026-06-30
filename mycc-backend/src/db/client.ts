@@ -93,6 +93,24 @@ export interface ActiveUserSummary {
   linux_user: string;
 }
 
+export type OAuthProvider = 'google' | 'github';
+
+export interface OAuthAccountParams {
+  userId: number;
+  provider: OAuthProvider;
+  providerUserId: string;
+  email?: string;
+  emailVerified: boolean;
+}
+
+export interface CreateOAuthUserParams {
+  email: string;
+  password_hash: string;
+  provider: OAuthProvider;
+  providerUserId: string;
+  emailVerified: boolean;
+}
+
 export interface SkillEventStatsRow {
   skillId: string;
   stats: SkillStats;
@@ -161,6 +179,80 @@ export async function findUserById(userId: number): Promise<User | null> {
     [userId]
   );
   return result.rows[0] || null;
+}
+
+export async function findUserByOAuthAccount(
+  provider: OAuthProvider,
+  providerUserId: string,
+): Promise<User | null> {
+  const hasAssistantName = await hasUserColumn('assistant_name');
+  const assistantColumn = hasAssistantName ? 'u.assistant_name' : 'NULL::VARCHAR(50) AS assistant_name';
+  const result = await pool.query<User>(
+    `SELECT u.id, u.phone, u.email, u.password_hash, ${assistantColumn}, u.linux_user, u.status, u.is_initialized, u.created_at, u.updated_at
+     FROM oauth_accounts oa
+     JOIN users u ON u.id = oa.user_id
+     WHERE oa.provider = $1 AND oa.provider_user_id = $2
+     LIMIT 1`,
+    [provider, providerUserId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function linkOAuthAccount(params: OAuthAccountParams): Promise<void> {
+  await pool.query(
+    `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, email_verified)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (provider, provider_user_id) DO NOTHING`,
+    [
+      params.userId,
+      params.provider,
+      params.providerUserId,
+      params.email,
+      params.emailVerified,
+    ]
+  );
+}
+
+export async function createOAuthUserWithAccount(params: CreateOAuthUserParams): Promise<User> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const userResult = await client.query<User>(
+      `INSERT INTO users (email, password_hash, linux_user)
+       VALUES ($1, $2, 'mycc_u' || currval(pg_get_serial_sequence('users', 'id')))
+       RETURNING *`,
+      [params.email, params.password_hash]
+    );
+    const user = userResult.rows[0];
+
+    const freePlan = getPlanById('free');
+    await client.query(
+      `INSERT INTO subscriptions (user_id, plan, tokens_limit, tokens_used, reset_at)
+       VALUES ($1, 'free', $2, 0, date_trunc('month', NOW()) + interval '1 month')`,
+      [user.id, freePlan.tokensLimit]
+    );
+
+    await client.query(
+      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, email_verified)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        user.id,
+        params.provider,
+        params.providerUserId,
+        params.email,
+        params.emailVerified,
+      ]
+    );
+
+    await client.query('COMMIT');
+    return user;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // 获取用户订阅信息

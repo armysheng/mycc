@@ -159,6 +159,12 @@ Authorization: Bearer <token>
 | MYCC_REGISTRATION_MODE | 注册入口控制：`open` 开放注册，`invite` 必须提供邀请码，`closed` 关闭新注册 | open |
 | MYCC_REGISTRATION_INVITE_CODES | 邀请码列表，逗号或换行分隔；仅 `MYCC_REGISTRATION_MODE=invite` 时使用 | - |
 | MYCC_ONBOARDING_ASYNC | 初始化异步化开关；设为 `true` 时初始化请求快速返回 `running`，前端轮询 `/api/onboarding/status` 到 `ready` | false |
+| MYCC_AUTH_PUBLIC_BASE_URL | 后端公网地址，用于生成 OAuth callback URL：`${MYCC_AUTH_PUBLIC_BASE_URL}/api/auth/oauth/{provider}/callback` | `http://localhost:8080` |
+| MYCC_AUTH_FRONTEND_BASE_URL | OAuth callback 成功后返回的前端地址；同源部署可留空，使用相对 `/login` | - |
+| MYCC_OAUTH_GOOGLE_CLIENT_ID | Google OAuth Client ID；和 secret 同时配置后才启用 Google 登录入口 | - |
+| MYCC_OAUTH_GOOGLE_CLIENT_SECRET | Google OAuth Client Secret；不要写入仓库或日志 | - |
+| MYCC_OAUTH_GITHUB_CLIENT_ID | GitHub OAuth Client ID；和 secret 同时配置后才启用 GitHub 登录入口 | - |
+| MYCC_OAUTH_GITHUB_CLIENT_SECRET | GitHub OAuth Client Secret；不要写入仓库或日志 | - |
 | ANTHROPIC_API_KEY | Claude API 密钥 | - |
 | PORT | 服务端口 | 8080 |
 | NODE_ENV | 运行环境 | development |

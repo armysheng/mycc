@@ -17,7 +17,7 @@
 - [x] **初始化过程不暴露内部会话** - 初始化由后端执行，异步模式只展示产品化等待态和 `/api/onboarding/status` 轮询结果，不向用户暴露隐藏 `/api/chat`、内部线程、sandbox、provider 或调试会话痕迹；异步上线前需专门验收“用户等待久”的感知是否被明显改善。
 - [x] **动态错误前台清洗** - 登录/注册、初始化、技能、工具结果、过程详情和系统 hook 的用户可见错误已增加产品化清洗与回归测试，避免 raw `MyCC/E2B/sandbox/token/mycc_u/linuxUser` 等内部细节直接进前台。
 - [x] **Live gate 授权包** - 生产 runbook 已补 live smoke / rollback rehearsal 的 release decision packet，要求记录 release owner、测试账号标签、副作用、cleanup、abort 条件和证据 owner 后才能开闸。
-- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成 #121 后无副作用公网表面复核、ops-only readiness、生产 Node/E2B doctors 和 rollback preflight；auth privacy 最近一次通过在 `23074b0`，剩余需测试账号/E2B live smoke 和回滚演练。
+- [ ] **生产全链路回归闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。2026-06-29 已完成 #121 后无副作用公网表面复核、ops-only readiness、生产 Node/E2B doctors 和 rollback preflight；auth privacy 最近一次通过在 `23074b0`，剩余需 OAuth PR 的迁移 `009-add-oauth-accounts.sql`、测试账号/OAuth callback、E2B live smoke 和回滚演练。
 - [ ] **内测验收线程和人员安排** - 明确 1-3 位内测验收人员、验收线程、记录模板和发布/回滚 owner。
   - [ ] 指定 release owner、operator、rollback owner 和 cleanup owner。
   - [ ] 指定 1-3 位 friendly tester 标签与测试账号来源，不在文档里记录密码。
@@ -26,10 +26,13 @@
 
 ### P1 - 内测体验增强
 
-- [ ] **邮箱/手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
-- [ ] **Google/GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
+- [ ] **邮箱/手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务、注册验证策略和前端输入态。
+- [ ] **Google/GitHub 登录** - Google/GitHub OAuth provider、callback、同邮箱合并策略和 CSRF state 校验已在 PR #124 实现中；上线前还需 provider app/secrets 配置、callback URL 核对、生产迁移 `009-add-oauth-accounts.sql` 和授权 live callback smoke。账号绑定/解绑管理页另列后续项。
+- [ ] **初始化异步会话隐藏验收** - 开启 `MYCC_ONBOARDING_ASYNC=true` 前，确认初始化记忆在后台完成，前台只展示产品化等待态和轮询结果，不出现长时间卡死、隐藏会话或内部线程痕迹。
+- [ ] **首页品牌 UI 增强** - 在现有克制生产力气质上继续加入更明确但温和的“道友 AI / 修行辅助 / 念头落地”元素，避免变成玄幻装饰页。
 - [x] **注册入口控制** - 已支持 `open` / `invite` / `closed` 三种注册模式；生产当前设置为 `closed`，避免公开注册入口失控。
 - [ ] **产品报错验收样例库** - 沉淀登录、初始化、IDE、desktop、Agent SDK workspace 等常见失败态的产品化报错样例。
+- [ ] **生产验证计划 / 内测线程** - 为 OAuth、注册验证、异步初始化和 E2B live gate 建立专门验证计划，记录 tester、账号标签、授权范围、side effects、cleanup、PASS/FAIL/BLOCKED 和回滚判断。
 
 ### P2 - 长期运营能力
 
@@ -49,15 +52,17 @@
 - [x] **注册入口生产 gate** - `/api/auth/config` 返回 `registration.mode=closed`，公开注册请求返回 `registration_closed`，不创建新账号。
 - [x] **初始化异步后台模式** - 已支持 `MYCC_ONBOARDING_ASYNC=true` 时快速返回 `running` 并轮询 `/api/onboarding/status`；生产当前保持 `false_or_unset`，待授权 live smoke 后再开启。
 - [x] **公网无副作用表面 smoke gate** - `smoke:public-surface` 已固化 `/health`、`/readyz`、未授权 `/readyz/deep` 隐私、注册 gate、首页品牌、favicon 与静态资源检查。
-- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、授权 deep readiness、生产迁移 007/008、Node/E2B doctors 和 rollback preflight 已有 #121 后无副作用验证记录；auth privacy 最近一次通过在 `23074b0`；登录初始化和 E2B live smokes 仍需 release 授权。
+- [ ] **生产验证闭环** - 固化公网预发布回归：`/health`、`/readyz`、`/readyz/deep`、登录注册、初始化、IDE smoke、desktop smoke、Agent SDK workspace smoke。公网表面、授权 deep readiness、生产迁移 007/008、Node/E2B doctors 和 rollback preflight 已有 #121 后无副作用验证记录；OAuth PR 上线还需确认/应用迁移 `009-add-oauth-accounts.sql`；auth privacy 最近一次通过在 `23074b0`；OAuth callback、登录初始化和 E2B live smokes 仍需 release 授权。
 - [ ] **Release candidate live gate** - 对当前部署运行 `MYCC_LIVE_GATE_APPROVED=1 ... landing-live`，包含 auth/onboarding smoke 与 E2B IDE/desktop/Agent SDK workspace smoke。
 - [ ] **Rollback rehearsal** - 演练配置回滚到 `remote-claude` / `IDE disabled` / `workspace ssh`，并记录恢复步骤。
 - [x] **产品表面审计** - 2026-06-29 独立只读验收 `https://daoyou.iaigc.fun/projects/demo`：桌面和 390x844 手机视口均展示 `道友 AI / 念头通达` 首屏；注册页为暂未开放自助注册关闭态，手机号、邮箱、密码和提交按钮均禁用；可见正文未命中 `MyCC`、`linuxUser`、`E2B`、`sandbox`、`token`、`mycc_u`、`大辉哥`、`老板`、`主人`；移动端 `scrollWidth=390` 无横向溢出。结论：适合继续邀请 1-3 人灰度内测，但公开 landing 仍需 `landing-live`、E2B smokes 和回滚演练闭环。
 
 ## Landing P1 - 内测期
 
-- [ ] **邮箱或手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务和前端输入态。
-- [ ] **Google / GitHub 登录** - 新增 OAuth provider、callback、账号绑定/解绑、同邮箱合并策略和 CSRF state 校验。
+- [ ] **邮箱或手机验证** - 至少支持一个 verified channel，包含验证码 TTL、重试限制、发送服务、注册验证策略和前端输入态。
+- [ ] **Google / GitHub 登录** - Google/GitHub OAuth 登录注册入口已在 PR #124；新用户仍受 `MYCC_REGISTRATION_MODE` gate 约束，生产启用前必须完成 provider app/secrets、callback 域名、迁移 `009-add-oauth-accounts.sql` 和授权 live callback 验证。账号绑定/解绑管理页另列后续项。
+- [ ] **初始化后台化体验增强** - 将初始化记忆过程默认做成异步/隐藏体验，用户只看到短等待和状态进度，不暴露内部会话或长时间阻塞。
+- [ ] **首页道友 AI 品牌增强** - 继续补温和修仙元素和产品语气，使首屏更像“道友 AI”，但仍保持严肃工作流可用。
 - [ ] **密码重置** - 支持申请、发送、验证、单次使用 reset token，密码变更后使旧会话失效。
 - [ ] **Auth audit** - 记录注册、登录成功/失败、重置、OAuth 绑定、profile 修改、禁用/启用等事件。
 - [ ] **生产配置产品化** - CORS 改为 env allowlist，补上线前凭据轮换清单，避免裸 host、sandbox、linux user 等内部细节进入前台 UI。

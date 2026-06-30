@@ -29,6 +29,19 @@ CREATE TABLE subscriptions (
   UNIQUE(user_id)
 );
 
+-- 第三方登录账号绑定
+CREATE TABLE oauth_accounts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider VARCHAR(20) NOT NULL CHECK (provider IN ('google', 'github')),
+  provider_user_id VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  email_verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(provider, provider_user_id)
+);
+
 -- 使用记录表
 CREATE TABLE usage_logs (
   id BIGSERIAL PRIMARY KEY,
@@ -148,6 +161,7 @@ CREATE INDEX idx_conversation_messages_session_created_at
 CREATE INDEX idx_conversation_messages_user_session
   ON conversation_messages(user_id, session_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE INDEX idx_oauth_accounts_user_id ON oauth_accounts(user_id);
 CREATE INDEX idx_ide_sessions_user_id ON ide_sessions(user_id);
 CREATE INDEX idx_ide_sessions_status_expires_at ON ide_sessions(status, expires_at);
 CREATE INDEX idx_ide_sessions_reuse_identity ON ide_sessions(user_id, status, template, linux_user, workspace_dir, port, expires_at);
@@ -175,6 +189,9 @@ END;
 $$ language 'plpgsql';
 
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_oauth_accounts_updated_at BEFORE UPDATE ON oauth_accounts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations

@@ -3,7 +3,7 @@ import { getNetworkErrorMessage } from "../utils/apiError";
 const INTERNAL_ERROR_PATTERN =
   /\b(?:MyCC|E2B|mycc_u[\w-]*|linuxUser|desktop_pid)\b|\/home\/mycc|Command failed|exit code \d+|exit status \d+|invalid_argument|\/bin\/(?:ba)?sh|bridge\.mjs/i;
 
-const API_LOW_LEVEL_PATTERN = /\b(?:sandbox|token|provider)\b/i;
+const API_LOW_LEVEL_PATTERN = /\b(?:sandbox|token|provider|secret|client_secret|api_key|authorization|password)\b/i;
 const RUNTIME_STRONG_INTERNAL_PATTERN =
   /\b(?:MyCC|E2B|mycc_u[\w-]*|linuxUser|desktop_pid)\b|\/home\/mycc|bridge\.mjs/i;
 const RUNTIME_ERROR_CONTEXT_PATTERN =

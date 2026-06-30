@@ -4,13 +4,23 @@ import { authRoutes } from './auth.js';
 
 const mocks = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
+  getOAuthPublicConfig: vi.fn(),
+  buildOAuthAuthorizationUrl: vi.fn(),
+  buildOAuthFrontendRedirect: vi.fn(),
+  completeOAuthCodeLogin: vi.fn(),
+  isOAuthProvider: vi.fn(),
   login: vi.fn(),
   register: vi.fn(),
   updateCurrentUserProfile: vi.fn(),
 }));
 
 vi.mock('../auth/service.js', () => ({
+  buildOAuthAuthorizationUrl: mocks.buildOAuthAuthorizationUrl,
+  buildOAuthFrontendRedirect: mocks.buildOAuthFrontendRedirect,
+  completeOAuthCodeLogin: mocks.completeOAuthCodeLogin,
   getCurrentUser: mocks.getCurrentUser,
+  getOAuthPublicConfig: mocks.getOAuthPublicConfig,
+  isOAuthProvider: mocks.isOAuthProvider,
   login: mocks.login,
   register: mocks.register,
   updateCurrentUserProfile: mocks.updateCurrentUserProfile,
@@ -25,6 +35,30 @@ async function buildApp() {
 describe('auth routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isOAuthProvider.mockImplementation((provider: string) => provider === 'google' || provider === 'github');
+    mocks.buildOAuthFrontendRedirect.mockImplementation((params: {
+      code?: string;
+      returnTo?: string;
+      error?: string;
+    }) => {
+      const fragment = new URLSearchParams();
+      if (params.code) fragment.set('oauth_code', params.code);
+      if (params.returnTo) fragment.set('return_to', params.returnTo);
+      if (params.error) fragment.set('oauth_error', params.error);
+      return `/login#${fragment.toString()}`;
+    });
+    mocks.getOAuthPublicConfig.mockReturnValue({
+      providers: {
+        google: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/google/start',
+        },
+        github: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/github/start',
+        },
+      },
+    });
   });
 
   afterEach(() => {
@@ -50,10 +84,200 @@ describe('auth routes', () => {
           enabled: true,
           inviteRequired: true,
         },
+        oauth: {
+          providers: {
+            google: {
+              enabled: false,
+              authUrl: '/api/auth/oauth/google/start',
+            },
+            github: {
+              enabled: false,
+              authUrl: '/api/auth/oauth/github/start',
+            },
+          },
+        },
       },
     });
     expect(response.body).not.toContain('alpha');
     expect(response.body).not.toContain('beta');
+    await app.close();
+  });
+
+  it('exposes enabled OAuth providers without client secrets', async () => {
+    mocks.getOAuthPublicConfig.mockReturnValueOnce({
+      providers: {
+        google: {
+          enabled: true,
+          authUrl: '/api/auth/oauth/google/start',
+        },
+        github: {
+          enabled: true,
+          authUrl: '/api/auth/oauth/github/start',
+        },
+      },
+    });
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/config',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      success: true,
+      data: {
+        oauth: {
+          providers: {
+            google: {
+              enabled: true,
+              authUrl: '/api/auth/oauth/google/start',
+            },
+            github: {
+              enabled: true,
+              authUrl: '/api/auth/oauth/github/start',
+            },
+          },
+        },
+      },
+    });
+    expect(response.body).not.toContain('CLIENT_SECRET');
+    expect(response.body).not.toContain('client_secret');
+    await app.close();
+  });
+
+  it('redirects OAuth start requests and binds state to an HttpOnly cookie', async () => {
+    mocks.buildOAuthAuthorizationUrl.mockReturnValueOnce('https://accounts.google.com/o/oauth2/v2/auth?client_id=google-client&state=signed-state');
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oauth/google/start?returnTo=/projects/demo',
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe('https://accounts.google.com/o/oauth2/v2/auth?client_id=google-client&state=signed-state');
+    expect(response.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^mycc_oauth_state=signed-state;.*HttpOnly.*SameSite=Lax/i),
+    ]));
+    expect(mocks.buildOAuthAuthorizationUrl).toHaveBeenCalledWith('google', {
+      returnTo: '/projects/demo',
+    });
+    await app.close();
+  });
+
+  it('rejects unsupported OAuth providers before redirecting', async () => {
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oauth/twitter/start',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(mocks.buildOAuthAuthorizationUrl).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('redirects successful OAuth callbacks with a one-time login code', async () => {
+    mocks.completeOAuthCodeLogin.mockResolvedValueOnce({
+      token: 'oauth.jwt.token',
+      user: {
+        id: 8,
+        email: 'oauth@example.test',
+        plan: 'free',
+        is_initialized: false,
+      },
+      returnTo: '/projects/demo',
+    });
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oauth/github/callback?code=abc123&state=signed-state',
+      headers: {
+        cookie: 'mycc_oauth_state=signed-state',
+      },
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toContain('/login#');
+    expect(response.headers.location).toContain('oauth_code=');
+    expect(response.headers.location).not.toContain('oauth.jwt.token');
+    expect(response.headers.location).toContain('return_to=%2Fprojects%2Fdemo');
+    expect(response.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^mycc_oauth_state=;.*Max-Age=0/i),
+    ]));
+    expect(mocks.completeOAuthCodeLogin).toHaveBeenCalledWith('github', {
+      code: 'abc123',
+      state: 'signed-state',
+    });
+    await app.close();
+  });
+
+  it('rejects OAuth callbacks when the state cookie does not match', async () => {
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oauth/github/callback?code=abc123&state=signed-state',
+      headers: {
+        cookie: 'mycc_oauth_state=other-state',
+      },
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toContain('oauth_error=');
+    expect(mocks.completeOAuthCodeLogin).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('exchanges an OAuth login code only once', async () => {
+    mocks.completeOAuthCodeLogin.mockResolvedValueOnce({
+      token: 'oauth.jwt.token',
+      user: {
+        id: 8,
+        email: 'oauth@example.test',
+        plan: 'free',
+        is_initialized: false,
+      },
+      returnTo: '/projects/demo',
+    });
+    const app = await buildApp();
+
+    const callback = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oauth/github/callback?code=abc123&state=signed-state',
+      headers: {
+        cookie: 'mycc_oauth_state=signed-state',
+      },
+    });
+    const location = String(callback.headers.location);
+    const oauthCode = new URLSearchParams(location.split('#')[1]).get('oauth_code');
+
+    const firstExchange = await app.inject({
+      method: 'POST',
+      url: '/api/auth/oauth/exchange',
+      payload: { code: oauthCode },
+    });
+    const secondExchange = await app.inject({
+      method: 'POST',
+      url: '/api/auth/oauth/exchange',
+      payload: { code: oauthCode },
+    });
+
+    expect(firstExchange.statusCode).toBe(200);
+    expect(firstExchange.json()).toMatchObject({
+      success: true,
+      data: {
+        token: 'oauth.jwt.token',
+        user: {
+          id: 8,
+          email: 'oauth@example.test',
+        },
+      },
+    });
+    expect(secondExchange.statusCode).toBe(401);
     await app.close();
   });
 

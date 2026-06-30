@@ -15,7 +15,7 @@ Keep this path opt-in until the release owner has run every gate below.
 - E2B CLI auth for template builds: `E2B_ACCESS_TOKEN` or `npx --yes @e2b/cli auth login`.
 - Claude/CCR credentials: prefer `MYCC_CCR_BASE_URL` plus `MYCC_CCR_AUTH_TOKEN`.
 - E2B template name: `MYCC_E2B_TEMPLATE=mycc-assistant-sandbox-dev` unless releasing a versioned template.
-- Database migrations applied through `npm run db:migrate`, including `db/migrations/003-add-ide-sessions.sql`, `db/migrations/004-add-ide-desktop-service.sql`, `db/migrations/008-add-ide-session-identity.sql`, and `db/migrations/007-add-agent-run-trace.sql`.
+- Database migrations applied through `npm run db:migrate`, including `db/migrations/003-add-ide-sessions.sql`, `db/migrations/004-add-ide-desktop-service.sql`, `db/migrations/008-add-ide-session-identity.sql`, and `db/migrations/007-add-agent-run-trace.sql`. If the release candidate includes OAuth login, also apply `db/migrations/009-add-oauth-accounts.sql` before Google/GitHub callback smoke.
 
 Do not configure global `OPENAI_BASE_URL` or `OPENAI_API_KEY` in the MyCC backend process for this path. Put OpenAI-compatible upstream credentials inside the CCR router process instead.
 
@@ -44,6 +44,7 @@ psql "$DATABASE_URL" -c "select to_regclass('public.ide_sessions') as ide_sessio
 ```
 
 Expected result: `ide_sessions` and `agent_runs` resolve to table names.
+For OAuth release candidates, also verify the OAuth accounts table created by `009-add-oauth-accounts.sql` exists before enabling provider callbacks.
 
 ## Local Verification Gate
 

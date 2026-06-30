@@ -34,6 +34,12 @@ export interface AuthResponse {
 }
 
 export type RegistrationMode = 'open' | 'invite' | 'closed';
+export type OAuthProvider = 'google' | 'github';
+
+export interface OAuthProviderConfig {
+  enabled: boolean;
+  authUrl: string;
+}
 
 export interface AuthConfigResponse {
   success: boolean;
@@ -42,6 +48,9 @@ export interface AuthConfigResponse {
       mode: RegistrationMode;
       enabled: boolean;
       inviteRequired: boolean;
+    };
+    oauth?: {
+      providers: Record<OAuthProvider, OAuthProviderConfig>;
     };
   };
   error?: string;

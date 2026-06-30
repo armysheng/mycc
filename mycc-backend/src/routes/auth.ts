@@ -1,6 +1,17 @@
+import { randomBytes } from 'crypto';
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { register, login, getCurrentUser, updateCurrentUserProfile } from '../auth/service.js';
+import {
+  buildOAuthAuthorizationUrl,
+  buildOAuthFrontendRedirect,
+  completeOAuthCodeLogin,
+  getOAuthPublicConfig,
+  getCurrentUser,
+  isOAuthProvider,
+  login,
+  register,
+  updateCurrentUserProfile,
+} from '../auth/service.js';
 import { buildAuthRateLimitKey, InMemoryAuthRateLimiter } from '../auth/rate-limit.js';
 import { jwtAuthMiddleware } from '../middleware/jwt.js';
 
@@ -30,11 +41,28 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const oauthStartQuerySchema = z.object({
+  returnTo: optionalTrimmedString,
+});
+
+const oauthCallbackQuerySchema = z.object({
+  code: z.string().transform(value => value.trim()).pipe(z.string().min(1)),
+  state: z.string().transform(value => value.trim()).pipe(z.string().min(1)),
+});
+
+const oauthExchangeSchema = z.object({
+  code: z.string().transform(value => value.trim()).pipe(z.string().min(1)),
+});
+
 const publicAuthErrorMessages = new Set([
   '手机号或邮箱必须提供一个',
   '密码长度至少 6 位',
   '该手机号或邮箱已注册，请直接登录或换一个账号注册',
   '手机号/邮箱或密码错误',
+  '暂未开放自助注册，请联系团队开通账号',
+  '第三方账号邮箱尚未验证，请先完成邮箱验证后再登录',
+  '第三方登录暂不可用，请稍后重试',
+  '第三方登录失败，请稍后重试',
 ]);
 
 function authErrorMessage(err: unknown, fallback: string): string {
@@ -51,6 +79,18 @@ const authRateLimiter = new InMemoryAuthRateLimiter();
 const AUTH_RATE_LIMIT_MESSAGE = '尝试次数过多，请稍后再试';
 const REGISTRATION_CLOSED_MESSAGE = '暂未开放自助注册，请联系团队开通账号';
 const REGISTRATION_INVITE_MESSAGE = '注册当前仅面向内测邀请开放，请填写有效邀请码';
+const OAUTH_LOGIN_FAILED_MESSAGE = '第三方登录失败，请稍后重试';
+const OAUTH_STATE_COOKIE_NAME = 'mycc_oauth_state';
+const OAUTH_STATE_COOKIE_PATH = '/api/auth/oauth';
+const OAUTH_STATE_COOKIE_MAX_AGE_SECONDS = 600;
+const OAUTH_LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
+
+type OAuthLoginResult = Awaited<ReturnType<typeof completeOAuthCodeLogin>>;
+
+const oauthLoginCodes = new Map<string, {
+  result: OAuthLoginResult;
+  expiresAt: number;
+}>();
 
 type RegistrationMode = 'open' | 'invite' | 'closed';
 
@@ -142,6 +182,86 @@ function checkAuthRateLimit(
   return authRateLimiter.check(key);
 }
 
+function secureCookieAttribute(): string[] {
+  return process.env.NODE_ENV === 'production' ? ['Secure'] : [];
+}
+
+function buildOAuthStateCookie(state: string): string {
+  return [
+    `${OAUTH_STATE_COOKIE_NAME}=${state}`,
+    `Path=${OAUTH_STATE_COOKIE_PATH}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${OAUTH_STATE_COOKIE_MAX_AGE_SECONDS}`,
+    ...secureCookieAttribute(),
+  ].join('; ');
+}
+
+function clearOAuthStateCookie(): string {
+  return [
+    `${OAUTH_STATE_COOKIE_NAME}=`,
+    `Path=${OAUTH_STATE_COOKIE_PATH}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+    ...secureCookieAttribute(),
+  ].join('; ');
+}
+
+function parseCookies(rawCookie: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (!rawCookie) return cookies;
+  for (const part of rawCookie.split(';')) {
+    const [rawName, ...rawValueParts] = part.trim().split('=');
+    if (!rawName || rawValueParts.length === 0) continue;
+    cookies[rawName] = decodeURIComponent(rawValueParts.join('='));
+  }
+  return cookies;
+}
+
+function getRequestCookie(request: FastifyRequest, name: string): string | undefined {
+  const rawCookie = request.headers.cookie;
+  const cookieHeader = Array.isArray(rawCookie) ? rawCookie[0] : rawCookie;
+  return parseCookies(cookieHeader)[name];
+}
+
+function extractOAuthStateFromAuthorizationUrl(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get('state');
+  if (!state) {
+    throw new Error('OAuth authorization URL missing state');
+  }
+  return state;
+}
+
+function createOAuthLoginCode(result: OAuthLoginResult): string {
+  const now = Date.now();
+  pruneExpiredOAuthLoginCodes(now);
+  const code = randomBytes(32).toString('base64url');
+  oauthLoginCodes.set(code, {
+    result,
+    expiresAt: now + OAUTH_LOGIN_CODE_TTL_MS,
+  });
+  return code;
+}
+
+function pruneExpiredOAuthLoginCodes(now = Date.now()): void {
+  for (const [code, record] of oauthLoginCodes) {
+    if (record.expiresAt <= now) {
+      oauthLoginCodes.delete(code);
+    }
+  }
+}
+
+function consumeOAuthLoginCode(code: string): OAuthLoginResult | null {
+  const record = oauthLoginCodes.get(code);
+  if (!record) return null;
+  oauthLoginCodes.delete(code);
+  if (record.expiresAt <= Date.now()) {
+    return null;
+  }
+  return record.result;
+}
+
 const profileUpdateSchema = z.object({
   assistantName: z.preprocess(
     (val) => {
@@ -161,8 +281,113 @@ export async function authRoutes(fastify: FastifyInstance) {
       success: true,
       data: {
         registration: registrationConfig(),
+        oauth: getOAuthPublicConfig(),
       },
     });
+  });
+
+  // GET /api/auth/oauth/:provider/start - 跳转到第三方授权页
+  fastify.get('/api/auth/oauth/:provider/start', async (request, reply) => {
+    const provider = (request.params as { provider?: string }).provider || '';
+    if (!isOAuthProvider(provider)) {
+      return reply.status(404).send({
+        success: false,
+        error: '第三方登录服务不存在',
+      });
+    }
+
+    try {
+      const query = oauthStartQuerySchema.parse(request.query);
+      const authorizationUrl = buildOAuthAuthorizationUrl(provider, {
+        returnTo: query.returnTo,
+      });
+      const state = extractOAuthStateFromAuthorizationUrl(authorizationUrl);
+      reply.header('set-cookie', [buildOAuthStateCookie(state)]);
+      return reply.redirect(authorizationUrl);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: '请求参数错误',
+          details: err.issues,
+        });
+      }
+      return reply.status(503).send({
+        success: false,
+        error: authErrorMessage(err, '第三方登录暂不可用，请稍后重试'),
+      });
+    }
+  });
+
+  // GET /api/auth/oauth/:provider/callback - 第三方授权回调
+  fastify.get('/api/auth/oauth/:provider/callback', async (request, reply) => {
+    const provider = (request.params as { provider?: string }).provider || '';
+    if (!isOAuthProvider(provider)) {
+      return reply.status(404).send({
+        success: false,
+        error: '第三方登录服务不存在',
+      });
+    }
+
+    reply.header('set-cookie', [clearOAuthStateCookie()]);
+    try {
+      const query = oauthCallbackQuerySchema.parse(request.query);
+      const cookieState = getRequestCookie(request, OAUTH_STATE_COOKIE_NAME);
+      if (cookieState !== query.state) {
+        return reply.redirect(buildOAuthFrontendRedirect({
+          error: OAUTH_LOGIN_FAILED_MESSAGE,
+        }));
+      }
+      const result = await completeOAuthCodeLogin(provider, {
+        code: query.code,
+        state: query.state,
+      });
+      const loginCode = createOAuthLoginCode(result);
+      return reply.redirect(buildOAuthFrontendRedirect({
+        code: loginCode,
+        returnTo: result.returnTo,
+      }));
+    } catch (err) {
+      const error = err instanceof z.ZodError
+        ? '请求参数错误'
+        : authErrorMessage(err, '第三方登录失败，请稍后重试');
+      return reply.redirect(buildOAuthFrontendRedirect({
+        error,
+      }));
+    }
+  });
+
+  // POST /api/auth/oauth/exchange - 交换一次性 OAuth 登录 code
+  fastify.post('/api/auth/oauth/exchange', async (request, reply) => {
+    try {
+      const body = oauthExchangeSchema.parse(request.body);
+      const result = consumeOAuthLoginCode(body.code);
+      if (!result) {
+        return reply.status(401).send({
+          success: false,
+          error: '登录凭据无效或已过期',
+        });
+      }
+      return reply.send({
+        success: true,
+        data: {
+          token: result.token,
+          user: result.user,
+        },
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: '请求参数错误',
+          details: err.issues,
+        });
+      }
+      return reply.status(401).send({
+        success: false,
+        error: '登录凭据无效或已过期',
+      });
+    }
   });
 
   // POST /api/auth/register - 用户注册

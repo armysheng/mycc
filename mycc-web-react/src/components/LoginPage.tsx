@@ -4,10 +4,54 @@ import {
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
-import { getAuthConfig, login as apiLogin, register as apiRegister } from "../api/auth";
+import {
+  exchangeOAuthLoginCode,
+  getAuthConfig,
+  login as apiLogin,
+  register as apiRegister,
+  resolveAuthUrl,
+} from "../api/auth";
 import { toRetryableUserFacingError } from "../api/userFacingError";
 import { PRODUCT_COPY } from "../utils/productCopy";
-import type { RegistrationMode } from "../types/auth";
+import type { OAuthProvider, OAuthProviderConfig, RegistrationMode } from "../types/auth";
+
+const OAUTH_PROVIDER_LABELS: Record<OAuthProvider, string> = {
+  google: "Google",
+  github: "GitHub",
+};
+
+const DEFAULT_OAUTH_PROVIDERS: Record<OAuthProvider, OAuthProviderConfig> = {
+  google: {
+    enabled: false,
+    authUrl: "/api/auth/oauth/google/start",
+  },
+  github: {
+    enabled: false,
+    authUrl: "/api/auth/oauth/github/start",
+  },
+};
+
+function safeReturnPath(value: string | null | undefined): string {
+  const path = value?.trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//")) {
+    return "/";
+  }
+  return path;
+}
+
+function getCurrentReturnTo(): string {
+  if (typeof window === "undefined") return "/";
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (!current || current === "/login" || current.startsWith("/login?")) {
+    return "/";
+  }
+  return safeReturnPath(current);
+}
+
+function withReturnTo(authUrl: string, returnTo: string): string {
+  const separator = authUrl.includes("?") ? "&" : "?";
+  return `${authUrl}${separator}returnTo=${encodeURIComponent(returnTo)}`;
+}
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -21,6 +65,8 @@ export function LoginPage() {
   const [password, setPassword] = useState(devPassword);
   const [inviteCode, setInviteCode] = useState("");
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("open");
+  const [oauthProviders, setOauthProviders] =
+    useState<Record<OAuthProvider, OAuthProviderConfig>>(DEFAULT_OAUTH_PROVIDERS);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +81,13 @@ export function LoginPage() {
         if (!cancelled && mode) {
           setRegistrationMode(mode);
         }
+        const providers = res.data?.oauth?.providers;
+        if (!cancelled && providers) {
+          setOauthProviders({
+            google: providers.google ?? DEFAULT_OAUTH_PROVIDERS.google,
+            github: providers.github ?? DEFAULT_OAUTH_PROVIDERS.github,
+          });
+        }
       })
       .catch(() => {
         // The backend remains the source of truth if this lightweight config fetch fails.
@@ -43,6 +96,59 @@ export function LoginPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(
+      window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash,
+    );
+    const getCallbackParam = (name: string) => searchParams.get(name) || hashParams.get(name);
+    const oauthError = getCallbackParam("oauth_error") || getCallbackParam("auth_error");
+    const oauthCode = getCallbackParam("oauth_code");
+    const returnTo = safeReturnPath(getCallbackParam("return_to"));
+
+    if (oauthError) {
+      setError(toRetryableUserFacingError(oauthError, "第三方登录失败"));
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+
+    if (!oauthCode) return;
+
+    window.history.replaceState(null, "", window.location.pathname);
+    setError("");
+    setLoading(true);
+    let cancelled = false;
+    exchangeOAuthLoginCode(oauthCode)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          window.history.replaceState(null, "", returnTo);
+          login(res.data.token, res.data.user);
+          return;
+        }
+        setError(toRetryableUserFacingError(res.error, "第三方登录失败"));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(
+          toRetryableUserFacingError(
+            err instanceof Error ? err.message : undefined,
+            "第三方登录失败",
+          ),
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [login]);
 
   const clearStaleSessionQuery = () => {
     if (typeof window === "undefined") return;
@@ -105,6 +211,9 @@ export function LoginPage() {
 
   const inputClassName =
     "w-full rounded-xl border bg-[var(--bg-input)] px-3.5 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:outline-none focus:ring-2";
+  const enabledOAuthProviders = (Object.keys(oauthProviders) as OAuthProvider[])
+    .filter((provider) => oauthProviders[provider].enabled);
+  const oauthReturnTo = getCurrentReturnTo();
 
   return (
     <div className="relative min-h-screen overflow-hidden flex items-center justify-center px-4 py-10">
@@ -250,6 +359,35 @@ export function LoginPage() {
           {mode === "register" && registrationClosed && (
             <div className="mt-4 rounded-xl border px-3 py-2.5 text-sm text-[var(--text-secondary)] bg-[var(--accent-subtle)] border-[var(--accent-border)]">
               暂未开放自助注册，请联系团队开通账号。
+            </div>
+          )}
+
+          {enabledOAuthProviders.length > 0 && (
+            <div className="mt-5 space-y-2">
+              {enabledOAuthProviders.map((provider) => {
+                const config = oauthProviders[provider];
+                const label = OAUTH_PROVIDER_LABELS[provider];
+                return (
+                  <a
+                    key={provider}
+                    href={withReturnTo(resolveAuthUrl(config.authUrl), oauthReturnTo)}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--accent-border)] hover:bg-[var(--accent-subtle)]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex h-5 w-5 items-center justify-center rounded-[6px] border border-[var(--surface-border)] text-[10px] font-bold"
+                    >
+                      {provider === "google" ? "G" : "GH"}
+                    </span>
+                    使用 {label} 继续
+                  </a>
+                );
+              })}
+              <div className="flex items-center gap-3 py-1 text-[11px] text-[var(--text-muted)]">
+                <span className="h-px flex-1 bg-[var(--surface-border)]" />
+                <span>或使用账号密码</span>
+                <span className="h-px flex-1 bg-[var(--surface-border)]" />
+              </div>
             </div>
           )}
 

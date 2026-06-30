@@ -10,6 +10,13 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 const apiUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
 
+export function resolveAuthUrl(pathOrUrl: string): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+  return apiUrl(pathOrUrl);
+}
+
 export async function login(data: LoginRequest): Promise<AuthResponse> {
   const res = await fetch(apiUrl('/api/auth/login'), {
     method: 'POST',
@@ -24,6 +31,15 @@ export async function register(data: RegisterRequest): Promise<AuthResponse> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function exchangeOAuthLoginCode(code: string): Promise<AuthResponse> {
+  const res = await fetch(apiUrl('/api/auth/oauth/exchange'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
   });
   return res.json();
 }
