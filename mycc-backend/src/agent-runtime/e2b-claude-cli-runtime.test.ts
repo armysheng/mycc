@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { E2bClaudeCliRuntime } from './e2b-claude-cli-runtime.js';
 import type { IdeSessionStore, StoredIdeSession } from '../ide/session-store.js';
+import { resetClaudeProviderEnvForTest } from '../test/clean-prod-env.js';
 
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
@@ -39,6 +40,7 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 describe('E2bClaudeCliRuntime', () => {
   beforeEach(() => {
+    resetClaudeProviderEnvForTest();
     vi.stubEnv('MYCC_IDE_PROVIDER', 'e2b');
     vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
     vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
@@ -192,6 +194,7 @@ describe('E2bClaudeCliRuntime', () => {
   });
 
   it('maps CCR router env aliases into Claude CLI envs', async () => {
+    resetClaudeProviderEnvForTest();
     vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
     vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
     vi.stubEnv('ANTHROPIC_API_KEY', 'stale-anthropic-api-key');

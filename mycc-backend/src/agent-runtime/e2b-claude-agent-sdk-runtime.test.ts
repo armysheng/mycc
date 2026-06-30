@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { E2bClaudeAgentSdkRuntime } from './e2b-claude-agent-sdk-runtime.js';
 import type { IdeSessionStore, StoredIdeSession } from '../ide/session-store.js';
+import { resetClaudeProviderEnvForTest } from '../test/clean-prod-env.js';
 
 const runningSession: StoredIdeSession = {
   id: 'ide_123',
@@ -39,6 +40,8 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 describe('E2bClaudeAgentSdkRuntime', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
+    resetClaudeProviderEnvForTest();
     vi.stubEnv('MYCC_IDE_PROVIDER', 'e2b');
     vi.stubEnv('MYCC_CCR_BASE_URL', 'http://127.0.0.1:3456');
     vi.stubEnv('MYCC_CCR_AUTH_TOKEN', 'ccr-auth-token');
@@ -116,10 +119,9 @@ describe('E2bClaudeAgentSdkRuntime', () => {
   });
 
   it('uses Agent SDK specific provider env before shared Claude aliases', async () => {
+    resetClaudeProviderEnvForTest();
     vi.stubEnv('MYCC_AGENT_SDK_BASE_URL', 'https://agent-sdk.example.test/v1');
     vi.stubEnv('MYCC_AGENT_SDK_AUTH_TOKEN', 'sdk-token');
-    vi.stubEnv('MYCC_CLAUDE_BASE_URL', 'https://claude-proxy.example.test/v1');
-    vi.stubEnv('MYCC_CLAUDE_AUTH_TOKEN', 'claude-token');
     const runCommand = vi.fn().mockImplementation(async (_session, command, options) => {
       if (String(command).includes('bridge.mjs')) {
         await options.onStdout('{"type":"result","subtype":"success","is_error":false,"session_id":"session-1"}\n');
