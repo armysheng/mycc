@@ -75,6 +75,26 @@ describe('OAuth provider config', () => {
     });
   });
 
+  it('treats placeholder OAuth credentials as disabled', () => {
+    process.env.MYCC_OAUTH_GOOGLE_CLIENT_ID = '__PLACEHOLDER_GOOGLE_CLIENT_ID__';
+    process.env.MYCC_OAUTH_GOOGLE_CLIENT_SECRET = '__PLACEHOLDER_GOOGLE_CLIENT_SECRET__';
+    process.env.MYCC_OAUTH_GITHUB_CLIENT_ID = '<github-client-id>';
+    process.env.MYCC_OAUTH_GITHUB_CLIENT_SECRET = 'replace-me';
+
+    expect(getOAuthPublicConfig()).toEqual({
+      providers: {
+        google: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/google/start',
+        },
+        github: {
+          enabled: false,
+          authUrl: '/api/auth/oauth/github/start',
+        },
+      },
+    });
+  });
+
   it('builds provider authorization URLs with signed state and without client secrets', () => {
     process.env.MYCC_AUTH_PUBLIC_BASE_URL = 'https://daoyou.iaigc.fun/';
     process.env.MYCC_OAUTH_GOOGLE_CLIENT_ID = 'google-client';
