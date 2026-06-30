@@ -36,6 +36,65 @@ describe("App Routing", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows the public landing page for signed-out visitors at root", async () => {
+    window.history.pushState({}, "", "/");
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <App />
+        </AuthProvider>,
+      );
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "随心而动，念头通达" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("道友 AI 首页")).toBeInTheDocument();
+    expect(screen.getAllByText("网页调研与结论报告").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("link", { name: /开始使用/ }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps the auth form on the signed-out login route", async () => {
+    window.history.pushState({}, "", "/login");
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <App />
+        </AuthProvider>,
+      );
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "进入工作空间" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("请输入手机号或邮箱"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps protected signed-out routes on the auth form", async () => {
+    window.history.pushState({}, "", "/projects/demo");
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <App />
+        </AuthProvider>,
+      );
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "进入工作空间" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "随心而动，念头通达" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders chat page when navigating to projects path", async () => {
     await act(async () => {
       render(
