@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authRoutes } from './auth.js';
+import { resetRegistrationEnvForTest } from '../test/clean-prod-env.js';
 
 const mocks = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
@@ -35,6 +36,8 @@ async function buildApp() {
 describe('auth routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRegistrationEnvForTest();
+    vi.stubEnv('MYCC_REGISTRATION_MODE', 'open');
     mocks.isOAuthProvider.mockImplementation((provider: string) => provider === 'google' || provider === 'github');
     mocks.buildOAuthFrontendRedirect.mockImplementation((params: {
       code?: string;
