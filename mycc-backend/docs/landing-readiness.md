@@ -52,7 +52,7 @@ Current ops-only production evidence from 2026-06-29 CST:
 - Authorized local `GET http://127.0.0.1:8080/readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`: `ready=true`, `status=ok`.
 - Deep readiness checks: `database=pass`, `skills=pass`, `runtime=pass` with `E2B Agent preflight ready`; `ssh=skipped` because the configured runtime does not initialize SSH at startup.
 - Public unauthenticated `GET https://daoyou.iaigc.fun/readyz/deep` still returns only `401 readyz_deep_unauthorized` and does not expose internal checks.
-- Production `schema_migrations` contains 8 applied migrations. Required landing migrations `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; both were recorded on 2026-06-26T08:34:28Z. OAuth release candidates must also include and apply `009-add-oauth-accounts.sql` before enabling Google/GitHub callbacks.
+- Production `schema_migrations` contains 8 applied migrations in this 2026-06-29 snapshot. Required landing migrations `007-add-agent-run-trace.sql` and `008-add-ide-session-identity.sql` are applied; both were recorded on 2026-06-26T08:34:28Z.
 
 Post-#111 production evidence from 2026-06-29 CST:
 
@@ -88,6 +88,16 @@ Post-#121 production evidence from 2026-06-29 CST:
 - `BASE_URL=https://daoyou.iaigc.fun npm run smoke:public-surface` passed on deployed commit `82d2fec`.
 - Production Node guard passes with Node `v20.19.5`, and `npm run doctor:e2b-agent` reports E2B Agent preflight ready.
 - `smoke:public-surface` now reports the failing check label, full URL, and nested `Error.cause` when a network fetch throws, so transient DNS/TLS/connectivity failures are diagnosable.
+
+Post-#124 OAuth deployment evidence from 2026-06-30 CST:
+
+- PR #124 merged as commit `cacc9b99be9bc11d65495999dcb30e8f5565798d` with Google/GitHub OAuth, HttpOnly cookie-bound OAuth state, and one-time `oauth_code` exchange.
+- GitHub `CI` run `28411561913` passed for `cacc9b99`: `frontend-ci`, `backend-ci`, and `sandbox-ci` all succeeded.
+- GitHub `Deploy Staging` run `28411602302` passed for `cacc9b99`, including backend health, deep readiness, and frontend endpoint verification.
+- Remote `/home/armysheng/mycc` is deployed at `cacc9b9`, `prod_dirty_count=0`, and `systemctl --user is-active mycc-backend.service` returns `active`.
+- Public `GET https://daoyou.iaigc.fun/readyz` returned `ready=true`, `status=ok`; `database=pass`, `skills=pass`, `ssh=skipped`, and the normal public readiness route did not request the runtime deep check.
+- Public `GET https://daoyou.iaigc.fun/api/auth/config` still reports `registration.mode=closed` and both Google/GitHub OAuth providers disabled, which is expected until provider app credentials are configured.
+- Read-only production `schema_migrations` query reports `migration_count=9`; `007-add-agent-run-trace.sql`, `008-add-ide-session-identity.sql`, and `009-add-oauth-accounts.sql` are all applied.
 
 The core path is proven when all of these are true:
 
@@ -177,12 +187,12 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
 
 | Category | Check | Current state | Authorization / side effect |
 | --- | --- | --- | --- |
-| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-29 in post-#121 evidence; verify the current deployed commit live before release decisions. | No extra authorization needed. |
+| No-side-effect public checks | `GET /health`, `GET /readyz`, public unauthenticated `GET /readyz/deep`, `GET /api/auth/config`, `smoke:public-surface` | Passed on 2026-06-30 after #124 deploy for `/readyz` and `/api/auth/config`; full public-surface smoke last recorded on 2026-06-29 in post-#121 evidence | No extra authorization needed. |
 | Auth privacy smoke | `smoke:auth-privacy` | Passed on 2026-06-29 against deployed commit `23074b0`; generic credential error confirmed | Creates one failed-login audit/rate-limit event; no registration, onboarding, E2B session, or chat. |
-| OAuth login/register | Google/GitHub start URL, callback URL, verified email merge, new-account registration gate | Code path must pass local tests; provider app/secrets, callback domains, and migration `009-add-oauth-accounts.sql` must be verified before enabling live buttons | Live callback uses third-party provider identity and may create/link a real account; run only with an approved test identity. |
+| OAuth login/register | Google/GitHub start URL, callback URL, verified email merge, new-account registration gate | Code path merged and deployed in #124; migration `009-add-oauth-accounts.sql` is applied; provider app/secrets and callback domains still need verification before enabling live buttons | Live callback uses third-party provider identity and may create/link a real account; run only with an approved test identity. |
 | Browser product surface | Desktop and 390x844 mobile browser audit of `/projects/demo` login/register surface | Passed again on 2026-06-29 with Playwright: desktop login, mobile login, registration closed state, no forbidden public text, no mobile horizontal overflow | No account action, no form submission. |
 | Ops-only readiness | Authorized local/SSH `GET /readyz/deep` with `MYCC_READYZ_DEEP_TOKEN`; production Node guard; E2B agent doctor; sandbox template doctor | Passed on 2026-06-29: database/skills/runtime pass; SSH skipped by runtime config; Node v20.19.5 guard pass; E2B Agent preflight ready; sandbox template exists | Requires ops token for deep readiness; do not expose internal checks publicly. |
-| Database migrations | Read-only `schema_migrations` query for landing migrations `007`, `008`, and OAuth migration `009` when this PR is the release candidate | `007`/`008` passed on 2026-06-29; `009-add-oauth-accounts.sql` still needs to be included/applied before OAuth live smoke | No migration is executed by the read-only query. |
+| Database migrations | Read-only `schema_migrations` query for landing migrations `007`, `008`, and OAuth migration `009` when this PR is the release candidate | `007`/`008` passed on 2026-06-29; `009-add-oauth-accounts.sql` passed on 2026-06-30 after #124 deploy; `migration_count=9` | No migration is executed by the read-only query. |
 | Auth and onboarding live smoke | `smoke:auth-onboarding` with explicit existing test identity while registration is closed | Still required | Uses a real test account and may initialize workspace/E2B state. |
 | E2B live smokes | IDE, desktop, and Agent SDK workspace smoke tests | Still required | Creates real E2B sessions/workspace markers and may consume model/runtime resources; cleanup must be recorded. |
 | Full live gate | `MYCC_LIVE_GATE_APPROVED=1 BASE_URL=<target> npm run harness:verify -- --target=landing-live --no-write` | Still required | Bundles auth/onboarding and E2B live checks; run only as a recorded release-candidate gate. |
@@ -194,11 +204,11 @@ For the landing cohort, keep the E2B session TTL at 3600 seconds unless the targ
    - Split unrelated experiments, generated artifacts, and old redesign folders out of the release candidate.
    - Run `npm run landing:classify -- --fail-on-unclassified` from `mycc-backend` before staging files.
    - Confirm migrations `007` and `008` are included and applied. Completed on 2026-06-29 by read-only `schema_migrations` query.
-   - For PR #124 / OAuth release candidates, confirm `009-add-oauth-accounts.sql` is included in the deployed commit and appears in `schema_migrations` before provider callback smoke.
+   - For PR #124 / OAuth release candidates, confirm `009-add-oauth-accounts.sql` is included in the deployed commit and appears in `schema_migrations` before provider callback smoke. Completed on 2026-06-30 by read-only `schema_migrations` query after #124 deploy.
 
 2. Staging deployment rehearsal
    - Public staging preview is deployed at `https://daoyou.iaigc.fun`.
-   - Confirm whether the deployed backend commit includes all release-candidate migrations. Current target has `001` through `008` recorded; OAuth releases must advance this through `009-add-oauth-accounts.sql`.
+   - Confirm whether the deployed backend commit includes all release-candidate migrations. Current target has `001` through `009` recorded after #124 deploy.
    - Run `npm run db:migrate` only when cutting a new release candidate with unapplied migrations, or explicitly prove it is a no-op.
    - Verify authorized `GET /readyz/deep` over SSH/localhost returns `runtime.status=pass`; public unauthenticated requests must stay 401/403 without internal details.
    - Run `BASE_URL=<staging-backend> npm run smoke:public-surface` before auth or E2B checks.
