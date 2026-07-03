@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   ArrowRightIcon,
   BellAlertIcon,
@@ -5,6 +6,11 @@ import {
   FolderOpenIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const assetBase = "/landing";
 
@@ -45,9 +51,106 @@ const scenes = [
 
 export function LandingPage() {
   const primaryScene = scenes[1];
+  const landingRef = useRef<HTMLElement | null>(null);
+
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+
+      mm.add(
+        {
+          isDesktop: "(min-width: 981px)",
+          reduceMotion: "(prefers-reduced-motion: reduce)",
+        },
+        (context) => {
+          const { isDesktop, reduceMotion } = context.conditions as {
+            isDesktop: boolean;
+            reduceMotion: boolean;
+          };
+
+          if (reduceMotion) {
+            gsap.set(".dy-reveal, .dy-hero-motion", {
+              autoAlpha: 1,
+              clearProps: "transform,visibility,opacity",
+            });
+            return;
+          }
+
+          const heroTimeline = gsap.timeline({
+            defaults: { ease: "power3.out", duration: 0.9 },
+          });
+
+          heroTimeline
+            .from(".dy-header", { autoAlpha: 0, y: -18, duration: 0.55 })
+            .from(
+              ".dy-hero-title-line",
+              {
+                autoAlpha: 0,
+                y: 52,
+                stagger: 0.08,
+              },
+              "-=0.18",
+            )
+            .from(
+              ".dy-hero-subtitle",
+              { autoAlpha: 0, y: 24, duration: 0.72 },
+              "-=0.5",
+            )
+            .from(
+              ".dy-cta",
+              {
+                autoAlpha: 0,
+                y: 20,
+                stagger: 0.08,
+                duration: 0.62,
+              },
+              "-=0.42",
+            )
+            .from(
+              ".dy-hero-visual",
+              { autoAlpha: 0, y: 56, scale: 0.98, duration: 1 },
+              "-=0.44",
+            );
+
+          gsap.to(".dy-hero-visual img", {
+            yPercent: isDesktop ? -8 : -4,
+            scale: 1.035,
+            ease: "none",
+            scrollTrigger: {
+              trigger: ".dy-hero",
+              start: "top top",
+              end: "bottom top",
+              scrub: 0.8,
+            },
+          });
+
+          gsap.set(".dy-reveal", { autoAlpha: 0, y: 42 });
+          ScrollTrigger.batch(".dy-reveal", {
+            start: "top 82%",
+            once: true,
+            onEnter: (elements) => {
+              gsap.to(elements, {
+                autoAlpha: 1,
+                y: 0,
+                stagger: 0.08,
+                duration: 0.72,
+                ease: "power3.out",
+                overwrite: "auto",
+              });
+            },
+          });
+
+          requestAnimationFrame(() => ScrollTrigger.refresh());
+        },
+      );
+
+      return () => mm.revert();
+    },
+    { scope: landingRef },
+  );
 
   return (
-    <main className="dy-landing">
+    <main className="dy-landing" ref={landingRef}>
       <style>{`
         .dy-landing {
           --dy-bg: #090a0b;
@@ -206,6 +309,13 @@ export function LandingPage() {
         .dy-nowrap {
           display: inline-block;
           white-space: nowrap;
+        }
+
+        .dy-hero-motion,
+        .dy-reveal,
+        .dy-hero-visual,
+        .dy-hero-visual img {
+          will-change: transform, opacity;
         }
 
         .dy-hero-subtitle {
@@ -747,9 +857,9 @@ export function LandingPage() {
 
       <section className="dy-hero" id="product">
         <div className="dy-hero-content">
-          <h1 aria-label="随心而动，念头通达">
-            <span className="dy-nowrap">随心而动，</span>
-            <span className="dy-nowrap">念头通达</span>
+          <h1 className="dy-hero-motion" aria-label="随心而动，念头通达">
+            <span className="dy-nowrap dy-hero-title-line">随心而动，</span>
+            <span className="dy-nowrap dy-hero-title-line">念头通达</span>
           </h1>
           <p className="dy-hero-subtitle">
             将道友 AI
@@ -784,7 +894,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="dy-statement">
+      <section className="dy-statement dy-reveal">
         <div className="dy-decorative-line" aria-hidden="true" />
         <h2>
           通过会话，完成资料整理、
@@ -798,7 +908,7 @@ export function LandingPage() {
 
       <section className="dy-scenes" id="scenes">
         <div className="dy-wide">
-          <div className="dy-tabs" aria-label="工作场景">
+          <div className="dy-tabs dy-reveal" aria-label="工作场景">
             {scenes.map((scene) => (
               <span
                 className={`dy-tab ${
@@ -810,7 +920,7 @@ export function LandingPage() {
               </span>
             ))}
           </div>
-          <div className="dy-scene-card">
+          <div className="dy-scene-card dy-reveal">
             <div className="dy-scene-copy">
               <div className="dy-efficiency">
                 效率提升：1 到 2 天 -&gt; 11 分钟
@@ -839,7 +949,7 @@ export function LandingPage() {
         <h2>说出想法，自动完成，直接交付。</h2>
         <div className="dy-feature-grid">
           {scenes.map(({ Icon, ...scene }) => (
-            <article className="dy-feature" key={scene.label}>
+            <article className="dy-feature dy-reveal" key={scene.label}>
               <img src={scene.image} alt={scene.alt} />
               <div className="dy-feature-body">
                 <div className="dy-feature-heading">
@@ -859,22 +969,22 @@ export function LandingPage() {
         <h2>专为日常工作打造</h2>
         <p>本地资料、网页阅读、文档成果和后续提醒，都放进一个连续的工作流。</p>
         <div className="dy-daily-list">
-          <div className="dy-daily-item">
+          <div className="dy-daily-item dy-reveal">
             <h3>本地资料直接使用</h3>
             <span>授权文件夹即可作为工作场景，结果自动保存。</span>
           </div>
-          <div className="dy-daily-item">
+          <div className="dy-daily-item dy-reveal">
             <h3>自主规划并执行</h3>
             <span>自动拆解任务，逐步推进，过程可见。</span>
           </div>
-          <div className="dy-daily-item">
+          <div className="dy-daily-item dy-reveal">
             <h3>安全、透明、可控</h3>
             <span>关键动作前确认，执行记录可以回看。</span>
           </div>
         </div>
       </section>
 
-      <section className="dy-final">
+      <section className="dy-final dy-reveal">
         <h2>桌面级通用智能体助手</h2>
         <p>从一个念头开始，把资料、网页、文档和跟进串成可交付的结果。</p>
         <div className="dy-cta-row">
