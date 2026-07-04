@@ -19,6 +19,9 @@ const frames = [
     label: "调研",
     title: "网页调研与结论报告",
     caption: "读网页，留来源。",
+    command: "帮我调研竞品动态",
+    status: "道友正在读网页",
+    output: "结论报告",
     image: `${assetBase}/scene-web-research.jpg`,
     alt: "道友 AI 网页调研场景",
     Icon: MagnifyingGlassIcon,
@@ -27,6 +30,9 @@ const frames = [
     label: "整理",
     title: "资料整理与成果包",
     caption: "文件归位，线索成形。",
+    command: "把桌面资料归档",
+    status: "道友正在归类",
+    output: "项目索引",
     image: `${assetBase}/scene-file-organize.jpg`,
     alt: "道友 AI 资料整理场景",
     Icon: FolderOpenIcon,
@@ -35,6 +41,9 @@ const frames = [
     label: "生成",
     title: "周报与汇报文档",
     caption: "结果成稿，口径清楚。",
+    command: "写成本周汇报",
+    status: "道友正在成稿",
+    output: "周报初稿",
     image: `${assetBase}/scene-weekly-report.jpg`,
     alt: "道友 AI 周报生成场景",
     Icon: DocumentTextIcon,
@@ -43,6 +52,9 @@ const frames = [
     label: "跟进",
     title: "会议后续与自动跟进",
     caption: "到时间，继续推进。",
+    command: "周五提醒我跟进",
+    status: "道友正在排程",
+    output: "提醒待办",
     image: `${assetBase}/scene-follow-up.jpg`,
     alt: "道友 AI 自动跟进场景",
     Icon: BellAlertIcon,
@@ -69,7 +81,7 @@ export function LandingPage() {
 
           if (reduceMotion) {
             gsap.set(
-              ".dy-hero-motion, .dy-orbit-frame, .dy-hyper-card, .dy-final-motion",
+              ".dy-hero-motion, .dy-orbit-frame, .dy-hyper-card, .dy-final-motion, .dy-daoyou-ui",
               {
                 autoAlpha: 1,
                 clearProps: "transform,visibility,opacity",
@@ -102,6 +114,11 @@ export function LandingPage() {
               ".dy-orbit-chip",
               { autoAlpha: 0, y: 18, stagger: 0.06, duration: 0.55 },
               "-=0.4",
+            )
+            .from(
+              ".dy-daoyou-ui",
+              { autoAlpha: 0, y: 18, stagger: 0.06, duration: 0.58 },
+              "-=0.46",
             );
 
           gsap.to(".dy-orbit-frame", {
@@ -121,6 +138,16 @@ export function LandingPage() {
             yoyo: true,
             ease: "sine.inOut",
             stagger: 0.25,
+          });
+
+          gsap.to(".dy-lane-node", {
+            x: 14,
+            scale: 1.08,
+            duration: 1.1,
+            repeat: -1,
+            yoyo: true,
+            ease: "sine.inOut",
+            stagger: 0.12,
           });
 
           if (isDesktop) {
@@ -296,7 +323,10 @@ export function LandingPage() {
         .dy-chipline,
         .dy-frame-meta,
         .dy-hyper-label,
-        .dy-shot-tag {
+        .dy-shot-tag,
+        .dy-daoyou-top,
+        .dy-daoyou-prompt,
+        .dy-artifact-tray {
           display: flex;
           align-items: center;
         }
@@ -506,7 +536,9 @@ export function LandingPage() {
         .dy-hero-motion,
         .dy-orbit-media img,
         .dy-hyper-glass,
-        .dy-final-motion {
+        .dy-final-motion,
+        .dy-daoyou-ui,
+        .dy-lane-node {
           will-change: transform, opacity;
         }
 
@@ -610,6 +642,65 @@ export function LandingPage() {
           height: 16px;
         }
 
+        .dy-orbit-command {
+          position: absolute;
+          left: 6%;
+          top: 7%;
+          z-index: 7;
+          width: min(390px, 58%);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 22px;
+          background: rgba(8, 11, 10, 0.72);
+          backdrop-filter: blur(18px);
+          padding: 14px;
+          box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+        }
+
+        .dy-orbit-command span {
+          display: block;
+          color: rgba(244, 248, 242, 0.48);
+          font-size: 12px;
+          font-weight: 780;
+        }
+
+        .dy-orbit-command strong {
+          display: block;
+          margin-top: 6px;
+          color: var(--dy-text);
+          font-size: clamp(18px, 2vw, 24px);
+          line-height: 1.25;
+          font-weight: 880;
+        }
+
+        .dy-orbit-output {
+          position: absolute;
+          right: 5%;
+          top: 44%;
+          z-index: 7;
+          width: 168px;
+          border: 1px solid rgba(126, 224, 164, 0.28);
+          border-radius: 20px;
+          background: rgba(231, 247, 228, 0.94);
+          color: #132018;
+          padding: 14px;
+          box-shadow: 0 26px 80px rgba(0, 0, 0, 0.22);
+        }
+
+        .dy-orbit-output span {
+          display: block;
+          color: #647467;
+          font-size: 11px;
+          font-weight: 850;
+        }
+
+        .dy-orbit-output strong {
+          display: block;
+          margin-top: 7px;
+          font-size: 18px;
+          line-height: 1.16;
+          font-weight: 900;
+        }
+
         .dy-chipline {
           position: absolute;
           left: 4%;
@@ -705,6 +796,107 @@ export function LandingPage() {
           box-shadow:
             0 44px 130px rgba(0, 0, 0, 0.42),
             inset 0 1px rgba(255, 255, 255, 0.14);
+        }
+
+        .dy-daoyou-console {
+          position: absolute;
+          z-index: 3;
+          top: 24px;
+          right: 24px;
+          width: min(390px, 42%);
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 24px;
+          background: rgba(8, 11, 10, 0.68);
+          backdrop-filter: blur(18px);
+          padding: 15px;
+          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.3);
+        }
+
+        .dy-daoyou-top {
+          justify-content: space-between;
+          gap: 12px;
+          color: rgba(244, 248, 242, 0.72);
+          font-size: 12px;
+          font-weight: 820;
+        }
+
+        .dy-daoyou-brand {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .dy-daoyou-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: var(--dy-accent);
+          box-shadow: 0 0 18px rgba(126, 224, 164, 0.72);
+        }
+
+        .dy-daoyou-prompt {
+          gap: 10px;
+          margin-top: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 12px;
+          color: var(--dy-text);
+          font-size: 15px;
+          line-height: 1.32;
+          font-weight: 820;
+        }
+
+        .dy-prompt-mark {
+          display: grid;
+          place-items: center;
+          width: 28px;
+          height: 28px;
+          flex: none;
+          border-radius: 9px;
+          background: var(--dy-text);
+          color: var(--dy-ink);
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .dy-status-lane {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        .dy-lane-node {
+          height: 40px;
+          display: grid;
+          place-items: center;
+          border: 1px solid rgba(126, 224, 164, 0.18);
+          border-radius: 13px;
+          background: rgba(126, 224, 164, 0.1);
+          color: rgba(244, 248, 242, 0.72);
+          font-size: 12px;
+          font-weight: 780;
+        }
+
+        .dy-artifact-tray {
+          justify-content: space-between;
+          gap: 10px;
+          margin-top: 12px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          padding-top: 12px;
+        }
+
+        .dy-artifact-tray span {
+          color: rgba(244, 248, 242, 0.46);
+          font-size: 11px;
+          font-weight: 820;
+        }
+
+        .dy-artifact-tray strong {
+          color: var(--dy-text);
+          font-size: 14px;
+          font-weight: 880;
         }
 
         .dy-frame-meta {
@@ -922,6 +1114,18 @@ export function LandingPage() {
             display: none;
           }
 
+          .dy-orbit-command {
+            width: 74%;
+            left: 0;
+            top: 6%;
+          }
+
+          .dy-orbit-output {
+            width: 150px;
+            right: 0;
+            top: 48%;
+          }
+
           .dy-hyper-pin,
           .dy-final {
             padding-left: 16px;
@@ -935,6 +1139,24 @@ export function LandingPage() {
           .dy-hyper-card {
             min-height: 430px;
             border-radius: 24px;
+          }
+
+          .dy-daoyou-console {
+            top: 14px;
+            right: 14px;
+            left: 14px;
+            width: auto;
+            border-radius: 18px;
+            padding: 12px;
+          }
+
+          .dy-status-lane {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .dy-lane-node {
+            height: 34px;
+            font-size: 11px;
           }
 
           .dy-frame-meta {
@@ -1015,6 +1237,10 @@ export function LandingPage() {
           </div>
 
           <div className="dy-orbit" aria-label="道友 AI 动画帧预览">
+            <div className="dy-orbit-command dy-daoyou-ui">
+              <span>念头输入</span>
+              <strong>帮我把资料、网页和待办整理成结果。</strong>
+            </div>
             {frames.map(({ Icon, ...frame }) => (
               <figure className="dy-orbit-frame" key={frame.label}>
                 <div className="dy-orbit-media">
@@ -1028,6 +1254,10 @@ export function LandingPage() {
                 </figcaption>
               </figure>
             ))}
+            <div className="dy-orbit-output dy-daoyou-ui">
+              <span>道友交付</span>
+              <strong>报告 / 索引 / 提醒</strong>
+            </div>
             <div className="dy-chipline" aria-label="道友 AI 工作流">
               {frames.map((frame) => (
                 <span className="dy-orbit-chip" key={frame.label}>
@@ -1056,6 +1286,30 @@ export function LandingPage() {
                 <article className="dy-hyper-card" key={frame.label}>
                   <div className="dy-hyper-media">
                     <img src={frame.image} alt={frame.alt} />
+                  </div>
+                  <div className="dy-daoyou-console">
+                    <div className="dy-daoyou-top">
+                      <span className="dy-daoyou-brand">
+                        <span className="dy-daoyou-dot" aria-hidden="true" />
+                        道友执行中
+                      </span>
+                      <span>{frame.status}</span>
+                    </div>
+                    <div className="dy-daoyou-prompt">
+                      <span className="dy-prompt-mark" aria-hidden="true">
+                        道
+                      </span>
+                      <span>{frame.command}</span>
+                    </div>
+                    <div className="dy-status-lane" aria-hidden="true">
+                      <span className="dy-lane-node">理解</span>
+                      <span className="dy-lane-node">执行</span>
+                      <span className="dy-lane-node">交付</span>
+                    </div>
+                    <div className="dy-artifact-tray">
+                      <span>交付物</span>
+                      <strong>{frame.output}</strong>
+                    </div>
                   </div>
                   <div className="dy-frame-meta">
                     <div className="dy-frame-copy">
