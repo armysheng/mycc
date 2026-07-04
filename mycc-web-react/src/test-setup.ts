@@ -15,6 +15,31 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+// Mock animation frames for GSAP and components that schedule browser paint work.
+const requestAnimationFrameMock = (callback: FrameRequestCallback): number =>
+  window.setTimeout(() => callback(Date.now()), 16);
+const cancelAnimationFrameMock = (handle: number) => window.clearTimeout(handle);
+
+Object.defineProperty(window, "requestAnimationFrame", {
+  writable: true,
+  value: requestAnimationFrameMock,
+});
+
+Object.defineProperty(window, "cancelAnimationFrame", {
+  writable: true,
+  value: cancelAnimationFrameMock,
+});
+
+Object.defineProperty(globalThis, "requestAnimationFrame", {
+  writable: true,
+  value: requestAnimationFrameMock,
+});
+
+Object.defineProperty(globalThis, "cancelAnimationFrame", {
+  writable: true,
+  value: cancelAnimationFrameMock,
+});
+
 // Mock localStorage for tests
 const localStorageMock = {
   getItem: () => null,

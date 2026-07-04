@@ -16,47 +16,47 @@ const assetBase = "/landing";
 
 const frames = [
   {
-    label: "调研",
-    title: "网页调研与结论报告",
-    caption: "读网页，留来源。",
-    command: "帮我调研竞品动态",
-    status: "道友正在读网页",
-    output: "结论报告",
+    label: "观势",
+    title: "万象成简",
+    caption: "看网页，取要点，留出处。",
+    command: "查清这个产品近况",
+    status: "道友正在观势",
+    output: "洞察简",
     image: `${assetBase}/scene-web-research.jpg`,
-    alt: "道友 AI 网页调研场景",
+    alt: "道友 AI 观势成简场景",
     Icon: MagnifyingGlassIcon,
   },
   {
-    label: "整理",
-    title: "资料整理与成果包",
-    caption: "文件归位，线索成形。",
-    command: "把桌面资料归档",
-    status: "道友正在归类",
-    output: "项目索引",
+    label: "归藏",
+    title: "散卷入库",
+    caption: "资料归位，线索相连。",
+    command: "把这些资料归一处",
+    status: "道友正在归藏",
+    output: "资料谱",
     image: `${assetBase}/scene-file-organize.jpg`,
-    alt: "道友 AI 资料整理场景",
+    alt: "道友 AI 散卷归藏场景",
     Icon: FolderOpenIcon,
   },
   {
-    label: "生成",
-    title: "周报与汇报文档",
-    caption: "结果成稿，口径清楚。",
-    command: "写成本周汇报",
-    status: "道友正在成稿",
-    output: "周报初稿",
+    label: "凝卷",
+    title: "碎念成章",
+    caption: "把进展炼成一卷。",
+    command: "把本周进展写成稿",
+    status: "道友正在凝卷",
+    output: "汇报卷",
     image: `${assetBase}/scene-weekly-report.jpg`,
-    alt: "道友 AI 周报生成场景",
+    alt: "道友 AI 碎念凝卷场景",
     Icon: DocumentTextIcon,
   },
   {
-    label: "跟进",
-    title: "会议后续与自动跟进",
-    caption: "到时间，继续推进。",
-    command: "周五提醒我跟进",
-    status: "道友正在排程",
-    output: "提醒待办",
+    label: "传令",
+    title: "飞符续事",
+    caption: "到点提醒，接着推进。",
+    command: "周五替我传讯",
+    status: "道友正在传令",
+    output: "传讯符",
     image: `${assetBase}/scene-follow-up.jpg`,
-    alt: "道友 AI 自动跟进场景",
+    alt: "道友 AI 飞符传令场景",
     Icon: BellAlertIcon,
   },
 ];
@@ -1233,7 +1233,7 @@ export function LandingPage() {
           </a>
           <nav className="dy-nav" aria-label="产品导航">
             <a href="#product">道友 AI</a>
-            <a href="#hyperframes">HyperFrames</a>
+            <a href="#hyperframes">四步流转</a>
             <a href="/login">登录</a>
           </nav>
           <div className="dy-actions">
@@ -1252,7 +1252,9 @@ export function LandingPage() {
               <span>随心而动，</span>
               <span className="dy-title-soft">念头通达</span>
             </h1>
-            <p className="dy-hero-motion">一句话，启动一组会做事的画面。</p>
+            <p className="dy-hero-motion">
+              一念起，道友替你寻线索、归资料、成文书、续进展。
+            </p>
             <div className="dy-cta-row dy-hero-motion">
               <a className="dy-cta dy-cta-primary" href="/login">
                 <span className="dy-cta-icon" aria-hidden="true">
@@ -1260,7 +1262,7 @@ export function LandingPage() {
                 </span>
                 <span>
                   <span className="dy-cta-title">开始使用</span>
-                  <span className="dy-cta-desc">进入工作空间</span>
+                  <span className="dy-cta-desc">进入道友台</span>
                 </span>
               </a>
               <a className="dy-cta dy-cta-secondary" href="#hyperframes">
@@ -1268,8 +1270,8 @@ export function LandingPage() {
                   <ArrowRightIcon width={17} height={17} strokeWidth={2.4} />
                 </span>
                 <span>
-                  <span className="dy-cta-title">看动画</span>
-                  <span className="dy-cta-desc">HyperFrames</span>
+                  <span className="dy-cta-title">看流转</span>
+                  <span className="dy-cta-desc">四步成事</span>
                 </span>
               </a>
             </div>
@@ -1278,7 +1280,7 @@ export function LandingPage() {
           <div className="dy-orbit" aria-label="道友 AI 动画帧预览">
             <div className="dy-orbit-command dy-daoyou-ui">
               <span>念头输入</span>
-              <strong>帮我把资料、网页和待办整理成结果。</strong>
+              <strong>替我查清来龙去脉，收好散卷，炼成可用文书。</strong>
             </div>
             {frames.map(({ Icon, ...frame }) => (
               <figure className="dy-orbit-frame" key={frame.label}>
@@ -1295,7 +1297,7 @@ export function LandingPage() {
             ))}
             <div className="dy-orbit-output dy-daoyou-ui">
               <span>道友交付</span>
-              <strong>报告 / 索引 / 提醒</strong>
+              <strong>简报 / 资料谱 / 传讯</strong>
             </div>
             <div className="dy-chipline" aria-label="道友 AI 工作流">
               {frames.map((frame) => (
@@ -1341,9 +1343,9 @@ export function LandingPage() {
                       <span>{frame.command}</span>
                     </div>
                     <div className="dy-status-lane" aria-hidden="true">
-                      <span className="dy-lane-node">理解</span>
-                      <span className="dy-lane-node">执行</span>
-                      <span className="dy-lane-node">交付</span>
+                      <span className="dy-lane-node">识意</span>
+                      <span className="dy-lane-node">行事</span>
+                      <span className="dy-lane-node">成卷</span>
                     </div>
                     <div className="dy-artifact-tray">
                       <span>交付物</span>
@@ -1369,8 +1371,8 @@ export function LandingPage() {
 
       <section className="dy-final">
         <div>
-          <h2 className="dy-final-motion">把念头交给道友 AI。</h2>
-          <p className="dy-final-motion">它会把画面推进成结果。</p>
+          <h2 className="dy-final-motion">念头落地，自有道友相助。</h2>
+          <p className="dy-final-motion">从寻线索到成文书，再到后续提醒。</p>
           <div className="dy-cta-row dy-final-motion">
             <a className="dy-cta dy-cta-primary" href="/login">
               <span className="dy-cta-icon" aria-hidden="true">
@@ -1378,7 +1380,7 @@ export function LandingPage() {
               </span>
               <span>
                 <span className="dy-cta-title">立即开始</span>
-                <span className="dy-cta-desc">进入道友 AI</span>
+                <span className="dy-cta-desc">进入道友台</span>
               </span>
             </a>
           </div>

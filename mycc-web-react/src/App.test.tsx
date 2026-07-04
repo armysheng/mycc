@@ -51,7 +51,7 @@ describe("App Routing", () => {
       await screen.findByRole("heading", { name: "随心而动，念头通达" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("道友 AI 首页")).toBeInTheDocument();
-    expect(screen.getAllByText("网页调研与结论报告").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("万象成简").length).toBeGreaterThan(0);
     expect(
       screen.getAllByRole("link", { name: /开始使用/ }).length,
     ).toBeGreaterThan(0);
