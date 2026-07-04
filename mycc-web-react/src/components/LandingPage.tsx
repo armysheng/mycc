@@ -2,9 +2,11 @@ import { useRef } from "react";
 import {
   ArrowRightIcon,
   BellAlertIcon,
+  CheckCircleIcon,
   DocumentTextIcon,
   FolderOpenIcon,
   MagnifyingGlassIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -14,21 +16,15 @@ gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const assetBase = "/landing";
 
-const scenes = [
-  {
-    label: "周报",
-    title: "周报与汇报文档",
-    image: `${assetBase}/scene-weekly-report.jpg`,
-    alt: "道友 AI 周报生成场景",
-    body: "把零散进展整理成老板能看的版本，风险、计划和不同口径一次生成。",
-    Icon: DocumentTextIcon,
-  },
+const executionScenes = [
   {
     label: "调研",
     title: "网页调研与结论报告",
     image: `${assetBase}/scene-web-research.jpg`,
     alt: "道友 AI 网页调研场景",
-    body: "抓取网页资料，分析竞品痛点，识别未满足需求和购买决策因素。",
+    prompt: "调研这周竞品动态，保留来源，整理成可转发报告。",
+    work: ["打开网页来源", "提取购买理由", "合并重复观点"],
+    result: "输出竞品变化、机会点和引用来源。",
     Icon: MagnifyingGlassIcon,
   },
   {
@@ -36,21 +32,41 @@ const scenes = [
     title: "资料整理与成果包",
     image: `${assetBase}/scene-file-organize.jpg`,
     alt: "道友 AI 资料整理场景",
-    body: "文件、链接、截图和表格不再散落，整理成可继续编辑的成果空间。",
+    prompt: "把桌面文件、截图和表格按项目归档，生成一份索引。",
+    work: ["识别文件类型", "按主题归档", "生成可检索目录"],
+    result: "资料变成清楚的项目包，后续可以继续编辑。",
     Icon: FolderOpenIcon,
+  },
+  {
+    label: "生成",
+    title: "周报与汇报文档",
+    image: `${assetBase}/scene-weekly-report.jpg`,
+    alt: "道友 AI 周报生成场景",
+    prompt: "把本周进展、风险和下周计划写成老板能看的版本。",
+    work: ["合并任务进度", "补齐风险说明", "生成不同口径"],
+    result: "交付周报、汇报摘要和下一步计划。",
+    Icon: DocumentTextIcon,
   },
   {
     label: "跟进",
     title: "会议后续与自动跟进",
     image: `${assetBase}/scene-follow-up.jpg`,
     alt: "道友 AI 自动跟进场景",
-    body: "会议后的待办、周期巡检、订阅提醒和后续动作，到时间继续推进。",
+    prompt: "根据会议纪要创建待办，周五提醒我检查交付。",
+    work: ["识别负责人", "创建提醒", "记录执行状态"],
+    result: "待办不丢，时间到了自动接着推进。",
     Icon: BellAlertIcon,
   },
 ];
 
+const dailyScenes = [
+  "把公众号文章整理成内部分享稿",
+  "把一堆截图归纳成产品需求",
+  "读网页资料并输出选型建议",
+  "跟踪供应商报价和待办变化",
+];
+
 export function LandingPage() {
-  const primaryScene = scenes[1];
   const landingRef = useRef<HTMLElement | null>(null);
 
   useGSAP(
@@ -69,7 +85,7 @@ export function LandingPage() {
           };
 
           if (reduceMotion) {
-            gsap.set(".dy-reveal, .dy-hero-motion", {
+            gsap.set(".dy-reveal, .dy-hero-motion, .dy-flow-panel", {
               autoAlpha: 1,
               clearProps: "transform,visibility,opacity",
             });
@@ -77,54 +93,57 @@ export function LandingPage() {
           }
 
           const heroTimeline = gsap.timeline({
-            defaults: { ease: "power3.out", duration: 0.9 },
+            defaults: { ease: "power3.out", duration: 0.85 },
           });
 
           heroTimeline
-            .from(".dy-header", { autoAlpha: 0, y: -18, duration: 0.55 })
+            .from(".dy-header", { autoAlpha: 0, y: -16, duration: 0.5 })
             .from(
-              ".dy-hero-title-line",
+              ".dy-hero-motion",
               {
                 autoAlpha: 0,
-                y: 52,
+                y: 42,
                 stagger: 0.08,
               },
-              "-=0.18",
+              "-=0.08",
             )
             .from(
-              ".dy-hero-subtitle",
-              { autoAlpha: 0, y: 24, duration: 0.72 },
-              "-=0.5",
+              ".dy-stage",
+              { autoAlpha: 0, y: 54, scale: 0.985, duration: 1.05 },
+              "-=0.48",
             )
             .from(
-              ".dy-cta",
-              {
-                autoAlpha: 0,
-                y: 20,
-                stagger: 0.08,
-                duration: 0.62,
-              },
+              ".dy-live-row",
+              { autoAlpha: 0, x: -18, stagger: 0.08, duration: 0.58 },
+              "-=0.55",
+            )
+            .from(
+              ".dy-artifact",
+              { autoAlpha: 0, y: 18, stagger: 0.07, duration: 0.58 },
               "-=0.42",
-            )
-            .from(
-              ".dy-hero-visual",
-              { autoAlpha: 0, y: 56, scale: 0.98, duration: 1 },
-              "-=0.44",
             );
 
-          gsap.to(".dy-hero-visual img", {
-            yPercent: isDesktop ? -8 : -4,
-            scale: 1.035,
+          gsap.to(".dy-stage-media img", {
+            yPercent: isDesktop ? -9 : -4,
+            scale: 1.04,
             ease: "none",
             scrollTrigger: {
               trigger: ".dy-hero",
               start: "top top",
               end: "bottom top",
               scrub: 0.8,
+              refreshPriority: 0,
             },
           });
 
-          gsap.set(".dy-reveal", { autoAlpha: 0, y: 42 });
+          gsap.to(".dy-scan-line", {
+            yPercent: 760,
+            repeat: -1,
+            duration: 3.2,
+            ease: "none",
+          });
+
+          gsap.set(".dy-reveal", { autoAlpha: 0, y: 38 });
           ScrollTrigger.batch(".dy-reveal", {
             start: "top 82%",
             once: true,
@@ -140,6 +159,72 @@ export function LandingPage() {
             },
           });
 
+          if (isDesktop) {
+            const flow = document.querySelector<HTMLElement>(".dy-flow");
+            const pin = document.querySelector<HTMLElement>(".dy-flow-pin");
+            const track = document.querySelector<HTMLElement>(".dy-flow-track");
+            const progress = document.querySelector<HTMLElement>(
+              ".dy-flow-progress-fill",
+            );
+
+            if (flow && pin && track) {
+              const getDistance = () =>
+                Math.max(0, track.scrollWidth - flow.clientWidth + 96);
+
+              const panTween = gsap.to(track, {
+                x: () => -getDistance(),
+                ease: "none",
+                scrollTrigger: {
+                  trigger: flow,
+                  start: "top top",
+                  end: () => `+=${getDistance()}`,
+                  pin,
+                  scrub: 1,
+                  invalidateOnRefresh: true,
+                  refreshPriority: 1,
+                },
+              });
+
+              if (progress) {
+                gsap.fromTo(
+                  progress,
+                  { scaleX: 0 },
+                  {
+                    scaleX: 1,
+                    ease: "none",
+                    transformOrigin: "left center",
+                    scrollTrigger: {
+                      trigger: flow,
+                      start: "top top",
+                      end: () => `+=${getDistance()}`,
+                      scrub: 1,
+                      invalidateOnRefresh: true,
+                      refreshPriority: 1,
+                    },
+                  },
+                );
+              }
+
+              gsap.utils
+                .toArray<HTMLElement>(".dy-flow-panel")
+                .forEach((panel) => {
+                  gsap.from(panel.querySelectorAll(".dy-panel-motion"), {
+                    autoAlpha: 0,
+                    y: 24,
+                    stagger: 0.07,
+                    duration: 0.7,
+                    ease: "power3.out",
+                    scrollTrigger: {
+                      trigger: panel,
+                      containerAnimation: panTween,
+                      start: "left 72%",
+                      toggleActions: "play none none reverse",
+                    },
+                  });
+                });
+            }
+          }
+
           requestAnimationFrame(() => ScrollTrigger.refresh());
         },
       );
@@ -153,16 +238,27 @@ export function LandingPage() {
     <main className="dy-landing" ref={landingRef}>
       <style>{`
         .dy-landing {
-          --dy-bg: #090a0b;
-          --dy-bg-soft: #10131a;
-          --dy-paper: #f6f7fb;
-          --dy-ink: #10131a;
-          --dy-muted: #687083;
-          --dy-line: rgba(255, 255, 255, 0.13);
-          --dy-accent: #8b7cff;
+          --dy-bg: #0a0d0c;
+          --dy-bg-2: #111715;
+          --dy-surface: rgba(255, 255, 255, 0.07);
+          --dy-surface-strong: rgba(255, 255, 255, 0.11);
+          --dy-line: rgba(232, 244, 236, 0.14);
+          --dy-line-strong: rgba(232, 244, 236, 0.26);
+          --dy-text: #f4f7f3;
+          --dy-muted: rgba(244, 247, 243, 0.68);
+          --dy-soft: rgba(244, 247, 243, 0.48);
+          --dy-paper: #edf2ea;
+          --dy-paper-2: #dfe8dd;
+          --dy-ink: #111715;
+          --dy-ink-muted: #5d685f;
+          --dy-accent: #71d69b;
+          --dy-accent-2: #c7f36b;
           min-height: 100dvh;
-          background: var(--dy-bg);
-          color: #fff;
+          overflow-x: hidden;
+          background:
+            linear-gradient(180deg, rgba(20, 29, 25, 0.96), var(--dy-bg) 42%),
+            var(--dy-bg);
+          color: var(--dy-text);
           font-family:
             ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
             "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -176,6 +272,7 @@ export function LandingPage() {
         }
 
         .dy-landing a {
+          color: inherit;
           text-decoration: none;
         }
 
@@ -183,15 +280,15 @@ export function LandingPage() {
           position: fixed;
           inset: 0 0 auto;
           z-index: 20;
-          height: 72px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-          background: rgba(9, 10, 11, 0.74);
+          height: 70px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(10, 13, 12, 0.78);
           backdrop-filter: blur(18px);
         }
 
         .dy-header-inner,
         .dy-wide {
-          width: min(1200px, calc(100% - 48px));
+          width: min(1240px, calc(100% - 48px));
           margin: 0 auto;
         }
 
@@ -208,12 +305,13 @@ export function LandingPage() {
           align-items: center;
           gap: 12px;
           font-size: 18px;
-          font-weight: 780;
+          font-weight: 820;
           letter-spacing: 0;
           white-space: nowrap;
         }
 
         .dy-brand-mark,
+        .dy-icon-mark,
         .dy-cta-icon {
           display: grid;
           place-items: center;
@@ -223,126 +321,161 @@ export function LandingPage() {
         .dy-brand-mark {
           width: 34px;
           height: 34px;
-          border-radius: 12px;
+          border-radius: 10px;
           background:
-            linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 34%),
-            linear-gradient(135deg, #8b7cff, #78a4ff 58%, #66eadf);
-          color: #fff;
-          box-shadow: 0 0 34px rgba(120, 164, 255, 0.32);
+            linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent 35%),
+            linear-gradient(135deg, #1f382b, #71d69b);
+          color: #f7fff8;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          box-shadow: 0 14px 36px rgba(64, 188, 124, 0.22);
           font-size: 18px;
           font-weight: 900;
         }
 
-        .dy-nav {
-          display: flex;
-          align-items: center;
-          gap: 26px;
-          color: rgba(255, 255, 255, 0.66);
-          font-size: 14px;
-          font-weight: 560;
-          white-space: nowrap;
-        }
-
+        .dy-nav,
         .dy-actions {
           display: flex;
           align-items: center;
-          gap: 16px;
-          color: rgba(255, 255, 255, 0.72);
-          font-size: 14px;
-          font-weight: 650;
           white-space: nowrap;
         }
 
-        .dy-landing .dy-header-button {
+        .dy-nav {
+          gap: 26px;
+          color: rgba(244, 247, 243, 0.62);
+          font-size: 14px;
+          font-weight: 620;
+        }
+
+        .dy-actions {
+          gap: 16px;
+          color: rgba(244, 247, 243, 0.74);
+          font-size: 14px;
+          font-weight: 720;
+        }
+
+        .dy-header-button {
           border-radius: 999px;
-          background: #fff;
+          background: var(--dy-text);
           color: var(--dy-ink);
           padding: 9px 17px;
-          font-weight: 760;
+          font-weight: 800;
         }
 
         .dy-hero {
           position: relative;
-          overflow: hidden;
           min-height: 100dvh;
-          padding: 124px 24px 74px;
-          text-align: center;
-          background:
-            radial-gradient(circle at 50% 24%, rgba(139, 124, 255, 0.27), transparent 330px),
-            radial-gradient(circle at 50% 66%, rgba(102, 234, 223, 0.1), transparent 360px),
-            var(--dy-bg);
+          padding: 112px 24px 72px;
+          overflow: hidden;
         }
 
         .dy-hero::before {
           content: "";
           position: absolute;
-          left: 50%;
-          top: 96px;
-          width: 960px;
-          height: 480px;
-          transform: translateX(-50%);
-          background: repeating-radial-gradient(
-            ellipse at center,
-            rgba(255, 255, 255, 0.15) 0 1px,
-            transparent 1px 24px
-          );
-          opacity: 0.36;
-          mask-image: radial-gradient(ellipse at center, black 0%, transparent 72%);
+          inset: 0;
+          background:
+            linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+          background-size: 56px 56px;
+          mask-image: linear-gradient(to bottom, black 0%, transparent 76%);
           pointer-events: none;
         }
 
-        .dy-hero-content {
+        .dy-hero::after {
+          content: "";
+          position: absolute;
+          left: 12%;
+          right: 12%;
+          bottom: 42px;
+          height: 1px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(113, 214, 155, 0.52),
+            transparent
+          );
+          pointer-events: none;
+        }
+
+        .dy-hero-layout {
           position: relative;
           z-index: 1;
-          max-width: 1040px;
+          width: min(1240px, calc(100vw - 48px));
+          min-height: calc(100dvh - 184px);
           margin: 0 auto;
+          display: grid;
+          grid-template-columns: minmax(0, 0.9fr) minmax(560px, 1.1fr);
+          align-items: center;
+          gap: clamp(34px, 6vw, 78px);
+        }
+
+        .dy-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          width: fit-content;
+          margin: 0 0 22px;
+          border: 1px solid var(--dy-line);
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.06);
+          padding: 8px 12px;
+          color: rgba(244, 247, 243, 0.72);
+          font-size: 13px;
+          font-weight: 730;
+        }
+
+        .dy-kicker svg {
+          width: 16px;
+          height: 16px;
+          color: var(--dy-accent);
         }
 
         .dy-hero h1 {
+          max-width: 660px;
           margin: 0;
-          font-size: clamp(52px, 7.5vw, 104px);
+          font-size: clamp(58px, 7.4vw, 102px);
           line-height: 0.96;
           letter-spacing: 0;
-          font-weight: 880;
+          font-weight: 900;
         }
 
-        .dy-nowrap {
-          display: inline-block;
-          white-space: nowrap;
+        .dy-title-soft {
+          display: block;
+          color: rgba(244, 247, 243, 0.66);
+        }
+
+        .dy-hero-copy p {
+          max-width: 600px;
+          margin: 26px 0 0;
+          color: var(--dy-muted);
+          font-size: clamp(18px, 1.8vw, 22px);
+          line-height: 1.62;
         }
 
         .dy-hero-motion,
         .dy-reveal,
-        .dy-hero-visual,
-        .dy-hero-visual img {
+        .dy-stage,
+        .dy-stage-media img,
+        .dy-flow-track,
+        .dy-flow-panel,
+        .dy-panel-motion,
+        .dy-scan-line {
           will-change: transform, opacity;
-        }
-
-        .dy-hero-subtitle {
-          max-width: 760px;
-          margin: 26px auto 0;
-          color: rgba(255, 255, 255, 0.72);
-          font-size: clamp(18px, 2vw, 23px);
-          line-height: 1.62;
         }
 
         .dy-cta-row {
           display: flex;
-          justify-content: center;
           flex-wrap: wrap;
           gap: 14px;
-          margin-top: 36px;
+          margin-top: 34px;
         }
 
         .dy-cta {
-          width: 218px;
-          min-height: 62px;
-          display: flex;
+          min-height: 58px;
+          display: inline-flex;
           align-items: center;
-          gap: 13px;
+          gap: 12px;
           border-radius: 16px;
           padding: 12px 16px;
-          text-align: left;
           transition:
             transform 180ms ease,
             border-color 180ms ease,
@@ -357,31 +490,32 @@ export function LandingPage() {
           transform: translateY(0);
         }
 
-        .dy-landing .dy-cta-primary {
-          background: #fff;
-          color: #111827;
-          box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+        .dy-cta-primary {
+          min-width: 168px;
+          background: var(--dy-text);
+          color: var(--dy-ink);
+          box-shadow: 0 22px 52px rgba(0, 0, 0, 0.32);
         }
 
-        .dy-landing .dy-cta-secondary {
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          background: rgba(255, 255, 255, 0.08);
-          color: #fff;
+        .dy-cta-secondary {
+          border: 1px solid var(--dy-line);
+          background: rgba(255, 255, 255, 0.065);
+          color: var(--dy-text);
         }
 
         .dy-cta-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: #111827;
-          color: #fff;
+          width: 30px;
+          height: 30px;
+          border-radius: 9px;
+          background: var(--dy-ink);
+          color: var(--dy-text);
           font-size: 13px;
           font-weight: 900;
         }
 
         .dy-cta-secondary .dy-cta-icon {
-          background: #fff;
-          color: #111827;
+          background: var(--dy-text);
+          color: var(--dy-ink);
         }
 
         .dy-cta-title,
@@ -391,354 +525,604 @@ export function LandingPage() {
 
         .dy-cta-title {
           font-size: 15px;
-          font-weight: 830;
-          line-height: 1.1;
+          font-weight: 820;
+          line-height: 1.12;
         }
 
         .dy-cta-desc {
           margin-top: 4px;
-          color: #667085;
+          color: #637064;
           font-size: 12px;
-          font-weight: 620;
+          font-weight: 660;
         }
 
         .dy-cta-secondary .dy-cta-desc {
-          color: rgba(255, 255, 255, 0.58);
+          color: rgba(244, 247, 243, 0.55);
         }
 
-        .dy-hero-visual {
+        .dy-stage {
           position: relative;
-          z-index: 1;
-          width: min(900px, calc(100vw - 48px));
-          margin: 64px auto 0;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 34px;
+          min-height: 650px;
+          border: 1px solid var(--dy-line-strong);
+          border-radius: 28px;
           overflow: hidden;
-          background: rgba(255, 255, 255, 0.05);
+          background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 28%),
+            #0f1513;
           box-shadow:
-            0 46px 140px rgba(0, 0, 0, 0.46),
+            0 48px 140px rgba(0, 0, 0, 0.45),
             inset 0 1px rgba(255, 255, 255, 0.16);
         }
 
-        .dy-hero-visual img,
-        .dy-scene-image img,
-        .dy-feature img {
+        .dy-stage-top {
+          height: 48px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          border-bottom: 1px solid var(--dy-line);
+          padding: 0 18px;
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .dy-window-dots {
+          display: flex;
+          gap: 7px;
+        }
+
+        .dy-window-dots span {
+          width: 9px;
+          height: 9px;
+          border-radius: 999px;
+          background: rgba(244, 247, 243, 0.32);
+        }
+
+        .dy-stage-title {
+          color: rgba(244, 247, 243, 0.68);
+          font-size: 13px;
+          font-weight: 720;
+        }
+
+        .dy-stage-body {
+          position: relative;
+          min-height: 600px;
+          padding: 22px;
+        }
+
+        .dy-stage-media {
+          position: absolute;
+          inset: 22px;
+          border-radius: 22px;
+          overflow: hidden;
+          opacity: 0.72;
+        }
+
+        .dy-stage-media::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(90deg, rgba(10, 13, 12, 0.94) 0%, rgba(10, 13, 12, 0.74) 45%, rgba(10, 13, 12, 0.24) 100%),
+            linear-gradient(180deg, transparent 35%, rgba(10, 13, 12, 0.76));
+        }
+
+        .dy-stage-media img,
+        .dy-panel-image img,
+        .dy-showcase-image img {
           display: block;
           width: 100%;
+          height: 100%;
           object-fit: cover;
         }
 
-        .dy-hero-visual img {
-          aspect-ratio: 16 / 9;
+        .dy-stage-content {
+          position: relative;
+          z-index: 1;
+          display: grid;
+          grid-template-columns: 1fr 0.88fr;
+          gap: 18px;
+          min-height: 556px;
         }
 
-        .dy-statement {
+        .dy-command {
+          align-self: end;
+          border: 1px solid var(--dy-line);
+          border-radius: 22px;
+          background: rgba(10, 13, 12, 0.72);
+          backdrop-filter: blur(18px);
+          padding: 20px;
+        }
+
+        .dy-command-label {
+          display: block;
+          margin-bottom: 12px;
+          color: var(--dy-soft);
+          font-size: 13px;
+          font-weight: 720;
+        }
+
+        .dy-command-text {
+          margin: 0;
+          color: var(--dy-text);
+          font-size: clamp(22px, 2.4vw, 30px);
+          line-height: 1.28;
+          font-weight: 850;
+        }
+
+        .dy-command-footer {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .dy-chip {
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.07);
+          padding: 7px 10px;
+          color: rgba(244, 247, 243, 0.68);
+          font-size: 12px;
+          font-weight: 680;
+        }
+
+        .dy-live {
+          align-self: stretch;
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          gap: 14px;
+          border: 1px solid var(--dy-line);
+          border-radius: 22px;
+          background: rgba(237, 242, 234, 0.92);
+          color: var(--dy-ink);
+          padding: 16px;
+          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.22);
+        }
+
+        .dy-live-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+        }
+
+        .dy-live-head strong {
+          font-size: 15px;
+        }
+
+        .dy-live-state {
+          color: #386c4a;
+          font-size: 12px;
+          font-weight: 820;
+        }
+
+        .dy-live-list {
+          display: grid;
+          gap: 10px;
+          align-content: start;
+        }
+
+        .dy-live-row {
+          display: grid;
+          grid-template-columns: 28px 1fr;
+          gap: 10px;
+          align-items: start;
+          border: 1px solid rgba(17, 23, 21, 0.08);
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.55);
+          padding: 11px;
+        }
+
+        .dy-live-row svg {
+          width: 20px;
+          height: 20px;
+          color: #2e8b57;
+        }
+
+        .dy-live-row strong {
+          display: block;
+          margin-bottom: 3px;
+          font-size: 13px;
+        }
+
+        .dy-live-row span {
+          color: #657269;
+          font-size: 12px;
+          line-height: 1.45;
+        }
+
+        .dy-artifacts {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .dy-artifact {
+          min-height: 76px;
+          border: 1px solid rgba(17, 23, 21, 0.08);
+          border-radius: 15px;
+          background: #fff;
+          padding: 11px;
+        }
+
+        .dy-artifact span {
+          display: block;
+          color: #758177;
+          font-size: 11px;
+          font-weight: 760;
+        }
+
+        .dy-artifact strong {
+          display: block;
+          margin-top: 7px;
+          font-size: 13px;
+          line-height: 1.25;
+        }
+
+        .dy-scan-line {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 88px;
+          z-index: 2;
+          height: 1px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(113, 214, 155, 0.9),
+            transparent
+          );
+          opacity: 0.66;
+          pointer-events: none;
+        }
+
+        .dy-manifest {
+          position: relative;
           background: var(--dy-paper);
           color: var(--dy-ink);
-          padding: 104px 24px 96px;
-          text-align: center;
+          padding: 96px 24px;
         }
 
-        .dy-decorative-line {
-          width: min(420px, 72vw);
-          height: 28px;
-          margin: 0 auto 34px;
-          border-radius: 999px;
-          background:
-            linear-gradient(90deg, transparent, rgba(139, 124, 255, 0.26), transparent),
-            repeating-linear-gradient(90deg, transparent 0 22px, rgba(16, 19, 26, 0.1) 22px 23px);
-          opacity: 0.75;
+        .dy-manifest-grid {
+          display: grid;
+          grid-template-columns: 0.9fr 1.1fr;
+          gap: 56px;
+          align-items: end;
         }
 
-        .dy-statement h2,
-        .dy-feature-block h2,
-        .dy-daily h2,
+        .dy-manifest h2,
+        .dy-flow-copy h2,
+        .dy-showcase h2,
         .dy-final h2 {
-          margin: 0 auto;
-          font-size: clamp(42px, 6vw, 78px);
-          line-height: 1.06;
-          letter-spacing: 0;
-          font-weight: 880;
-        }
-
-        .dy-statement h2 {
-          max-width: 1100px;
-        }
-
-        .dy-inline-token {
-          display: inline-grid;
-          place-items: center;
-          width: 0.9em;
-          height: 0.9em;
-          margin: 0 0.08em;
-          border-radius: 0.25em;
-          vertical-align: -0.09em;
-          background: #fff;
-          color: var(--dy-accent);
-          box-shadow: 0 12px 28px rgba(16, 24, 40, 0.12);
-          font-size: 0.43em;
+          margin: 0;
+          font-size: clamp(42px, 5.8vw, 78px);
+          line-height: 1.04;
           letter-spacing: 0;
           font-weight: 900;
         }
 
-        .dy-statement p,
-        .dy-daily p,
+        .dy-manifest p,
+        .dy-flow-copy p,
+        .dy-showcase p,
         .dy-final p {
-          max-width: 620px;
-          margin: 26px auto 0;
+          margin: 0;
+          color: var(--dy-ink-muted);
           font-size: 19px;
           line-height: 1.72;
         }
 
-        .dy-statement p {
-          color: var(--dy-muted);
+        .dy-manifest-copy {
+          display: grid;
+          gap: 18px;
         }
 
-        .dy-scenes,
-        .dy-daily,
-        .dy-final {
+        .dy-sentence-stack {
+          display: grid;
+          gap: 12px;
+          margin-top: 26px;
+        }
+
+        .dy-sentence {
+          border-left: 3px solid var(--dy-accent);
+          padding-left: 16px;
+          color: #314037;
+          font-size: 17px;
+          line-height: 1.55;
+          font-weight: 700;
+        }
+
+        .dy-flow {
+          position: relative;
           background: var(--dy-bg);
         }
 
-        .dy-scenes {
-          padding: 88px 24px 104px;
+        .dy-flow-pin {
+          min-height: 100dvh;
+          overflow: hidden;
+          padding: 92px 0 82px;
         }
 
-        .dy-tabs {
-          display: flex;
-          justify-content: center;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-bottom: 30px;
-        }
-
-        .dy-tab {
-          min-width: 112px;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 999px;
-          background: rgba(255, 255, 255, 0.045);
-          padding: 11px 18px;
-          color: rgba(255, 255, 255, 0.62);
-          text-align: center;
-          font-size: 14px;
-          font-weight: 760;
-        }
-
-        .dy-tab-active {
-          background: #fff;
-          color: #12151d;
-        }
-
-        .dy-scene-card {
+        .dy-flow-head {
           display: grid;
-          grid-template-columns: 0.85fr 1.15fr;
-          gap: 28px;
-          min-height: 520px;
-          border: 1px solid rgba(255, 255, 255, 0.13);
-          border-radius: 34px;
-          background:
-            radial-gradient(circle at 88% 16%, rgba(139, 124, 255, 0.18), transparent 360px),
-            linear-gradient(135deg, #141822 0%, #090b10 100%);
-          box-shadow: 0 44px 130px rgba(0, 0, 0, 0.36);
-          padding: 30px;
+          grid-template-columns: minmax(0, 0.82fr) minmax(360px, 1fr);
+          gap: 40px;
+          align-items: end;
+          margin-bottom: 34px;
         }
 
-        .dy-scene-copy {
-          align-self: center;
+        .dy-flow-copy p {
+          max-width: 560px;
+          margin-top: 20px;
+          color: var(--dy-muted);
+        }
+
+        .dy-flow-progress {
+          align-self: end;
+          height: 3px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+        }
+
+        .dy-flow-progress-fill {
+          width: 100%;
+          height: 100%;
+          transform: scaleX(0);
+          transform-origin: left center;
+          border-radius: inherit;
+          background: linear-gradient(90deg, var(--dy-accent), var(--dy-accent-2));
+        }
+
+        .dy-flow-track {
+          display: flex;
+          gap: 22px;
+          width: max-content;
+          padding: 0 max(24px, calc((100vw - 1240px) / 2));
+        }
+
+        .dy-flow-panel {
+          width: min(980px, calc(100vw - 112px));
+          min-height: 560px;
+          display: grid;
+          grid-template-columns: 0.95fr 1.05fr;
+          gap: 22px;
+          border: 1px solid var(--dy-line);
+          border-radius: 28px;
+          background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 30%),
+            var(--dy-bg-2);
+          padding: 18px;
+          box-shadow: 0 34px 100px rgba(0, 0, 0, 0.28);
+        }
+
+        .dy-panel-copy {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 28px;
           padding: 18px;
         }
 
-        .dy-efficiency {
-          display: inline-flex;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 999px;
-          background: rgba(255, 255, 255, 0.06);
-          padding: 8px 12px;
-          color: rgba(255, 255, 255, 0.72);
+        .dy-panel-top {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .dy-icon-mark {
+          width: 44px;
+          height: 44px;
+          border-radius: 14px;
+          background: rgba(113, 214, 155, 0.12);
+          color: var(--dy-accent);
+          border: 1px solid rgba(113, 214, 155, 0.26);
+        }
+
+        .dy-icon-mark svg {
+          width: 22px;
+          height: 22px;
+        }
+
+        .dy-panel-label {
+          display: block;
+          color: var(--dy-soft);
           font-size: 13px;
-          font-weight: 700;
-          margin-bottom: 22px;
+          font-weight: 760;
         }
 
-        .dy-scene-copy h3 {
-          margin: 0;
-          font-size: clamp(34px, 4.2vw, 60px);
-          line-height: 1.02;
+        .dy-panel-copy h3 {
+          margin: 6px 0 0;
+          font-size: clamp(32px, 3.6vw, 50px);
+          line-height: 1.05;
           letter-spacing: 0;
-          font-weight: 860;
+          font-weight: 900;
         }
 
-        .dy-scene-copy p {
-          margin: 20px 0 0;
-          color: rgba(255, 255, 255, 0.68);
-          font-size: 17px;
-          line-height: 1.72;
+        .dy-prompt {
+          margin: 22px 0 0;
+          border: 1px solid var(--dy-line);
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.06);
+          padding: 15px;
+          color: rgba(244, 247, 243, 0.78);
+          font-size: 15px;
+          line-height: 1.58;
         }
 
-        .dy-compare {
+        .dy-work-list {
           display: grid;
+          gap: 10px;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .dy-work-list li {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: rgba(244, 247, 243, 0.72);
+          font-size: 14px;
+          font-weight: 650;
+        }
+
+        .dy-work-list svg {
+          width: 18px;
+          height: 18px;
+          color: var(--dy-accent);
+          flex: none;
+        }
+
+        .dy-result {
+          border-top: 1px solid var(--dy-line);
+          padding-top: 18px;
+          color: var(--dy-text);
+          font-size: 18px;
+          line-height: 1.55;
+          font-weight: 780;
+        }
+
+        .dy-panel-image {
+          position: relative;
+          min-height: 520px;
+          border-radius: 22px;
+          overflow: hidden;
+          background: #16201c;
+        }
+
+        .dy-panel-image::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(180deg, transparent 44%, rgba(10, 13, 12, 0.72)),
+            linear-gradient(90deg, rgba(10, 13, 12, 0.34), transparent 56%);
+          pointer-events: none;
+        }
+
+        .dy-panel-output {
+          position: absolute;
+          left: 18px;
+          right: 18px;
+          bottom: 18px;
+          z-index: 1;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 18px;
+          background: rgba(10, 13, 12, 0.72);
+          backdrop-filter: blur(16px);
+          padding: 14px;
+        }
+
+        .dy-panel-output strong {
+          display: block;
+          margin-bottom: 8px;
+          color: var(--dy-text);
+          font-size: 14px;
+        }
+
+        .dy-output-lines {
+          display: grid;
+          gap: 7px;
+        }
+
+        .dy-output-lines span {
+          height: 8px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.22);
+        }
+
+        .dy-output-lines span:nth-child(2) {
+          width: 82%;
+        }
+
+        .dy-output-lines span:nth-child(3) {
+          width: 58%;
+          background: rgba(113, 214, 155, 0.42);
+        }
+
+        .dy-showcase {
+          background: var(--dy-paper);
+          color: var(--dy-ink);
+          padding: 102px 24px;
+        }
+
+        .dy-showcase-layout {
+          display: grid;
+          grid-template-columns: 0.88fr 1.12fr;
+          gap: 46px;
+          align-items: center;
+        }
+
+        .dy-showcase p {
+          max-width: 520px;
+          margin-top: 20px;
+        }
+
+        .dy-showcase-list {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
           margin-top: 28px;
         }
 
-        .dy-compare-block {
-          border: 1px solid rgba(255, 255, 255, 0.1);
+        .dy-showcase-item {
+          border: 1px solid rgba(17, 23, 21, 0.12);
           border-radius: 18px;
-          background: rgba(255, 255, 255, 0.06);
-          padding: 15px;
+          background: rgba(255, 255, 255, 0.56);
+          padding: 16px;
+          color: #314037;
+          font-size: 15px;
+          line-height: 1.45;
+          font-weight: 720;
         }
 
-        .dy-compare-block strong {
-          display: block;
-          margin-bottom: 6px;
-          color: rgba(255, 255, 255, 0.88);
-          font-size: 13px;
-        }
-
-        .dy-compare-block span {
-          color: rgba(255, 255, 255, 0.58);
-          font-size: 13px;
-          line-height: 1.55;
-        }
-
-        .dy-scene-image {
-          align-self: stretch;
-          min-height: 430px;
-          border: 1px solid rgba(255, 255, 255, 0.14);
+        .dy-showcase-image {
+          min-height: 520px;
+          border: 1px solid rgba(17, 23, 21, 0.14);
           border-radius: 28px;
           overflow: hidden;
-          background: #111827;
-        }
-
-        .dy-scene-image img {
-          height: 100%;
-        }
-
-        .dy-feature-block {
-          background: var(--dy-paper);
-          color: var(--dy-ink);
-          padding: 104px 24px;
-        }
-
-        .dy-feature-block h2 {
-          max-width: 900px;
-          margin-bottom: 48px;
-          text-align: center;
-        }
-
-        .dy-feature-grid {
-          max-width: 1180px;
-          margin: 0 auto;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 18px;
-        }
-
-        .dy-feature {
-          min-height: 430px;
-          border: 1px solid #e1e7f0;
-          border-radius: 32px;
-          background: #fff;
-          overflow: hidden;
-          box-shadow: 0 20px 60px rgba(16, 24, 40, 0.08);
-        }
-
-        .dy-feature img {
-          height: 260px;
-          background: #111827;
-        }
-
-        .dy-feature-body {
-          padding: 24px;
-        }
-
-        .dy-feature-heading {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 10px;
-        }
-
-        .dy-feature-icon {
-          width: 38px;
-          height: 38px;
-          border-radius: 12px;
-          display: grid;
-          place-items: center;
-          background: #f0f3ff;
-          color: #6f63e8;
-          flex: none;
-        }
-
-        .dy-feature-icon svg {
-          width: 20px;
-          height: 20px;
-        }
-
-        .dy-feature h3 {
-          margin: 0;
-          font-size: 26px;
-          line-height: 1.08;
-          letter-spacing: 0;
-          font-weight: 860;
-        }
-
-        .dy-feature p {
-          margin: 0;
-          color: #667085;
-          font-size: 15px;
-          line-height: 1.66;
-        }
-
-        .dy-daily {
-          padding: 104px 24px;
-          text-align: center;
-        }
-
-        .dy-daily h2,
-        .dy-final h2 {
-          max-width: 860px;
-        }
-
-        .dy-daily p,
-        .dy-final p {
-          color: rgba(255, 255, 255, 0.68);
-        }
-
-        .dy-daily-list {
-          max-width: 980px;
-          margin: 44px auto 0;
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
-          text-align: left;
-        }
-
-        .dy-daily-item {
-          border: 1px solid rgba(255, 255, 255, 0.13);
-          border-radius: 24px;
-          background: rgba(255, 255, 255, 0.06);
-          padding: 22px;
-        }
-
-        .dy-daily-item h3 {
-          margin: 0 0 8px;
-          font-size: 20px;
-          letter-spacing: 0;
-        }
-
-        .dy-daily-item span {
-          color: rgba(255, 255, 255, 0.6);
-          font-size: 14px;
-          line-height: 1.58;
+          background: #1a241f;
+          box-shadow: 0 28px 80px rgba(17, 23, 21, 0.14);
         }
 
         .dy-final {
-          padding: 104px 24px 112px;
-          text-align: center;
+          position: relative;
+          overflow: hidden;
+          padding: 108px 24px 118px;
           background:
-            radial-gradient(circle at 50% 20%, rgba(139, 124, 255, 0.2), transparent 340px),
-            var(--dy-bg);
+            linear-gradient(180deg, var(--dy-bg-2), var(--dy-bg));
+          text-align: center;
+        }
+
+        .dy-final::before {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 0;
+          width: min(920px, 82vw);
+          height: 1px;
+          transform: translateX(-50%);
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(113, 214, 155, 0.58),
+            transparent
+          );
+        }
+
+        .dy-final h2 {
+          max-width: 880px;
+          margin: 0 auto;
+        }
+
+        .dy-final p {
+          max-width: 600px;
+          margin: 24px auto 0;
+          color: var(--dy-muted);
+        }
+
+        .dy-final .dy-cta-row {
+          justify-content: center;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -749,6 +1133,9 @@ export function LandingPage() {
           .dy-cta:active {
             transform: none;
           }
+          .dy-scan-line {
+            display: none;
+          }
         }
 
         @media (max-width: 980px) {
@@ -757,15 +1144,46 @@ export function LandingPage() {
           }
           .dy-hero {
             min-height: auto;
-            padding-top: 118px;
+            padding-top: 108px;
           }
-          .dy-scene-card,
-          .dy-feature-grid,
-          .dy-daily-list {
+          .dy-hero-layout,
+          .dy-stage-content,
+          .dy-manifest-grid,
+          .dy-flow-head,
+          .dy-flow-panel,
+          .dy-showcase-layout {
             grid-template-columns: 1fr;
           }
-          .dy-scene-image {
-            min-height: 320px;
+          .dy-hero-layout {
+            min-height: auto;
+          }
+          .dy-stage {
+            min-height: auto;
+          }
+          .dy-stage-body,
+          .dy-stage-content {
+            min-height: 560px;
+          }
+          .dy-command {
+            align-self: start;
+          }
+          .dy-flow-pin {
+            min-height: auto;
+          }
+          .dy-flow-track {
+            width: auto;
+            display: grid;
+            padding: 0 24px;
+          }
+          .dy-flow-panel {
+            width: 100%;
+            min-height: auto;
+          }
+          .dy-panel-image {
+            min-height: 360px;
+          }
+          .dy-flow-progress {
+            display: none;
           }
         }
 
@@ -774,8 +1192,9 @@ export function LandingPage() {
             height: 66px;
           }
           .dy-header-inner,
-          .dy-wide {
-            width: min(100% - 32px, 1200px);
+          .dy-wide,
+          .dy-hero-layout {
+            width: min(100% - 32px, 1240px);
           }
           .dy-actions {
             gap: 10px;
@@ -787,47 +1206,66 @@ export function LandingPage() {
             padding: 8px 14px;
           }
           .dy-hero {
-            padding: 106px 16px 56px;
+            padding: 96px 16px 56px;
           }
           .dy-hero h1 {
-            font-size: clamp(44px, 15vw, 62px);
+            font-size: clamp(42px, 14vw, 62px);
           }
-          .dy-hero-subtitle {
+          .dy-hero-copy p {
             font-size: 17px;
           }
           .dy-cta {
-            width: min(100%, 260px);
-          }
-          .dy-hero-visual {
             width: 100%;
-            margin-top: 46px;
-            border-radius: 24px;
           }
-          .dy-statement,
-          .dy-scenes,
-          .dy-feature-block,
-          .dy-daily,
+          .dy-stage-top {
+            padding: 0 14px;
+          }
+          .dy-stage-body {
+            padding: 14px;
+          }
+          .dy-stage-media {
+            inset: 14px;
+          }
+          .dy-stage-body,
+          .dy-stage-content {
+            min-height: 620px;
+          }
+          .dy-command,
+          .dy-live {
+            border-radius: 18px;
+            padding: 14px;
+          }
+          .dy-artifacts,
+          .dy-showcase-list {
+            grid-template-columns: 1fr;
+          }
+          .dy-manifest,
+          .dy-flow-pin,
+          .dy-showcase,
           .dy-final {
             padding-left: 16px;
             padding-right: 16px;
           }
-          .dy-statement h2,
-          .dy-feature-block h2,
-          .dy-daily h2,
+          .dy-manifest h2,
+          .dy-flow-copy h2,
+          .dy-showcase h2,
           .dy-final h2 {
-            font-size: clamp(36px, 11vw, 48px);
-            letter-spacing: 0;
+            font-size: clamp(36px, 10vw, 48px);
           }
-          .dy-scene-card {
-            padding: 18px;
-            border-radius: 26px;
+          .dy-flow-track {
+            padding: 0;
           }
-          .dy-scene-copy {
-            padding: 6px;
-          }
-          .dy-feature,
-          .dy-daily-item {
+          .dy-flow-panel {
             border-radius: 22px;
+            padding: 12px;
+          }
+          .dy-panel-copy {
+            padding: 8px;
+          }
+          .dy-panel-image,
+          .dy-showcase-image {
+            min-height: 300px;
+            border-radius: 18px;
           }
         }
       `}</style>
@@ -842,7 +1280,7 @@ export function LandingPage() {
           </a>
           <nav className="dy-nav" aria-label="产品导航">
             <a href="#product">道友 AI</a>
-            <a href="#scenes">场景</a>
+            <a href="#flow">场景演示</a>
             <a href="#daily">日常工作</a>
             <a href="/login">登录</a>
           </nav>
@@ -856,137 +1294,230 @@ export function LandingPage() {
       </header>
 
       <section className="dy-hero" id="product">
-        <div className="dy-hero-content">
-          <h1 className="dy-hero-motion" aria-label="随心而动，念头通达">
-            <span className="dy-nowrap dy-hero-title-line">随心而动，</span>
-            <span className="dy-nowrap dy-hero-title-line">念头通达</span>
-          </h1>
-          <p className="dy-hero-subtitle">
-            将道友 AI
-            的智能体能力延展到日常工作场景。描述需求，自动执行，直接交付结果。
-          </p>
-          <div className="dy-cta-row">
-            <a className="dy-cta dy-cta-primary" href="/login">
-              <span className="dy-cta-icon" aria-hidden="true">
-                道
-              </span>
-              <span>
-                <span className="dy-cta-title">开始使用</span>
-                <span className="dy-cta-desc">进入工作空间</span>
-              </span>
-            </a>
-            <a className="dy-cta dy-cta-secondary" href="#scenes">
-              <span className="dy-cta-icon" aria-hidden="true">
-                <ArrowRightIcon width={17} height={17} strokeWidth={2.4} />
-              </span>
-              <span>
-                <span className="dy-cta-title">查看场景</span>
-                <span className="dy-cta-desc">周报 / 调研 / 整理 / 跟进</span>
-              </span>
-            </a>
+        <div className="dy-hero-layout">
+          <div className="dy-hero-copy">
+            <div className="dy-kicker dy-hero-motion">
+              <SparklesIcon strokeWidth={2} />
+              <span>桌面级通用智能体助手</span>
+            </div>
+            <h1 className="dy-hero-motion" aria-label="随心而动，念头通达">
+              <span>随心而动，</span>
+              <span className="dy-title-soft">念头通达</span>
+            </h1>
+            <p className="dy-hero-motion">
+              描述你想完成的事，道友 AI
+              会调研、整理、生成文档，并把后续动作接住。
+            </p>
+            <div className="dy-cta-row dy-hero-motion">
+              <a className="dy-cta dy-cta-primary" href="/login">
+                <span className="dy-cta-icon" aria-hidden="true">
+                  道
+                </span>
+                <span>
+                  <span className="dy-cta-title">开始使用</span>
+                  <span className="dy-cta-desc">进入工作空间</span>
+                </span>
+              </a>
+              <a className="dy-cta dy-cta-secondary" href="#flow">
+                <span className="dy-cta-icon" aria-hidden="true">
+                  <ArrowRightIcon width={17} height={17} strokeWidth={2.4} />
+                </span>
+                <span>
+                  <span className="dy-cta-title">查看演示</span>
+                  <span className="dy-cta-desc">调研 / 整理 / 跟进</span>
+                </span>
+              </a>
+            </div>
           </div>
-          <div className="dy-hero-visual">
+
+          <div className="dy-stage" aria-label="道友 AI 执行台预览">
+            <div className="dy-stage-top">
+              <div className="dy-window-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="dy-stage-title">道友执行台</div>
+            </div>
+            <div className="dy-stage-body">
+              <div className="dy-stage-media">
+                <img
+                  src={`${assetBase}/scene-weekly-report.jpg`}
+                  alt="道友 AI 桌面工作台场景"
+                />
+              </div>
+              <div className="dy-scan-line" aria-hidden="true" />
+              <div className="dy-stage-content">
+                <div className="dy-command">
+                  <span className="dy-command-label">输入一个念头</span>
+                  <p className="dy-command-text">
+                    帮我调研竞品动态，整理成周报，并提醒我周五发送。
+                  </p>
+                  <div className="dy-command-footer" aria-label="任务范围">
+                    <span className="dy-chip">网页来源</span>
+                    <span className="dy-chip">本地资料</span>
+                    <span className="dy-chip">文档交付</span>
+                  </div>
+                </div>
+
+                <div className="dy-live">
+                  <div className="dy-live-head">
+                    <strong>执行中</strong>
+                    <span className="dy-live-state">过程可见</span>
+                  </div>
+                  <div className="dy-live-list">
+                    <div className="dy-live-row">
+                      <MagnifyingGlassIcon strokeWidth={2} />
+                      <span>
+                        <strong>网页调研</strong>
+                        <span>抓取资料、保留来源、提取变化。</span>
+                      </span>
+                    </div>
+                    <div className="dy-live-row">
+                      <FolderOpenIcon strokeWidth={2} />
+                      <span>
+                        <strong>资料整理</strong>
+                        <span>把截图、链接、表格归入项目包。</span>
+                      </span>
+                    </div>
+                    <div className="dy-live-row">
+                      <DocumentTextIcon strokeWidth={2} />
+                      <span>
+                        <strong>生成结果</strong>
+                        <span>周报、摘要和下周计划一起交付。</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="dy-artifacts" aria-label="交付物">
+                    <div className="dy-artifact">
+                      <span>DOC</span>
+                      <strong>周报初稿</strong>
+                    </div>
+                    <div className="dy-artifact">
+                      <span>LINKS</span>
+                      <strong>来源清单</strong>
+                    </div>
+                    <div className="dy-artifact">
+                      <span>TODO</span>
+                      <strong>周五提醒</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="dy-manifest dy-reveal">
+        <div className="dy-wide dy-manifest-grid">
+          <h2>一句话落地成一条工作流。</h2>
+          <div className="dy-manifest-copy">
+            <p>
+              道友 AI
+              面向真实工作场景：网页要读，文件要理，文档要交付，后续还要有人记得。
+            </p>
+            <div className="dy-sentence-stack">
+              <div className="dy-sentence">从需求开始，不从工具菜单开始。</div>
+              <div className="dy-sentence">过程透明，结果能继续编辑。</div>
+              <div className="dy-sentence">
+                日常反复做的事，让它自动接着做。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="dy-flow" id="flow">
+        <div className="dy-flow-pin">
+          <div className="dy-wide dy-flow-head">
+            <div className="dy-flow-copy dy-reveal">
+              <h2>看它怎么把事做完。</h2>
+              <p>
+                这一段用滚动演示完整执行链路。每个场景都对应日常工作里会真的发生的任务。
+              </p>
+            </div>
+            <div className="dy-flow-progress" aria-hidden="true">
+              <div className="dy-flow-progress-fill" />
+            </div>
+          </div>
+
+          <div className="dy-flow-track" aria-label="道友 AI 场景演示">
+            {executionScenes.map(({ Icon, ...scene }) => (
+              <article className="dy-flow-panel" key={scene.label}>
+                <div className="dy-panel-copy">
+                  <div>
+                    <div className="dy-panel-top dy-panel-motion">
+                      <span className="dy-icon-mark" aria-hidden="true">
+                        <Icon strokeWidth={1.8} />
+                      </span>
+                      <span>
+                        <span className="dy-panel-label">{scene.label}</span>
+                        <h3>{scene.title}</h3>
+                      </span>
+                    </div>
+                    <p className="dy-prompt dy-panel-motion">{scene.prompt}</p>
+                  </div>
+
+                  <ul className="dy-work-list dy-panel-motion">
+                    {scene.work.map((item) => (
+                      <li key={item}>
+                        <CheckCircleIcon strokeWidth={2} />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="dy-result dy-panel-motion">
+                    {scene.result}
+                  </div>
+                </div>
+
+                <div className="dy-panel-image">
+                  <img src={scene.image} alt={scene.alt} />
+                  <div className="dy-panel-output dy-panel-motion">
+                    <strong>交付预览</strong>
+                    <div className="dy-output-lines" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="dy-showcase" id="daily">
+        <div className="dy-wide dy-showcase-layout">
+          <div className="dy-reveal">
+            <h2>日常工作里，直接开口。</h2>
+            <p>
+              不需要先想清楚该打开哪个工具。把任务说出来，道友 AI
+              会把资料、网页和交付物串起来。
+            </p>
+            <div className="dy-showcase-list">
+              {dailyScenes.map((scene) => (
+                <div className="dy-showcase-item" key={scene}>
+                  {scene}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="dy-showcase-image dy-reveal">
             <img
-              src={`${assetBase}/scene-weekly-report.jpg`}
-              alt="道友 AI 桌面工作场景"
+              src={`${assetBase}/scene-file-organize.jpg`}
+              alt="道友 AI 日常资料整理场景"
             />
           </div>
         </div>
       </section>
 
-      <section className="dy-statement dy-reveal">
-        <div className="dy-decorative-line" aria-hidden="true" />
-        <h2>
-          通过会话，完成资料整理、
-          <span className="dy-inline-token">PDF</span>
-          网页调研
-          <span className="dy-inline-token">表</span>
-          与文档生成。
-        </h2>
-        <p>为日常工作而生的 AI 效率工具。说出你想做的就好。</p>
-      </section>
-
-      <section className="dy-scenes" id="scenes">
-        <div className="dy-wide">
-          <div className="dy-tabs dy-reveal" aria-label="工作场景">
-            {scenes.map((scene) => (
-              <span
-                className={`dy-tab ${
-                  scene.label === primaryScene.label ? "dy-tab-active" : ""
-                }`}
-                key={scene.label}
-              >
-                {scene.label}
-              </span>
-            ))}
-          </div>
-          <div className="dy-scene-card dy-reveal">
-            <div className="dy-scene-copy">
-              <div className="dy-efficiency">
-                效率提升：1 到 2 天 -&gt; 11 分钟
-              </div>
-              <h3>{primaryScene.title}</h3>
-              <p>{primaryScene.body}</p>
-              <div className="dy-compare">
-                <div className="dy-compare-block">
-                  <strong>传统痛点：</strong>
-                  <span>手动搜索、逐页阅读，数据碎片化，难以结构化。</span>
-                </div>
-                <div className="dy-compare-block">
-                  <strong>道友方案：</strong>
-                  <span>自动浏览网页、提取重点，输出结构化洞察报告。</span>
-                </div>
-              </div>
-            </div>
-            <div className="dy-scene-image">
-              <img src={primaryScene.image} alt={primaryScene.alt} />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="dy-feature-block">
-        <h2>说出想法，自动完成，直接交付。</h2>
-        <div className="dy-feature-grid">
-          {scenes.map(({ Icon, ...scene }) => (
-            <article className="dy-feature dy-reveal" key={scene.label}>
-              <img src={scene.image} alt={scene.alt} />
-              <div className="dy-feature-body">
-                <div className="dy-feature-heading">
-                  <span className="dy-feature-icon" aria-hidden="true">
-                    <Icon strokeWidth={1.8} />
-                  </span>
-                  <h3>{scene.title}</h3>
-                </div>
-                <p>{scene.body}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="dy-daily" id="daily">
-        <h2>专为日常工作打造</h2>
-        <p>本地资料、网页阅读、文档成果和后续提醒，都放进一个连续的工作流。</p>
-        <div className="dy-daily-list">
-          <div className="dy-daily-item dy-reveal">
-            <h3>本地资料直接使用</h3>
-            <span>授权文件夹即可作为工作场景，结果自动保存。</span>
-          </div>
-          <div className="dy-daily-item dy-reveal">
-            <h3>自主规划并执行</h3>
-            <span>自动拆解任务，逐步推进，过程可见。</span>
-          </div>
-          <div className="dy-daily-item dy-reveal">
-            <h3>安全、透明、可控</h3>
-            <span>关键动作前确认，执行记录可以回看。</span>
-          </div>
-        </div>
-      </section>
-
       <section className="dy-final dy-reveal">
-        <h2>桌面级通用智能体助手</h2>
-        <p>从一个念头开始，把资料、网页、文档和跟进串成可交付的结果。</p>
+        <h2>把念头交给道友 AI。</h2>
+        <p>从一句话开始，让调研、整理、文档和提醒形成连续结果。</p>
         <div className="dy-cta-row">
           <a className="dy-cta dy-cta-primary" href="/login">
             <span className="dy-cta-icon" aria-hidden="true">
