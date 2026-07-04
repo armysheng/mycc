@@ -270,16 +270,24 @@ export function LandingPage() {
           --dy-accent: #7ee0a4;
           --dy-accent-2: #d6ff73;
           --dy-ink: #101713;
+          --dy-font-body:
+            "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+            ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+            sans-serif;
+          --dy-font-title:
+            "Songti SC", "STSong", "Noto Serif CJK SC",
+            "Source Han Serif SC", "SimSun", serif;
+          --dy-font-kai:
+            "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif;
           min-height: 100dvh;
           overflow-x: hidden;
           background:
             radial-gradient(circle at 64% 8%, rgba(126, 224, 164, 0.16), transparent 360px),
             linear-gradient(180deg, #111813 0%, var(--dy-bg) 56%);
           color: var(--dy-text);
-          font-family:
-            ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-            "PingFang SC", "Microsoft YaHei", sans-serif;
+          font-family: var(--dy-font-body);
           -webkit-font-smoothing: antialiased;
+          text-rendering: geometricPrecision;
         }
 
         .dy-landing *,
@@ -333,8 +341,9 @@ export function LandingPage() {
 
         .dy-brand {
           gap: 12px;
+          font-family: var(--dy-font-title);
           font-size: 18px;
-          font-weight: 850;
+          font-weight: 760;
           white-space: nowrap;
         }
 
@@ -355,32 +364,36 @@ export function LandingPage() {
             linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 38%),
             linear-gradient(135deg, #1d3429, #7ee0a4);
           box-shadow: 0 16px 38px rgba(66, 190, 116, 0.2);
+          font-family: var(--dy-font-kai);
           font-size: 18px;
-          font-weight: 900;
+          font-weight: 800;
         }
 
         .dy-nav {
           gap: 24px;
           color: rgba(244, 248, 242, 0.62);
+          font-family: var(--dy-font-title);
           font-size: 14px;
-          font-weight: 650;
+          font-weight: 620;
           white-space: nowrap;
         }
 
         .dy-actions {
           gap: 14px;
           color: rgba(244, 248, 242, 0.74);
+          font-family: var(--dy-font-title);
           font-size: 14px;
-          font-weight: 760;
+          font-weight: 680;
           white-space: nowrap;
         }
 
-        .dy-header-button {
+        .dy-landing .dy-header-button {
           border-radius: 999px;
           background: var(--dy-text);
           color: var(--dy-ink);
           padding: 9px 16px;
-          font-weight: 850;
+          font-family: var(--dy-font-kai);
+          font-weight: 780;
         }
 
         .dy-hero {
@@ -417,15 +430,21 @@ export function LandingPage() {
         .dy-hero h1 {
           max-width: 610px;
           margin: 0;
+          font-family: var(--dy-font-title);
           font-size: clamp(62px, 8.2vw, 112px);
-          line-height: 0.92;
+          line-height: 0.98;
           letter-spacing: 0;
-          font-weight: 920;
+          font-weight: 760;
+          text-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.18),
+            0 28px 66px rgba(0, 0, 0, 0.34);
         }
 
         .dy-title-soft {
           display: block;
+          font-family: var(--dy-font-kai);
           color: rgba(244, 248, 242, 0.58);
+          font-weight: 700;
         }
 
         .dy-hero-copy p {
@@ -464,13 +483,13 @@ export function LandingPage() {
           transform: translateY(0);
         }
 
-        .dy-cta-primary {
+        .dy-landing .dy-cta-primary {
           background: var(--dy-text);
           color: var(--dy-ink);
           box-shadow: 0 22px 52px rgba(0, 0, 0, 0.3);
         }
 
-        .dy-cta-secondary {
+        .dy-landing .dy-cta-secondary {
           border: 1px solid var(--dy-line);
           background: rgba(255, 255, 255, 0.07);
           color: var(--dy-text);
@@ -497,8 +516,9 @@ export function LandingPage() {
         }
 
         .dy-cta-title {
+          font-family: var(--dy-font-title);
           font-size: 15px;
-          font-weight: 850;
+          font-weight: 760;
           line-height: 1.1;
         }
 
@@ -625,8 +645,9 @@ export function LandingPage() {
           backdrop-filter: blur(14px);
           padding: 8px 11px;
           color: var(--dy-text);
+          font-family: var(--dy-font-kai);
           font-size: 13px;
-          font-weight: 780;
+          font-weight: 720;
         }
 
         .dy-shot-icon {
@@ -659,17 +680,19 @@ export function LandingPage() {
         .dy-orbit-command span {
           display: block;
           color: rgba(244, 248, 242, 0.48);
+          font-family: var(--dy-font-kai);
           font-size: 12px;
-          font-weight: 780;
+          font-weight: 700;
         }
 
         .dy-orbit-command strong {
           display: block;
           margin-top: 6px;
           color: var(--dy-text);
+          font-family: var(--dy-font-title);
           font-size: clamp(18px, 2vw, 24px);
-          line-height: 1.25;
-          font-weight: 880;
+          line-height: 1.34;
+          font-weight: 760;
         }
 
         .dy-orbit-output {
@@ -689,16 +712,18 @@ export function LandingPage() {
         .dy-orbit-output span {
           display: block;
           color: #647467;
+          font-family: var(--dy-font-kai);
           font-size: 11px;
-          font-weight: 850;
+          font-weight: 720;
         }
 
         .dy-orbit-output strong {
           display: block;
           margin-top: 7px;
+          font-family: var(--dy-font-title);
           font-size: 18px;
-          line-height: 1.16;
-          font-weight: 900;
+          line-height: 1.22;
+          font-weight: 760;
         }
 
         .dy-chipline {
@@ -719,8 +744,9 @@ export function LandingPage() {
           backdrop-filter: blur(14px);
           padding: 8px 11px;
           color: rgba(244, 248, 242, 0.76);
+          font-family: var(--dy-font-kai);
           font-size: 12px;
-          font-weight: 760;
+          font-weight: 700;
         }
 
         .dy-hyper {
@@ -771,8 +797,9 @@ export function LandingPage() {
         .dy-hyper-label {
           gap: 11px;
           color: rgba(244, 248, 242, 0.64);
+          font-family: var(--dy-font-title);
           font-size: 15px;
-          font-weight: 820;
+          font-weight: 700;
         }
 
         .dy-hyper-label span:first-child {
@@ -816,8 +843,9 @@ export function LandingPage() {
           justify-content: space-between;
           gap: 12px;
           color: rgba(244, 248, 242, 0.72);
+          font-family: var(--dy-font-kai);
           font-size: 12px;
-          font-weight: 820;
+          font-weight: 700;
         }
 
         .dy-daoyou-brand {
@@ -842,9 +870,10 @@ export function LandingPage() {
           background: rgba(255, 255, 255, 0.08);
           padding: 12px;
           color: var(--dy-text);
+          font-family: var(--dy-font-title);
           font-size: 15px;
-          line-height: 1.32;
-          font-weight: 820;
+          line-height: 1.42;
+          font-weight: 700;
         }
 
         .dy-prompt-mark {
@@ -856,8 +885,9 @@ export function LandingPage() {
           border-radius: 9px;
           background: var(--dy-text);
           color: var(--dy-ink);
+          font-family: var(--dy-font-kai);
           font-size: 13px;
-          font-weight: 900;
+          font-weight: 800;
         }
 
         .dy-status-lane {
@@ -875,8 +905,9 @@ export function LandingPage() {
           border-radius: 13px;
           background: rgba(126, 224, 164, 0.1);
           color: rgba(244, 248, 242, 0.72);
+          font-family: var(--dy-font-kai);
           font-size: 12px;
-          font-weight: 780;
+          font-weight: 700;
         }
 
         .dy-artifact-tray {
@@ -889,14 +920,16 @@ export function LandingPage() {
 
         .dy-artifact-tray span {
           color: rgba(244, 248, 242, 0.46);
+          font-family: var(--dy-font-kai);
           font-size: 11px;
-          font-weight: 820;
+          font-weight: 700;
         }
 
         .dy-artifact-tray strong {
           color: var(--dy-text);
+          font-family: var(--dy-font-title);
           font-size: 14px;
-          font-weight: 880;
+          font-weight: 760;
         }
 
         .dy-frame-meta {
@@ -916,31 +949,36 @@ export function LandingPage() {
         .dy-frame-label {
           display: block;
           color: var(--dy-accent);
+          font-family: var(--dy-font-kai);
           font-size: 14px;
-          font-weight: 850;
+          font-weight: 720;
         }
 
         .dy-frame-copy h2 {
           margin: 8px 0 0;
+          font-family: var(--dy-font-title);
           font-size: clamp(46px, 6vw, 86px);
-          line-height: 0.95;
+          line-height: 1.02;
           letter-spacing: 0;
-          font-weight: 920;
+          font-weight: 760;
+          text-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
         }
 
         .dy-frame-copy p {
           margin: 14px 0 0;
           color: rgba(244, 248, 242, 0.74);
+          font-family: var(--dy-font-kai);
           font-size: clamp(18px, 2vw, 24px);
           line-height: 1.36;
-          font-weight: 760;
+          font-weight: 680;
         }
 
         .dy-frame-no {
           color: rgba(244, 248, 242, 0.34);
+          font-family: var(--dy-font-title);
           font-size: clamp(52px, 8vw, 120px);
           line-height: 0.82;
-          font-weight: 920;
+          font-weight: 760;
           font-variant-numeric: tabular-nums;
         }
 
@@ -957,10 +995,11 @@ export function LandingPage() {
         .dy-final h2 {
           max-width: 880px;
           margin: 0 auto;
+          font-family: var(--dy-font-title);
           font-size: clamp(48px, 7vw, 94px);
-          line-height: 0.98;
+          line-height: 1.06;
           letter-spacing: 0;
-          font-weight: 920;
+          font-weight: 760;
         }
 
         .dy-final p {
