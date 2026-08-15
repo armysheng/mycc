@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { readAuthResult, type AuthResult } from '../src/scripts/local-chat-flow-auth.js';
 
 dotenv.config();
 
@@ -12,16 +13,6 @@ const REQUEST_ID = `local-smoke-${Date.now()}`;
 const CHAT_TIMEOUT_MS = parsePositiveInteger(process.env.MYCC_LOCAL_SMOKE_TIMEOUT_MS, 180_000);
 
 type JsonObject = Record<string, unknown>;
-type AuthResult = {
-  token: string;
-  user: {
-    id: number;
-    email?: string;
-    phone?: string;
-    linux_user: string;
-    is_initialized?: boolean;
-  };
-};
 type StreamSummary = {
   assistantText: string;
   doneSessionId?: string;
@@ -33,7 +24,7 @@ async function main(): Promise<void> {
   console.log(`[smoke] MyCC local chat flow base=${BASE_URL}`);
   const auth = await authenticate();
   console.log(
-    `[smoke] authenticated user=${auth.user.id} linuxUser=${auth.user.linux_user} initialized=${String(auth.user.is_initialized)}`,
+    `[smoke] authenticated user=${auth.user.id} initialized=${String(auth.user.is_initialized)}`,
   );
 
   const prompt = `请只回复：${MARKER}`;
@@ -229,31 +220,6 @@ async function postJson(path: string, payload: JsonObject): Promise<{ status: nu
   });
   const body = await response.json().catch(() => null) as JsonObject | null;
   return { status: response.status, body };
-}
-
-function readAuthResult(body: JsonObject): AuthResult {
-  const data = body.data;
-  if (!isObject(data)) throw new Error('auth response missing data');
-  const token = data.token;
-  const user = data.user;
-  if (typeof token !== 'string' || !isObject(user)) {
-    throw new Error('auth response missing token or user');
-  }
-  const id = user.id;
-  const linuxUser = user.linux_user;
-  if (typeof id !== 'number' || typeof linuxUser !== 'string') {
-    throw new Error('auth response user is incomplete');
-  }
-  return {
-    token,
-    user: {
-      id,
-      email: typeof user.email === 'string' ? user.email : undefined,
-      phone: typeof user.phone === 'string' ? user.phone : undefined,
-      linux_user: linuxUser,
-      is_initialized: typeof user.is_initialized === 'boolean' ? user.is_initialized : undefined,
-    },
-  };
 }
 
 function extractSessionId(event: JsonObject): string | undefined {
